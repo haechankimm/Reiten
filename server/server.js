@@ -15,6 +15,11 @@ const SITE_DIR = path.join(__dirname, "..", "소스 코드");
 
 const app = express();
 
+/* Render/Railway 등은 자체 프록시를 한 단계 거쳐 요청을 전달한다.
+   이 설정이 없으면 express-rate-limit이 모든 방문자를 프록시의 IP 하나로 착각해
+   한 명이 많이 요청하면 전체 방문자가 같이 차단될 수 있다. 로컬 직접 실행 시에는 영향 없음. */
+app.set("trust proxy", 1);
+
 /* 정적 페이지가 인라인 <script>와 jsDelivr(Pretendard 폰트, Supabase JS)에 의존하므로
    CSP는 켜지 않는다 — 나머지 보안 헤더(X-Frame-Options, X-Content-Type-Options 등)만 적용 */
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));

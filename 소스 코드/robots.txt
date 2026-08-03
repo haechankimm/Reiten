@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /cart.html
+Disallow: /order-complete.html
+
+Sitemap: https://reiten.kr/sitemap.xml

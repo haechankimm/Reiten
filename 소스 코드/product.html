@@ -48,7 +48,7 @@
   function mediaHTML(src, alt) {
     return src
       ? `<div class="shot shot--contain" style="aspect-ratio:4/5">
-           <img src="${src}" alt="${esc(alt)}" width="1122" height="1402">
+           <img src="${src}" alt="${esc(alt)}" width="1122" height="1402" fetchpriority="high">
          </div>`
       : `<div class="ph" style="aspect-ratio:4/5"><span class="ph__label">${t("사진 준비중")}</span></div>`;
   }
