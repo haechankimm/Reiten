@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/haebook/Library/Mobile Documents/com~apple~CloudDocs/나/Reiten/**)",
+      "Bash(npm -v)",
+      "Bash(python3 -V)",
+      "Bash(git --version)",
+      "Bash(python3 -c \"import PIL; print\\('PIL', PIL.__version__\\)\")",
+      "Bash(sed -i '' 's|SPDIR|/private/tmp/claude-501/-Users-haebook-Library-Mobile-Documents-com-apple-CloudDocs---Reiten------/946fd533-ee2f-4ce0-9994-66ba37acd02c/scratchpad|' /private/tmp/claude-501/-Users-haebook-Library-Mobile-Documents-com-apple-CloudDocs---Reiten------/946fd533-ee2f-4ce0-9994-66ba37acd02c/scratchpad/bbox.py)",
+      "Bash(python3 /private/tmp/claude-501/-Users-haebook-Library-Mobile-Documents-com-apple-CloudDocs---Reiten------/946fd533-ee2f-4ce0-9994-66ba37acd02c/scratchpad/bbox.py /private/tmp/claude-501/-Users-haebook-Library-Mobile-Documents-com-apple-CloudDocs---Reiten------/946fd533-ee2f-4ce0-9994-66ba37acd02c/scratchpad/probe/d.png)"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "reiten-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REITEN 정적 사이트 서빙 + 주문 가격 서버측 검증 API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
+    "cloudinary": "^2.10.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "multer": "^2.2.0",
+    "resend": "^4.8.0"
+  }
+}

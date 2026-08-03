@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 계정 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main>
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Account</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="내 계정">내 계정</h1>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div class="notice" id="no-server-notice" hidden>
+        <span data-i18n="지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.">
+          지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.
+        </span>
+      </div>
+
+      <!-- ============ 비로그인: 로그인/회원가입 ============ -->
+      <div id="auth-view" hidden>
+        <div class="chips" id="auth-tabs">
+          <button class="chip" type="button" data-tab="login" aria-pressed="true" data-i18n="로그인">로그인</button>
+          <button class="chip" type="button" data-tab="signup" aria-pressed="false" data-i18n="회원가입">회원가입</button>
+        </div>
+
+        <form id="login-form" novalidate style="margin-top:24px;max-width:44ch">
+          <div class="field">
+            <label for="li-email" data-i18n="이메일">이메일</label>
+            <input id="li-email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
+            <input id="li-pw" type="password" autocomplete="current-password" required>
+            <p class="err" id="li-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+        </form>
+
+        <p class="small" style="margin-top:18px">
+          <span data-i18n="비회원으로 주문하셨나요?">비회원으로 주문하셨나요?</span>
+          <a href="order-lookup.html" data-i18n="주문번호로 조회하기">주문번호로 조회하기</a>
+        </p>
+
+        <form id="signup-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
+          <div class="field">
+            <label for="su-name" data-i18n="이름">이름</label>
+            <input id="su-name" required>
+          </div>
+          <div class="field">
+            <label for="su-email" data-i18n="이메일">이메일</label>
+            <input id="su-email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="su-pw" data-i18n="비밀번호">비밀번호</label>
+            <input id="su-pw" type="password" autocomplete="new-password" minlength="6" required>
+            <p class="err" id="su-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="su-submit" data-i18n="회원가입">회원가입</button>
+        </form>
+      </div>
+
+      <!-- ============ 로그인 상태 ============ -->
+      <div id="me-view" hidden>
+        <p class="lede" id="me-greeting"></p>
+        <p style="margin-top:10px">
+          <a class="btn" href="return-request.html" data-i18n="반품 · 교환 신청">반품 · 교환 신청</a>
+          <button class="btn" type="button" id="logout" style="margin-left:8px" data-i18n="로그아웃">로그아웃</button>
+        </p>
+
+        <h2 class="h-md" style="margin-top:44px" data-i18n="주문내역">주문내역</h2>
+        <div id="my-orders" style="display:grid;gap:14px;max-width:70ch;margin-top:16px"></div>
+        <div id="my-orders-empty" class="empty" hidden>
+          <p class="lede" data-i18n="아직 주문 내역이 없습니다.">아직 주문 내역이 없습니다.</p>
+        </div>
+
+        <!-- ============ 관리자 전용 (role=admin일 때만) ============ -->
+        <section id="admin-panel" hidden style="margin-top:64px">
+          <hr class="rule" style="margin-bottom:34px">
+          <p class="eyebrow">Admin</p>
+          <h2 class="h-md" style="margin-top:10px" data-i18n="관리자 패널">관리자 패널</h2>
+
+          <div class="chips" id="admin-tabs" style="margin-top:20px">
+            <button class="chip" type="button" data-tab="orders" aria-pressed="true" data-i18n="전체 주문">전체 주문</button>
+            <button class="chip" type="button" data-tab="returns" aria-pressed="false" data-i18n="반품·교환 신청">반품·교환 신청</button>
+            <button class="chip" type="button" data-tab="inventory" aria-pressed="false" data-i18n="재고">재고</button>
+            <button class="chip" type="button" data-tab="qna" aria-pressed="false" data-i18n="Q&A">Q&amp;A</button>
+          </div>
+
+          <div id="admin-orders" style="display:grid;gap:12px;max-width:80ch;margin-top:22px"></div>
+          <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+          <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch;margin-top:22px" hidden></div>
+          <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+  const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
+  const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+  }
+
+  function trackingLine(o) {
+    const courier = COURIERS.find((c) => c.key === o.courier);
+    if (!courier || !o.trackingNo) return "";
+    const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(o.trackingNo));
+    return `<p class="small" style="margin-top:8px">
+      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(courier.label)} ${esc(o.trackingNo)}</a>
+    </p>`;
+  }
+
+  function orderCard(o) {
+    const itemsLine = o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ");
+    return `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(o.no)}</b>
+          <span class="small tnum">${fmtDate(o.at)}</span>
+        </div>
+        <p class="small" style="margin-top:8px">${itemsLine}</p>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-top:10px">
+          <span class="small">${esc(o.status || "입금대기")}</span>
+          <b class="tnum">${money(o.total)}</b>
+        </div>
+        ${trackingLine(o)}
+      </div>`;
+  }
+
+  async function paintMyOrders() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/my/orders", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const orders = await res.json();
+      el("my-orders").innerHTML = orders.map(orderCard).join("");
+      el("my-orders-empty").hidden = orders.length > 0;
+    } catch (e) {}
+  }
+
+  /* ---------- 관리자 패널 ---------- */
+  function switchTabs(tabsId, panelIds) {
+    const tabs = el(tabsId);
+    tabs.querySelectorAll(".chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        tabs.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        Object.keys(panelIds).forEach((key) => (el(panelIds[key]).hidden = key !== b.dataset.tab));
+      })
+    );
+  }
+  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna" });
+
+  async function adminFetch(path, opts) {
+    const token = await getAccessToken();
+    if (!token) return null;
+    const res = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, ...(opts && opts.headers) },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  async function paintAdminOrders() {
+    const orders = await adminFetch("/api/admin/orders");
+    if (!orders) return;
+    el("admin-orders").innerHTML = orders
+      .map(
+        (o) => `
+      <div class="panel" data-no="${esc(o.no)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(o.no)}</b>
+          <span class="small tnum">${fmtDate(o.at)}</span>
+        </div>
+        <p class="small" style="margin-top:6px">${esc(o.customer.name)} · ${esc(o.customer.tel)}</p>
+        <p class="small" style="margin-top:4px">${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</p>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px">
+          <select class="admin-order-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <b class="tnum">${money(o.total)}</b>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <select class="admin-order-courier" style="flex:1;min-width:110px">
+            <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
+            ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
+          </select>
+          <input class="admin-order-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}" style="flex:1;min-width:130px">
+          <button type="button" class="btn btn--sm admin-order-tracking-save" data-i18n="저장">저장</button>
+        </div>
+      </div>`
+      )
+      .join("");
+
+    el("admin-orders").querySelectorAll(".admin-order-status").forEach((sel) =>
+      sel.addEventListener("change", async () => {
+        const no = sel.closest("[data-no]").dataset.no;
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: sel.value }),
+        });
+        toast(t("상태를 저장했습니다"));
+      })
+    );
+
+    el("admin-orders").querySelectorAll(".admin-order-tracking-save").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-no]");
+        const no = card.dataset.no;
+        const courier = card.querySelector(".admin-order-courier").value;
+        const trackingNo = card.querySelector(".admin-order-tracking").value.trim();
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ courier, trackingNo }),
+        });
+        toast(t("배송정보를 저장했습니다"));
+      })
+    );
+  }
+
+  async function paintAdminReturns() {
+    const returns = await adminFetch("/api/admin/returns");
+    if (!returns) return;
+    el("admin-returns").innerHTML = returns
+      .map(
+        (r) => `
+      <div class="panel" data-id="${esc(r.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(r.orderNo)}</b>
+          <span class="small tnum">${fmtDate(r.at)}</span>
+        </div>
+        <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
+        <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
+        <div style="margin-top:10px">
+          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+        </div>
+      </div>`
+      )
+      .join("");
+
+    el("admin-returns").querySelectorAll(".admin-return-status").forEach((sel) =>
+      sel.addEventListener("change", async () => {
+        const id = sel.closest("[data-id]").dataset.id;
+        await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: sel.value }),
+        });
+        toast(t("상태를 저장했습니다"));
+      })
+    );
+  }
+
+  async function paintAdminInventory() {
+    const rows = await adminFetch("/api/admin/inventory");
+    if (!rows) return;
+    el("admin-inventory").innerHTML = rows
+      .map(
+        (r) => `
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center" data-product="${esc(r.productId)}" data-size="${esc(r.size)}">
+        <span class="small">${esc(r.productId)} · ${esc(r.size)}</span>
+        <input type="number" min="0" class="admin-inv-qty" value="${r.qty}" style="width:80px">
+      </div>`
+      )
+      .join("");
+
+    el("admin-inventory").querySelectorAll(".admin-inv-qty").forEach((input) =>
+      input.addEventListener("change", async () => {
+        const row = input.closest("[data-product]");
+        await adminFetch("/api/admin/inventory", {
+          method: "PATCH",
+          body: JSON.stringify({ productId: row.dataset.product, size: row.dataset.size, qty: Number(input.value) }),
+        });
+        toast(t("재고를 저장했습니다"));
+      })
+    );
+  }
+
+  async function paintAdminQna() {
+    const items = await adminFetch("/api/admin/qna");
+    if (!items) return;
+    el("admin-qna").innerHTML = items
+      .map(
+        (q) => `
+      <div class="panel" data-id="${esc(q.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(q.name)}</b>
+          <span class="small tnum">${fmtDate(q.at)}</span>
+        </div>
+        <div class="small" style="margin-top:6px">${esc(q.productId)} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
+        <p style="margin-top:10px">${esc(q.question)}</p>
+        ${
+          q.status === "답변완료"
+            ? `<div class="notice" style="margin-top:12px"><b>${esc(t("답변"))}</b><p style="margin-top:6px">${esc(q.answer)}</p></div>`
+            : `
+          <div class="field" style="margin-top:12px">
+            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}" data-i18n-attr="placeholder:답변을 입력하세요"></textarea>
+          </div>
+          <button type="button" class="btn btn--sm admin-qna-submit" data-i18n="답변 등록">답변 등록</button>`
+        }
+      </div>`
+      )
+      .join("");
+
+    el("admin-qna").querySelectorAll(".admin-qna-submit").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-id]");
+        const answer = card.querySelector(".admin-qna-answer").value.trim();
+        if (!answer) { toast(t("답변 내용을 입력해 주세요.")); return; }
+        btn.disabled = true;
+        await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ answer }),
+        });
+        toast(t("답변을 등록했습니다"));
+        paintAdminQna();
+      })
+    );
+  }
+
+  async function tryShowAdminPanel() {
+    const orders = await adminFetch("/api/admin/orders");
+    if (!orders) return; // 관리자가 아니거나 서버가 이를 거부함 — 패널을 열지 않는다
+    el("admin-panel").hidden = false;
+    el("admin-orders").innerHTML = "";
+    paintAdminOrders();
+    paintAdminReturns();
+    paintAdminInventory();
+    paintAdminQna();
+  }
+
+  /* ---------- 부팅 ---------- */
+  (async () => {
+    const client = await getSupabaseClient();
+    if (!client) {
+      el("no-server-notice").hidden = false;
+      return;
+    }
+
+    const profile = await getCurrentProfile();
+
+    if (!profile) {
+      el("auth-view").hidden = false;
+    } else {
+      el("me-view").hidden = false;
+      el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
+      paintMyOrders();
+      if (profile.role === "admin") tryShowAdminPanel();
+    }
+
+    el("auth-tabs")?.querySelectorAll(".chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        el("auth-tabs").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        el("login-form").hidden = b.dataset.tab !== "login";
+        el("signup-form").hidden = b.dataset.tab !== "signup";
+      })
+    );
+
+    el("login-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("li-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signInWithPassword({
+        email: el("li-email").value.trim(),
+        password: el("li-pw").value,
+      });
+      if (error) {
+        el("li-err").textContent = t("이메일 또는 비밀번호가 올바르지 않습니다.");
+        el("li-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      location.reload();
+    });
+
+    el("signup-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("su-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signUp({
+        email: el("su-email").value.trim(),
+        password: el("su-pw").value,
+        options: { data: { name: el("su-name").value.trim() } },
+      });
+      if (error) {
+        el("su-err").textContent = error.message;
+        el("su-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      toast(t("가입이 완료되었습니다. 로그인해 주세요."));
+      el("auth-tabs").querySelector('[data-tab="login"]')?.click();
+      btn.disabled = false;
+    });
+
+    el("logout")?.addEventListener("click", async () => {
+      await client.auth.signOut();
+      location.reload();
+    });
+  })();
+
+  renderFooter();
+</script>
+</body>
+</html>

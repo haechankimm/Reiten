@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장바구니 · 주문서 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main>
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Cart &amp; Order</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="장바구니">장바구니</h1>
+      <hr class="rule" style="margin:26px 0 0">
+
+      <div id="empty" class="empty" hidden>
+        <p class="lede" data-i18n="장바구니가 비어 있습니다.">장바구니가 비어 있습니다.</p>
+        <p style="margin-top:20px"><a class="btn" href="shop.html" data-i18n="컬렉션 보러 가기">컬렉션 보러 가기</a></p>
+      </div>
+
+      <div id="body" hidden>
+        <div class="checkout" style="margin-top:34px">
+
+          <!-- ============ 좌: 상품 + 주문서 ============ -->
+          <div>
+            <div id="items"></div>
+
+            <h2 class="h-md" style="margin-top:56px" data-i18n="주문서">주문서</h2>
+            <p class="small" style="margin-top:8px;margin-bottom:22px" data-i18n="아래 정보를 남기시면 주문번호가 발급됩니다. 입금이 확인되면 순차 출고됩니다.">
+              아래 정보를 남기시면 주문번호가 발급됩니다. 입금이 확인되면 순차 출고됩니다.
+            </p>
+
+            <form id="order-form" novalidate>
+              <div class="row-2">
+                <div class="field">
+                  <label for="f-name" data-i18n-html data-i18n='주문자 이름 <span class="req">*</span>'>주문자 이름 <span class="req">*</span></label>
+                  <input id="f-name" name="name" autocomplete="name" required>
+                  <p class="err" data-i18n="이름을 입력해 주세요.">이름을 입력해 주세요.</p>
+                </div>
+                <div class="field">
+                  <label for="f-tel" data-i18n-html data-i18n='연락처 <span class="req">*</span>'>연락처 <span class="req">*</span></label>
+                  <input id="f-tel" name="tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+                  <p class="err" data-i18n="연락처를 정확히 입력해 주세요.">연락처를 정확히 입력해 주세요.</p>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="f-email" data-i18n-html data-i18n='이메일 <span class="req">*</span>'>이메일 <span class="req">*</span></label>
+                <input id="f-email" name="email" type="email" autocomplete="email" placeholder="주문 확인 메일을 받을 주소" data-i18n-attr="placeholder:주문 확인 메일을 받을 주소" required>
+                <p class="err" data-i18n="이메일 형식을 확인해 주세요.">이메일 형식을 확인해 주세요.</p>
+              </div>
+
+              <div class="row-2">
+                <div class="field">
+                  <label for="f-zip" data-i18n-html data-i18n='우편번호 <span class="req">*</span>'>우편번호 <span class="req">*</span></label>
+                  <input id="f-zip" name="zip" inputmode="numeric" autocomplete="postal-code" placeholder="00000" required>
+                  <p class="err" data-i18n="우편번호를 입력해 주세요.">우편번호를 입력해 주세요.</p>
+                </div>
+                <div class="field">
+                  <label for="f-payer" data-i18n-html data-i18n='입금자명 <span class="req">*</span>'>입금자명 <span class="req">*</span></label>
+                  <input id="f-payer" name="payer" required>
+                  <p class="err" data-i18n="입금자명을 입력해 주세요.">입금자명을 입력해 주세요.</p>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="f-addr" data-i18n-html data-i18n='주소 <span class="req">*</span>'>주소 <span class="req">*</span></label>
+                <input id="f-addr" name="addr" autocomplete="street-address" required>
+                <p class="err" data-i18n="주소를 입력해 주세요.">주소를 입력해 주세요.</p>
+              </div>
+
+              <div class="field">
+                <label for="f-addr2" data-i18n="상세주소">상세주소</label>
+                <input id="f-addr2" name="addr2" autocomplete="address-line2" placeholder="동 · 호수 등" data-i18n-attr="placeholder:동 · 호수 등">
+              </div>
+
+              <div class="field">
+                <label for="f-memo" data-i18n="배송 메모">배송 메모</label>
+                <textarea id="f-memo" name="memo" placeholder="부재 시 문 앞에 놓아주세요 등" data-i18n-attr="placeholder:부재 시 문 앞에 놓아주세요 등"></textarea>
+              </div>
+
+              <div class="field">
+                <label class="checkbox">
+                  <input type="checkbox" id="f-agree" required>
+                  <span data-i18n-html data-i18n='주문 처리를 위한 개인정보(이름 · 연락처 · 주소) 수집 및 이용에 동의합니다. 수집한 정보는 배송 완료 후 관련 법령이 정한 기간까지만 보관합니다. <span class="req">*</span>'>
+                    주문 처리를 위한 개인정보(이름 · 연락처 · 주소) 수집 및 이용에 동의합니다.
+                    수집한 정보는 배송 완료 후 관련 법령이 정한 기간까지만 보관합니다. <span class="req">*</span>
+                  </span>
+                </label>
+                <p class="err" data-i18n="동의가 필요합니다.">동의가 필요합니다.</p>
+              </div>
+
+              <button class="btn btn--full" type="submit" id="submit" style="margin-top:8px" data-i18n="주문서 제출">주문서 제출</button>
+              <p class="small" style="margin-top:14px" id="pay-note"></p>
+            </form>
+          </div>
+
+          <!-- ============ 우: 결제 요약 ============ -->
+          <aside>
+            <div class="panel panel--sticky">
+              <h2 class="h-md" style="margin-bottom:16px" data-i18n="결제 금액">결제 금액</h2>
+              <div class="summary__row"><span data-i18n="상품 합계">상품 합계</span><span class="tnum" id="sum-sub"></span></div>
+              <div class="summary__row"><span data-i18n="배송비">배송비</span><span class="tnum" id="sum-ship"></span></div>
+              <div class="summary__row total"><span data-i18n="총 결제금액">총 결제금액</span><span class="tnum" id="sum-total"></span></div>
+
+              <div class="notice" style="margin-top:20px">
+                <b data-i18n="무통장 입금">무통장 입금</b><br>
+                <span id="bank"></span><br>
+                <span class="small" data-i18n="주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.">주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.</span>
+              </div>
+
+              <p class="small" style="margin-top:14px" id="ship-hint"></p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+
+  function paint() {
+    const items = Cart.read();
+    el("empty").hidden = items.length > 0;
+    el("body").hidden = items.length === 0;
+    if (!items.length) return;
+
+    el("items").innerHTML = items.map(it => `
+      <div class="line-item" data-key="${it.key}">
+        <div class="line-item__media">
+          ${it.image
+            ? `<img src="${it.image}" alt="">`
+            : it.charm ? charmSVG(it.charm.key, it.charm.finish)
+            : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
+        </div>
+        <div>
+          <div class="line-item__name">${esc(it.name)}</div>
+          <div class="line-item__opts">${it.opts.map(o => `${esc(o.label)} · ${esc(o.value)}`).join("<br>")}</div>
+          <div class="line-item__foot">
+            <div class="qty">
+              <button type="button" data-act="dec" aria-label="${esc(t("수량 줄이기"))}">−</button>
+              <output class="tnum">${it.qty}</output>
+              <button type="button" data-act="inc" aria-label="${esc(t("수량 늘리기"))}">+</button>
+            </div>
+            <button class="remove" type="button" data-act="del">${t("삭제")}</button>
+          </div>
+        </div>
+        <div class="line-item__right">
+          ${money(it.unit * it.qty)}
+          <div class="small tnum" style="margin-top:4px">${t("개당 {price}", { price: money(it.unit) })}</div>
+        </div>
+      </div>`).join("");
+
+    el("items").querySelectorAll("[data-act]").forEach(b =>
+      b.addEventListener("click", () => {
+        const key = b.closest(".line-item").dataset.key;
+        const it = Cart.read().find(i => i.key === key);
+        if (b.dataset.act === "del") Cart.remove(key);
+        else Cart.setQty(key, it.qty + (b.dataset.act === "inc" ? 1 : -1));
+        paint();
+      })
+    );
+
+    const ship = Cart.shipping();
+    el("sum-sub").textContent = money(Cart.subtotal());
+    el("sum-ship").textContent = ship === 0 ? t("무료") : money(ship);
+    el("sum-total").textContent = money(Cart.total());
+
+    const left = SITE.shipping.freeOver - Cart.subtotal();
+    el("ship-hint").textContent = left > 0
+      ? t("{amount} 더 담으면 배송비가 무료입니다.", { amount: money(left) })
+      : t(SITE.shipping.leadTime);
+
+    const o = SITE.order;
+    el("bank").innerHTML = `${esc(o.bankName)} ${esc(o.accountNo)}<br>${t("예금주")} ${esc(o.holder)}`;
+    el("pay-note").textContent = o.formEndpoint
+      ? t("제출하면 주문서가 바로 전송됩니다.")
+      : t("제출하면 주문번호와 함께 복사용 주문서가 만들어집니다. 이메일 또는 카카오톡으로 보내주세요.");
+  }
+
+  /* ---------- 검증 & 제출 ---------- */
+  function setErr(input, on) {
+    input.setAttribute("aria-invalid", String(on));
+    const err = input.closest(".field").querySelector(".err");
+    if (err) err.classList.toggle("on", on);
+  }
+
+  function validate() {
+    let ok = true, first = null;
+    const checks = [
+      ["f-name", v => v.trim().length >= 2],
+      ["f-tel", v => /^[0-9\-+ ]{9,20}$/.test(v.trim())],
+      ["f-email", v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim())],
+      ["f-zip", v => /^[0-9]{5}$/.test(v.trim())],
+      ["f-payer", v => v.trim().length >= 2],
+      ["f-addr", v => v.trim().length >= 5],
+    ];
+    checks.forEach(([id, fn]) => {
+      const input = el(id);
+      const bad = !fn(input.value);
+      setErr(input, bad);
+      if (bad) { ok = false; first = first || input; }
+    });
+    const agree = el("f-agree");
+    const badAgree = !agree.checked;
+    agree.closest(".field").querySelector(".err").classList.toggle("on", badAgree);
+    if (badAgree) { ok = false; first = first || agree; }
+    if (first) first.focus();
+    return ok;
+  }
+
+  function orderNo() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return "R" + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate())
+      + "-" + String(Math.floor(Math.random() * 9000) + 1000);
+  }
+
+  el("order-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!validate()) { toast(t("입력값을 확인해 주세요")); return; }
+
+    const items = Cart.read();
+    if (!items.length) { toast(t("장바구니가 비어 있습니다")); return; }
+
+    const customer = {
+      name: el("f-name").value.trim(),
+      tel: el("f-tel").value.trim(),
+      email: el("f-email").value.trim(),
+      zip: el("f-zip").value.trim(),
+      addr: el("f-addr").value.trim(),
+      addr2: el("f-addr2").value.trim(),
+      memo: el("f-memo").value.trim(),
+      payer: el("f-payer").value.trim(),
+    };
+
+    let order = {
+      no: orderNo(),
+      at: new Date().toISOString(),
+      customer,
+      items: items.map(i => ({
+        name: i.name,
+        options: i.opts.map(o => `${o.label} ${o.value}`).join(" / "),
+        qty: i.qty,
+        unit: i.unit,
+        sum: i.unit * i.qty,
+      })),
+      subtotal: Cart.subtotal(),
+      shipping: Cart.shipping(),
+      total: Cart.total(),
+    };
+
+    const btn = el("submit");
+    btn.disabled = true;
+    btn.textContent = t("처리 중…");
+
+    /* Node 백엔드(server/)가 같은 사이트를 서빙 중이면 /api/order가 응답한다.
+       거기서 서버측 가격 재검증(+ 재고 차감)을 거친 주문을 그대로 신뢰하고 사용한다. */
+    let verifiedByServer = false;
+    try {
+      const headers = { "Content-Type": "application/json" };
+      const token = await getAccessToken();
+      if (token) headers.Authorization = "Bearer " + token;
+
+      const res = await fetch("/api/order", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ customer, items }),
+      });
+
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        if (body.error === "OUT_OF_STOCK") {
+          toast(t("{name} {size} 사이즈 재고가 소진되었습니다", { name: body.name, size: body.size }));
+          btn.disabled = false;
+          btn.textContent = t("주문서 제출");
+          return;
+        }
+      }
+
+      if (res.ok) {
+        order = await res.json();
+        verifiedByServer = true;
+      }
+    } catch (err) {}
+
+    if (!verifiedByServer) {
+      if (SITE.order.formEndpoint) {
+        try {
+          await fetch(SITE.order.formEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(order),
+          });
+          order.sent = true;
+        } catch (err) {
+          order.sent = false;
+        }
+      } else {
+        order.sent = false;
+      }
+    }
+
+    try { localStorage.setItem("reiten_last_order", JSON.stringify(order)); } catch (e) {}
+    Cart.clear();
+    location.href = "order-complete.html";
+  });
+
+  paint();
+  renderFooter();
+</script>
+</body>
+</html>

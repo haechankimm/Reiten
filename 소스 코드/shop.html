@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop — REITEN</title>
+<meta name="description" content="REITEN 전체 상품. 리플렉티브 후드티, 후드집업, 크롭 후드티.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main>
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Collection</p>
+      <h1 class="h-xl" style="margin-top:12px" data-reveal="60" data-i18n="전체 상품">전체 상품</h1>
+      <p class="lede" style="margin-top:14px;max-width:52ch" data-reveal="100" data-i18n="전 품목 남녀공용 오버핏입니다. 사이즈 실측은 각 상품 페이지에서 확인하세요.">
+        전 품목 남녀공용 오버핏입니다. 사이즈 실측은 각 상품 페이지에서 확인하세요.
+      </p>
+
+      <div class="chips" style="margin-top:30px" id="cats" data-reveal="140"></div>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div class="grid" id="grid"></div>
+      <div id="none" class="empty" hidden>
+        <p class="lede" data-i18n="해당 카테고리의 상품이 아직 없습니다.">해당 카테고리의 상품이 아직 없습니다.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("shop.html");
+  renderFooter();
+
+  const cats = ["전체", ...new Set(PRODUCTS.map(p => p.category))];
+  let active = qs("cat") || "전체";
+  if (!cats.includes(active)) active = "전체";
+
+  const catsEl = document.getElementById("cats");
+  const gridEl = document.getElementById("grid");
+  const noneEl = document.getElementById("none");
+
+  function paint() {
+    catsEl.innerHTML = cats.map(c =>
+      `<button class="chip" type="button" data-cat="${esc(c)}" aria-pressed="${c === active}">${esc(t(c))}</button>`
+    ).join("");
+
+    const list = active === "전체" ? PRODUCTS : PRODUCTS.filter(p => p.category === active);
+    gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
+    noneEl.hidden = list.length > 0;
+
+    catsEl.querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => {
+        active = b.dataset.cat;
+        const u = new URL(location.href);
+        if (active === "전체") u.searchParams.delete("cat");
+        else u.searchParams.set("cat", active);
+        history.replaceState(null, "", u);
+        paint();
+      })
+    );
+    initReveal();
+    initBeams();
+  }
+  paint();
+</script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주문 조회 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main>
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Order Lookup</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="주문 조회">주문 조회</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-i18n="회원가입 없이도 주문번호와 연락처만으로 주문 상태를 확인할 수 있습니다.">
+        회원가입 없이도 주문번호와 연락처만으로 주문 상태를 확인할 수 있습니다.
+      </p>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <form id="lookup-form" novalidate style="max-width:56ch">
+        <div class="field">
+          <label for="lk-no" data-i18n-html data-i18n='주문번호 <span class="req">*</span>'>주문번호 <span class="req">*</span></label>
+          <input id="lk-no" placeholder="R260801-6041" required>
+          <p class="err" data-i18n="주문번호를 입력해 주세요.">주문번호를 입력해 주세요.</p>
+        </div>
+        <div class="field">
+          <label for="lk-tel" data-i18n-html data-i18n='주문 시 연락처 <span class="req">*</span>'>주문 시 연락처 <span class="req">*</span></label>
+          <input id="lk-tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+          <p class="err" data-i18n="연락처를 입력해 주세요.">연락처를 입력해 주세요.</p>
+        </div>
+        <button class="btn btn--full" type="submit" id="lk-submit" data-i18n="조회하기">조회하기</button>
+      </form>
+
+      <div id="lk-notfound" class="notice" hidden style="margin-top:24px;max-width:56ch">
+        <span data-i18n="일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요.">일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요.</span>
+      </div>
+
+      <div id="lk-result" hidden style="margin-top:44px">
+        <h2 class="h-md" id="lk-title"></h2>
+        <p class="small tnum" id="lk-status" style="margin-top:8px"></p>
+
+        <div id="lk-tracking" class="notice" hidden style="margin-top:18px"></div>
+
+        <table class="spec" style="margin-top:24px">
+          <thead><tr><th data-i18n="상품">상품</th><th data-i18n="옵션">옵션</th><th data-i18n="수량">수량</th><th data-i18n="금액">금액</th></tr></thead>
+          <tbody id="lk-items"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+
+  function trackingLinkHTML(courierKey, trackingNo) {
+    const courier = COURIERS.find((c) => c.key === courierKey);
+    if (!courier || !trackingNo) return "";
+    const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(trackingNo));
+    return `
+      <b>${esc(t("배송 조회"))}</b><br>
+      ${esc(courier.label)} · <span class="tnum">${esc(trackingNo)}</span><br>
+      <a class="btn btn--sm" style="margin-top:10px" href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회하기"))}</a>`;
+  }
+
+  el("lookup-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const no = el("lk-no");
+    const tel = el("lk-tel");
+    let ok = true;
+    [[no, no.value.trim()], [tel, tel.value.trim()]].forEach(([field, val]) => {
+      const invalid = !val;
+      field.setAttribute("aria-invalid", String(invalid));
+      field.closest(".field").querySelector(".err")?.classList.toggle("on", invalid);
+      if (invalid) ok = false;
+    });
+    if (!ok) { toast(t("입력값을 확인해 주세요")); return; }
+
+    const btn = el("lk-submit");
+    btn.disabled = true;
+    el("lk-notfound").hidden = true;
+    el("lk-result").hidden = true;
+
+    try {
+      const res = await fetch("/api/orders/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNo: no.value.trim(), tel: tel.value.trim() }),
+      });
+
+      if (!res.ok) {
+        el("lk-notfound").hidden = false;
+        return;
+      }
+
+      const o = await res.json();
+      el("lk-title").textContent = t("주문번호") + " " + o.no;
+      el("lk-status").textContent = t("주문 상태") + " · " + (o.status || "입금대기") + " · " + new Date(o.at).toLocaleDateString(
+        getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"
+      );
+
+      const trackHtml = trackingLinkHTML(o.courier, o.trackingNo);
+      el("lk-tracking").innerHTML = trackHtml;
+      el("lk-tracking").hidden = !trackHtml;
+
+      el("lk-items").innerHTML = o.items.map((i) => `
+        <tr>
+          <td>${esc(i.name)}</td>
+          <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
+          <td>${i.qty}</td>
+          <td>${money(i.sum)}</td>
+        </tr>`).join("") + `
+        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("상품 합계"))}</td><td>${money(o.subtotal)}</td></tr>
+        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("배송비"))}</td><td>${o.shipping === 0 ? esc(t("무료")) : money(o.shipping)}</td></tr>
+        <tr><td colspan="3" style="text-align:right;font-weight:650">${esc(t("총 결제금액"))}</td><td style="font-weight:650">${money(o.total)}</td></tr>`;
+
+      el("lk-result").hidden = false;
+    } catch (err) {
+      toast(t("조회에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  renderFooter();
+</script>
+</body>
+</html>

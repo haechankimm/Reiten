@@ -1,0 +1,4 @@
+node_modules/
+orders.json
+reviews.json
+.env

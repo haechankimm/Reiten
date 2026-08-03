@@ -1,0 +1,12 @@
+# 별도 프로젝트 (자체 git 저장소를 이미 가지고 있음 — 여기서는 추적하지 않음)
+expend app/
+
+# OS
+.DS_Store
+
+# Node
+node_modules/
+
+# 비밀값 (Supabase/Resend/Cloudinary 키 등)
+.env
+.env.local
