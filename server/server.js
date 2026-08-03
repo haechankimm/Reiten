@@ -1,6 +1,8 @@
 require("dotenv").config();
 const path = require("path");
 const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 const { SITE, PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
@@ -12,8 +14,34 @@ const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
 
 const app = express();
+
+/* 정적 페이지가 인라인 <script>와 jsDelivr(Pretendard 폰트, Supabase JS)에 의존하므로
+   CSP는 켜지 않는다 — 나머지 보안 헤더(X-Frame-Options, X-Content-Type-Options 등)만 적용 */
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// 전체 API 남용 방지 (기본): IP당 15분에 300회
+app.use("/api/", rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
+
+// 주문/리뷰/문의/반품/조회처럼 쓰기·조회 남용 여지가 큰 엔드포인트는 더 엄격하게: IP당 15분에 20회
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." },
+});
+
 app.use(express.json());
-app.use(express.static(SITE_DIR));
+app.use(
+  express.static(SITE_DIR, {
+    setHeaders: (res, filePath) => {
+      // 제품 사진은 파일명이 안 바뀌므로 7일 캐시. HTML/CSS/JS는 재배포 시 즉시 반영되도록 캐시하지 않는다.
+      if (filePath.includes(`${path.sep}img${path.sep}`)) {
+        res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+      }
+    },
+  })
+);
 
 function orderNo() {
   const d = new Date();
@@ -66,7 +94,7 @@ function shippingFor(subtotal) {
 
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
 
-app.post("/api/order", optionalAuth, async (req, res) => {
+app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   const { customer, items: rawItems } = req.body || {};
 
   if (!customer || typeof customer !== "object") {
@@ -186,7 +214,7 @@ function normalizeTel(s) {
 }
 
 /* ---------- 비회원 주문 조회 (주문번호 + 연락처) ---------- */
-app.post("/api/orders/lookup", async (req, res) => {
+app.post("/api/orders/lookup", writeLimiter, async (req, res) => {
   const { orderNo: reqOrderNo, tel } = req.body || {};
   const orderNoStr = String(reqOrderNo || "").trim();
   const telDigits = normalizeTel(tel);
@@ -253,7 +281,7 @@ app.get("/api/my/orders", requireAuth, async (req, res) => {
 });
 
 /* ---------- 반품 · 교환 신청 ---------- */
-app.post("/api/returns", optionalAuth, async (req, res) => {
+app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
   const { orderNo: reqOrderNo, contactName, contactTel, reason, detail } = req.body || {};
 
   const orderNoStr = String(reqOrderNo || "").trim();
@@ -455,7 +483,7 @@ app.get("/api/reviews", async (req, res) => {
   res.json(data.map(toReviewDto));
 });
 
-app.post("/api/reviews", (req, res) => {
+app.post("/api/reviews", writeLimiter, (req, res) => {
   reviewUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       return res.status(400).json({ error: "사진 업로드에 실패했습니다(5MB 이하 이미지만 가능)." });
@@ -518,7 +546,7 @@ app.post("/api/reviews", (req, res) => {
   });
 });
 
-app.post("/api/reviews/:id/helpful", async (req, res) => {
+app.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
   const { data, error } = await supabaseAdmin.rpc("increment_helpful", { p_id: req.params.id });
   if (error) {
     console.error("[reviews] 공감 처리 실패:", error.message);
@@ -556,7 +584,7 @@ app.get("/api/qna", optionalAuth, async (req, res) => {
   );
 });
 
-app.post("/api/qna", optionalAuth, async (req, res) => {
+app.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
   const { productId, name, question, secret } = req.body || {};
 
   const validProduct = productId === "general" || PRODUCTS.some((p) => p.id === productId);

@@ -12,6 +12,8 @@
     "cloudinary": "^2.10.0",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.6.1",
+    "helmet": "^8.3.0",
     "multer": "^2.2.0",
     "resend": "^4.8.0"
   }

@@ -70,7 +70,7 @@
         <div id="main-media">${mediaHTML(p.images[state.img], name)}</div>
         ${p.images.length > 1 ? `<div class="pdp__thumbs">${p.images.map((src, i) => `
           <button class="thumb" type="button" data-i="${i}" aria-selected="${i === state.img}" aria-label="${esc(t("이미지 {n}", { n: i + 1 }))}">
-            ${src ? `<img src="${src}" alt="">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
+            ${src ? `<img src="${src}" alt="" loading="lazy">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
           </button>`).join("")}</div>` : ""}
       </div>
 

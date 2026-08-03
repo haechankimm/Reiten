@@ -142,7 +142,7 @@
       <div class="line-item" data-key="${it.key}">
         <div class="line-item__media">
           ${it.image
-            ? `<img src="${it.image}" alt="">`
+            ? `<img src="${it.image}" alt="" loading="lazy">`
             : it.charm ? charmSVG(it.charm.key, it.charm.finish)
             : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
         </div>
