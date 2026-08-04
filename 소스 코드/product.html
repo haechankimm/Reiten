@@ -33,6 +33,9 @@
   applyI18n();
   renderHeader("shop.html");
 
+  (async () => {
+  await loadProducts();
+
   const p = getProduct(qs("id")) || PRODUCTS[0];
   document.title = t(p.nameKo) + " — REITEN";
 
@@ -179,7 +182,14 @@
               style="background:${COLORS[c].hex}"></button>`).join("");
     document.getElementById("color-name").textContent = t(COLORS[state.color].label);
     colorsEl.querySelectorAll(".color-dot").forEach(b =>
-      b.addEventListener("click", () => { state.color = b.dataset.c; render(); }));
+      b.addEventListener("click", () => {
+        state.color = b.dataset.c;
+        // 사진은 컬러와 같은 순서로 등록돼 있다고 보고, 그 컬러 자리의 사진으로 메인 이미지를 맞춘다
+        // (그 자리에 사진이 없으면 "사진 준비중"으로 자연스럽게 바뀐다)
+        const idx = p.colors.indexOf(state.color);
+        if (idx > -1) state.img = idx;
+        render();
+      }));
 
     // 사이즈
     const sizesEl = document.getElementById("sizes");
@@ -252,6 +262,7 @@
   renderFooter();
   initReveal();
   initBeams();
+  })();
 </script>
 </body>
 </html>

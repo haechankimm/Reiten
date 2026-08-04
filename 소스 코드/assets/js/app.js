@@ -24,6 +24,24 @@ let uidSeed = 0;
 const uid = () => "u" + Date.now().toString(36) + (uidSeed++).toString(36);
 
 /* =========================================================
+   상품 목록 — server/가 떠 있으면 관리자 패널에서 등록·수정한 DB 목록으로
+   PRODUCTS 배열 내용을 통째로 교체한다(참조를 유지해야 다른 파일의
+   `const PRODUCTS`를 그대로 쓰는 코드가 전부 갱신된 값을 본다).
+   서버가 없거나 요청이 실패하면 data.js의 정적 목록이 그대로 남는다.
+   ========================================================= */
+async function loadProducts() {
+  try {
+    const res = await fetch("/api/products");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      PRODUCTS.length = 0;
+      PRODUCTS.push(...data);
+    }
+  } catch (e) {}
+}
+
+/* =========================================================
    테마 (오프화이트 / 나이트)
    ========================================================= */
 const THEME_KEY = "reiten_theme";

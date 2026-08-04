@@ -153,29 +153,33 @@
   renderHeader("index.html");
   renderFooter();
 
-  document.getElementById("freeover").textContent = money(SITE.shipping.freeOver);
+  (async () => {
+    await loadProducts();
 
-  document.getElementById("home-grid").innerHTML =
-    PRODUCTS.map((p, i) => productCard(p, i * 60)).join("");
+    document.getElementById("freeover").textContent = money(SITE.shipping.freeOver);
 
-  document.getElementById("charm-preview").innerHTML = CHARMS
-    .filter(c => c.key !== "none")
-    .slice(0, 8)
-    .map((c, i) => `
-      <div class="charm-btn" data-reveal="${i * 40}" style="pointer-events:none">
-        ${charmSVG(c.key, i % 2 ? "color" : "silver")}
-        <small>${esc(t(c.label))}</small>
-      </div>`)
-    .join("");
+    document.getElementById("home-grid").innerHTML =
+      PRODUCTS.map((p, i) => productCard(p, i * 60)).join("");
 
-  document.getElementById("look-teaser").innerHTML = LOOKBOOK.slice(0, 3).map((l, i) => `
-    <figure class="${l.span}" data-reveal="${i * 70}">
-      <div class="ph" style="aspect-ratio:${l.ratio}"><span class="ph__label">${t("사진 준비중")}</span></div>
-      <figcaption><span>${esc(t(l.label))}</span><span>${esc(t(l.note))}</span></figcaption>
-    </figure>`).join("");
+    document.getElementById("charm-preview").innerHTML = CHARMS
+      .filter(c => c.key !== "none")
+      .slice(0, 8)
+      .map((c, i) => `
+        <div class="charm-btn" data-reveal="${i * 40}" style="pointer-events:none">
+          ${charmSVG(c.key, i % 2 ? "color" : "silver")}
+          <small>${esc(t(c.label))}</small>
+        </div>`)
+      .join("");
 
-  initReveal();
-  initBeams();
+    document.getElementById("look-teaser").innerHTML = LOOKBOOK.slice(0, 3).map((l, i) => `
+      <figure class="${l.span}" data-reveal="${i * 70}">
+        <div class="ph" style="aspect-ratio:${l.ratio}"><span class="ph__label">${t("사진 준비중")}</span></div>
+        <figcaption><span>${esc(t(l.label))}</span><span>${esc(t(l.note))}</span></figcaption>
+      </figure>`).join("");
+
+    initReveal();
+    initBeams();
+  })();
 </script>
 </body>
 </html>

@@ -84,6 +84,9 @@
   applyI18n();
   renderHeader("");
 
+  (async () => {
+  await loadProducts();
+
   const el = (id) => document.getElementById(id);
   const filterProduct = qs("product");
   let serverUp = false;
@@ -276,23 +279,22 @@
     }
   });
 
-  (async () => {
-    try {
-      const res = await fetch("/api/reviews");
-      if (res.ok) {
-        reviews = await res.json();
-        serverUp = true;
-      }
-    } catch (err) {}
-
-    if (!serverUp) {
-      el("review-form").hidden = true;
-      el("no-server-notice").hidden = false;
+  try {
+    const res = await fetch("/api/reviews");
+    if (res.ok) {
+      reviews = await res.json();
+      serverUp = true;
     }
-    paint();
-  })();
+  } catch (err) {}
+
+  if (!serverUp) {
+    el("review-form").hidden = true;
+    el("no-server-notice").hidden = false;
+  }
+  paint();
 
   renderFooter();
+  })();
 </script>
 </body>
 </html>

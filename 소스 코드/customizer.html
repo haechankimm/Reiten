@@ -135,6 +135,9 @@
   applyI18n();
   renderHeader("customizer.html");
 
+  (async () => {
+  await loadProducts();
+
   const BASES = PRODUCTS.filter(p => p.charmReady);
 
   const state = {
@@ -343,6 +346,7 @@
   paint();
   renderFooter();
   initReveal();
+  })();
 </script>
 </body>
 </html>

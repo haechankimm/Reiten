@@ -38,37 +38,41 @@
   renderHeader("shop.html");
   renderFooter();
 
-  const cats = ["전체", ...new Set(PRODUCTS.map(p => p.category))];
-  let active = qs("cat") || "전체";
-  if (!cats.includes(active)) active = "전체";
+  (async () => {
+    await loadProducts();
 
-  const catsEl = document.getElementById("cats");
-  const gridEl = document.getElementById("grid");
-  const noneEl = document.getElementById("none");
+    const cats = ["전체", ...new Set(PRODUCTS.map(p => p.category))];
+    let active = qs("cat") || "전체";
+    if (!cats.includes(active)) active = "전체";
 
-  function paint() {
-    catsEl.innerHTML = cats.map(c =>
-      `<button class="chip" type="button" data-cat="${esc(c)}" aria-pressed="${c === active}">${esc(t(c))}</button>`
-    ).join("");
+    const catsEl = document.getElementById("cats");
+    const gridEl = document.getElementById("grid");
+    const noneEl = document.getElementById("none");
 
-    const list = active === "전체" ? PRODUCTS : PRODUCTS.filter(p => p.category === active);
-    gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
-    noneEl.hidden = list.length > 0;
+    function paint() {
+      catsEl.innerHTML = cats.map(c =>
+        `<button class="chip" type="button" data-cat="${esc(c)}" aria-pressed="${c === active}">${esc(t(c))}</button>`
+      ).join("");
 
-    catsEl.querySelectorAll(".chip").forEach(b =>
-      b.addEventListener("click", () => {
-        active = b.dataset.cat;
-        const u = new URL(location.href);
-        if (active === "전체") u.searchParams.delete("cat");
-        else u.searchParams.set("cat", active);
-        history.replaceState(null, "", u);
-        paint();
-      })
-    );
-    initReveal();
-    initBeams();
-  }
-  paint();
+      const list = active === "전체" ? PRODUCTS : PRODUCTS.filter(p => p.category === active);
+      gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
+      noneEl.hidden = list.length > 0;
+
+      catsEl.querySelectorAll(".chip").forEach(b =>
+        b.addEventListener("click", () => {
+          active = b.dataset.cat;
+          const u = new URL(location.href);
+          if (active === "전체") u.searchParams.delete("cat");
+          else u.searchParams.set("cat", active);
+          history.replaceState(null, "", u);
+          paint();
+        })
+      );
+      initReveal();
+      initBeams();
+    }
+    paint();
+  })();
 </script>
 </body>
 </html>

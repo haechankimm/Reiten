@@ -70,6 +70,9 @@
   applyI18n();
   renderHeader("");
 
+  (async () => {
+  await loadProducts();
+
   const el = (id) => document.getElementById(id);
   const filterProduct = qs("product");
   let serverUp = false;
@@ -192,6 +195,7 @@
   })();
 
   renderFooter();
+  })();
 </script>
 </body>
 </html>

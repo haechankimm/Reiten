@@ -18,4 +18,14 @@ function uploadReviewPhoto(buffer) {
   });
 }
 
-module.exports = { uploadReviewPhoto };
+function uploadProductPhoto(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "reiten-products", resource_type: "image" },
+      (err, result) => (err ? reject(err) : resolve(result.secure_url))
+    );
+    stream.end(buffer);
+  });
+}
+
+module.exports = { uploadReviewPhoto, uploadProductPhoto };

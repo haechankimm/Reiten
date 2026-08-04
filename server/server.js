@@ -4,11 +4,11 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const { SITE, PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
+const { SITE, PRODUCTS: STATIC_PRODUCTS, COLORS, SIZE_TABLES, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
 const { sendOrderNotification, sendCustomerOrderReceived, sendCustomerPaymentConfirmed } = require("./lib/mailer");
-const { uploadReviewPhoto } = require("./lib/cloudinary");
+const { uploadReviewPhoto, uploadProductPhoto } = require("./lib/cloudinary");
 
 const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
@@ -48,6 +48,53 @@ app.use(
   })
 );
 
+/* ---------- 상품 (products 테이블 — 관리자 패널에서 추가·수정·삭제) ----------
+   data.js의 정적 PRODUCTS는 마이그레이션 004를 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다. */
+function toProductDto(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    nameKo: row.name_ko,
+    type: row.type,
+    category: row.category,
+    price: row.price,
+    badge: row.badge || undefined,
+    images: row.images || [],
+    colors: row.colors || [],
+    sizes: row.sizes || [],
+    soldOut: row.sold_out || [],
+    sizeTable: row.size_table || undefined,
+    short: row.short || "",
+    desc: row.description || "",
+    details: row.details || [],
+    charmReady: !!row.charm_ready,
+    active: row.active,
+  };
+}
+
+async function getActiveProducts() {
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  if (error) {
+    console.error("[products] DB 조회 실패, 정적 목록으로 폴백:", error.message);
+    return STATIC_PRODUCTS;
+  }
+  return data.map(toProductDto);
+}
+
+async function getAllProductIds() {
+  const { data, error } = await supabaseAdmin.from("products").select("id");
+  if (error) return STATIC_PRODUCTS.map((p) => p.id);
+  return data.map((r) => r.id);
+}
+
+app.get("/api/products", async (req, res) => {
+  res.json(await getActiveProducts());
+});
+
 function orderNo() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
@@ -63,7 +110,7 @@ function orderNo() {
 
 /* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.
    productId + charm + extras 조합만으로 PRODUCTS/CHARM_PRICE/EXTRA_PRICE 기준 가격을 다시 계산한다. */
-function priceItem(raw) {
+function priceItem(raw, products) {
   const qty = Math.max(1, Math.min(99, Math.floor(Number(raw.qty) || 1)));
   const charmKey = raw.charm && raw.charm.key && raw.charm.key !== "none" ? raw.charm.key : null;
 
@@ -76,7 +123,7 @@ function priceItem(raw) {
     if (!charmKey) return null;
     unit = CHARM_PRICE + extrasTotal;
   } else {
-    const product = PRODUCTS.find((p) => p.id === raw.productId);
+    const product = products.find((p) => p.id === raw.productId);
     if (!product) return null;
     unit = product.price + (charmKey ? CHARM_PRICE : 0) + extrasTotal;
   }
@@ -114,7 +161,8 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     return res.status(400).json({ error: "장바구니 항목이 없습니다." });
   }
 
-  const items = rawItems.map(priceItem);
+  const products = await getActiveProducts();
+  const items = rawItems.map((raw) => priceItem(raw, products));
   if (items.some((it) => it === null)) {
     return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
   }
@@ -141,7 +189,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       const m = /OUT_OF_STOCK:([^:]+):(.+)/.exec(invError.message || "");
       if (m) {
         const [, productId, size] = m;
-        const product = PRODUCTS.find((p) => p.id === productId);
+        const product = products.find((p) => p.id === productId);
         return res.status(409).json({
           error: "OUT_OF_STOCK",
           productId,
@@ -457,6 +505,155 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- 상품 관리 (관리자만) ----------
+   목록(GET)은 active 여부와 무관하게 전부 보여주고, 생성·수정·삭제는 관리자 인증을 거친다.
+   공개 목록(/api/products)은 active=true인 것만 노출한다. */
+app.get("/api/admin/products", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .order("sort_order", { ascending: true });
+
+  if (error) return res.status(500).json({ error: "상품 목록을 불러오지 못했습니다." });
+  res.json(data.map(toProductDto));
+});
+
+function productPatchFromBody(b, { forCreate }) {
+  const patch = {};
+  if (forCreate || b.name !== undefined) {
+    const v = String(b.name || "").trim().slice(0, 120);
+    if (forCreate && !v) return { error: "상품명을 입력해 주세요." };
+    patch.name = v;
+  }
+  if (forCreate || b.nameKo !== undefined) {
+    const v = String(b.nameKo || "").trim().slice(0, 120);
+    if (forCreate && !v) return { error: "한글 상품명을 입력해 주세요." };
+    patch.name_ko = v;
+  }
+  if (forCreate || b.type !== undefined) {
+    const v = String(b.type || "").trim().slice(0, 30);
+    if (forCreate && !v) return { error: "타입을 입력해 주세요." };
+    patch.type = v;
+  }
+  if (forCreate || b.category !== undefined) {
+    const v = String(b.category || "").trim().slice(0, 40);
+    if (forCreate && !v) return { error: "카테고리를 입력해 주세요." };
+    patch.category = v;
+  }
+  if (forCreate || b.price !== undefined) {
+    const price = Math.floor(Number(b.price));
+    if (!Number.isFinite(price) || price <= 0) return { error: "가격이 올바르지 않습니다." };
+    patch.price = price;
+  }
+  if (b.badge !== undefined) patch.badge = String(b.badge || "").trim().slice(0, 40) || null;
+  if (b.images !== undefined) {
+    patch.images = Array.isArray(b.images) ? b.images.slice(0, 6).map((u) => (u ? String(u).slice(0, 500) : null)) : [];
+  }
+  if (b.colors !== undefined) {
+    patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => COLORS[c]) : [];
+  }
+  if (b.sizes !== undefined) {
+    patch.sizes = Array.isArray(b.sizes) ? b.sizes.filter((s) => typeof s === "string").slice(0, 10) : [];
+  }
+  if (b.soldOut !== undefined) {
+    patch.sold_out = Array.isArray(b.soldOut) ? b.soldOut.filter((s) => typeof s === "string").slice(0, 10) : [];
+  }
+  if (b.sizeTable !== undefined) {
+    patch.size_table = b.sizeTable && SIZE_TABLES[b.sizeTable] ? b.sizeTable : null;
+  }
+  if (b.short !== undefined) patch.short = String(b.short || "").trim().slice(0, 200);
+  if (b.desc !== undefined) patch.description = String(b.desc || "").trim().slice(0, 3000);
+  if (b.details !== undefined) {
+    patch.details = Array.isArray(b.details)
+      ? b.details.filter((d) => typeof d === "string").slice(0, 20).map((d) => d.slice(0, 300))
+      : [];
+  }
+  if (b.charmReady !== undefined) patch.charm_ready = !!b.charmReady;
+  if (b.active !== undefined) patch.active = !!b.active;
+  if (b.sortOrder !== undefined) patch.sort_order = Number.isFinite(Number(b.sortOrder)) ? Math.floor(Number(b.sortOrder)) : 0;
+  return { patch };
+}
+
+app.post("/api/admin/products", requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const id = String(b.id || "").trim();
+  if (!/^[a-z0-9-]{2,60}$/.test(id)) {
+    return res.status(400).json({ error: "상품 ID는 영문 소문자·숫자·하이픈만 2~60자로 입력해 주세요." });
+  }
+
+  const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true });
+  if (patchError) return res.status(400).json({ error: patchError });
+
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .insert({ id, ...patch })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") return res.status(409).json({ error: "이미 존재하는 상품 ID입니다." });
+    console.error("[admin/products] 생성 실패:", error.message);
+    return res.status(500).json({ error: "상품 생성에 실패했습니다." });
+  }
+  res.json(toProductDto(data));
+});
+
+app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  const { patch, error: patchError } = productPatchFromBody(req.body || {}, { forCreate: false });
+  if (patchError) return res.status(400).json({ error: patchError });
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
+  patch.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .update(patch)
+    .eq("id", req.params.id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.error("[admin/products] 수정 실패:", error.message);
+    return res.status(500).json({ error: "상품 수정에 실패했습니다." });
+  }
+  if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
+  res.json(toProductDto(data));
+});
+
+app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  const { error } = await supabaseAdmin.from("products").delete().eq("id", req.params.id);
+  if (error) {
+    console.error("[admin/products] 삭제 실패:", error.message);
+    return res.status(500).json({ error: "상품 삭제에 실패했습니다." });
+  }
+  // 삭제된 상품에 딸린 재고 행도 함께 정리한다(없어도 동작에는 지장 없지만 관리자 재고 탭이 지저분해짐).
+  await supabaseAdmin.from("inventory").delete().eq("product_id", req.params.id);
+  res.json({ ok: true });
+});
+
+const productUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
+}).single("photo");
+
+app.post("/api/admin/products/photo", requireAdmin, (req, res) => {
+  productUpload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: "사진 업로드에 실패했습니다(5MB 이하 이미지만 가능)." });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: "사진 파일이 없습니다." });
+    }
+    try {
+      const url = await uploadProductPhoto(req.file.buffer);
+      res.json({ url });
+    } catch (e) {
+      console.error("[admin/products] 사진 업로드 실패:", e.message);
+      res.status(500).json({ error: "사진 업로드에 실패했습니다." });
+    }
+  });
+});
+
 /* ---------- 상품 리뷰 ---------- */
 const reviewUpload = multer({
   storage: multer.memoryStorage(),
@@ -496,7 +693,7 @@ app.post("/api/reviews", writeLimiter, (req, res) => {
 
     const { productId, name, rating, comment, instagram } = req.body || {};
 
-    const validProduct = productId === "general" || PRODUCTS.some((p) => p.id === productId);
+    const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
     if (!validProduct) {
       return res.status(400).json({ error: "존재하지 않는 상품입니다." });
     }
@@ -592,7 +789,7 @@ app.get("/api/qna", optionalAuth, async (req, res) => {
 app.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
   const { productId, name, question, secret } = req.body || {};
 
-  const validProduct = productId === "general" || PRODUCTS.some((p) => p.id === productId);
+  const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
   if (!validProduct) {
     return res.status(400).json({ error: "존재하지 않는 상품입니다." });
   }
