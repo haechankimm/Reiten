@@ -37,4 +37,8 @@ function uploadProductPhoto(buffer) {
   return upload(buffer, "reiten-products", { maxSize: 1800 });
 }
 
-module.exports = { uploadReviewPhoto, uploadProductPhoto };
+function uploadLookbookPhoto(buffer) {
+  return upload(buffer, "reiten-lookbook", { maxSize: 2000 });
+}
+
+module.exports = { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto };

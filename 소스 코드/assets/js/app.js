@@ -41,6 +41,21 @@ async function loadProducts() {
   } catch (e) {}
 }
 
+/* 룩북 슬롯 — server/가 떠 있으면 관리자 패널에서 등록·수정한 DB 목록으로
+   LOOKBOOK 배열 내용을 통째로 교체한다. 서버가 없거나 요청이 실패하면
+   data.js의 정적 목록이 그대로 남는다. */
+async function loadLookbook() {
+  try {
+    const res = await fetch("/api/lookbook");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      LOOKBOOK.length = 0;
+      LOOKBOOK.push(...data);
+    }
+  } catch (e) {}
+}
+
 /* =========================================================
    테마 (오프화이트 / 나이트)
    ========================================================= */

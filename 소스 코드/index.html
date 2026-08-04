@@ -154,7 +154,7 @@
   renderFooter();
 
   (async () => {
-    await loadProducts();
+    await Promise.all([loadProducts(), loadLookbook()]);
 
     document.getElementById("freeover").textContent = money(SITE.shipping.freeOver);
 
@@ -173,7 +173,9 @@
 
     document.getElementById("look-teaser").innerHTML = LOOKBOOK.slice(0, 3).map((l, i) => `
       <figure class="${l.span}" data-reveal="${i * 70}">
-        <div class="ph" style="aspect-ratio:${l.ratio}"><span class="ph__label">${t("사진 준비중")}</span></div>
+        ${l.src
+          ? `<div class="shot" style="aspect-ratio:${l.ratio}"><img src="${l.src}" alt="${esc(t(l.label))}" loading="lazy"></div>`
+          : `<div class="ph" style="aspect-ratio:${l.ratio}"><span class="ph__label">${t("사진 준비중")}</span></div>`}
         <figcaption><span>${esc(t(l.label))}</span><span>${esc(t(l.note))}</span></figcaption>
       </figure>`).join("");
 

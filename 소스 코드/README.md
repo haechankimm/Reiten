@@ -103,9 +103,10 @@ npm start
 │   │   ├── supabase.js           service role 클라이언트
 │   │   ├── auth.js               requireAuth / optionalAuth / requireAdmin 미들웨어
 │   │   ├── mailer.js             Resend로 주문 알림 메일 발송(관리자용 + 고객용 접수/입금확인 메일)
-│   │   ├── cloudinary.js         리뷰 · 상품 사진 업로드(업로드 즉시 리사이즈 + 포맷/화질 자동 최적화)
+│   │   ├── cloudinary.js         리뷰 · 상품 · 룩북 사진 업로드(업로드 즉시 리사이즈 + 포맷/화질 자동 최적화)
 │   │   ├── pricing.js            가격 재계산(priceItem) · 배송비(shippingFor) · 주문번호(orderNo) — 순수 함수, 단위 테스트 대상
 │   │   ├── products.js           상품 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
+│   │   ├── lookbook.js           룩북 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
 │   │   └── pagination.js         관리자 목록 API 공용 페이지네이션 헬퍼
 │   ├── test/                     서버 핵심 로직 단위 테스트 (`npm test`, Node 내장 테스트러너 사용 — 별도 패키지 불필요)
 │   └── migrations/
@@ -113,7 +114,8 @@ npm start
 │       ├── 002_reviews_helpful_and_qna.sql   리뷰 공감 수 + Q&A 테이블 (001 다음에 실행)
 │       ├── 003_tracking.sql      주문에 택배사·운송장번호 컬럼 추가 (001 다음에 실행)
 │       ├── 004_products.sql      상품 테이블 + data.js 상품 8종 시드 (001 다음에 실행, 관리자 상품 관리에 필요)
-│       └── 005_reviews_approval.sql   리뷰에 approved 컬럼 추가 (001 다음에 실행, 리뷰 승인제에 필요)
+│       ├── 005_reviews_approval.sql   리뷰에 approved 컬럼 추가 (001 다음에 실행, 리뷰 승인제에 필요)
+│       └── 006_lookbook.sql      룩북 테이블 + data.js 룩북 8칸 시드 (001 다음에 실행, 관리자 룩북 관리에 필요)
 │
 └── 레퍼런스/                     원본 참고 이미지 (건드리지 않음, 후디/후드집업/크롭 후디/로고 폴더)
 ```
@@ -203,7 +205,7 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `FINISHES` | 참 마감 3종 (리플렉티브 실버 / 매트 블랙 / 컬러) |
 | `CHARMS` | 참 9종 (없음 + 8개). 각각 SVG path 데이터. `image`를 채우면 `charms.html`에 실물 사진으로 표시 |
 | `EXTRA_PRICE` / `EXTRAS` | 추가 아이템(인형·DIY 팔찌 등) 가격(9,000원)과 목록 — 벡터가 아닌 실물 사진(`image`)으로만 보여주는 add-on |
-| `LOOKBOOK` | 룩북 슬롯 8칸 (span / ratio / label / note / src) |
+| `LOOKBOOK` | 룩북 슬롯 8칸 (span / ratio / label / note / src) — **정적 배포용 폴백**. `server/`가 떠 있으면 `PRODUCTS`와 마찬가지로 `/api/lookbook`이 관리자가 등록·수정한 DB 목록으로 통째로 교체함 |
 | `REVIEWS` | 정적 배포용 리뷰 폴백 목록 (서버가 없을 때만 사용, 기본은 빈 배열 — 가짜 후기 금지) |
 
 파일 끝에 `module.exports`가 있어서 `server/server.js`가 **같은 파일을 그대로** `require()`합니다.
@@ -224,6 +226,7 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `getProduct(id)` / `getCharm(key)` / `getFinish(key)` | 데이터 조회 |
 | `uid()` | 장바구니 아이템 고유키 생성 |
 | `loadProducts()` | `/api/products`가 있으면 그 응답으로 `PRODUCTS` 배열 내용을 통째로 교체(`await`로 렌더 전에 호출). 실패하거나 서버가 없으면 `data.js`의 정적 목록이 그대로 남음 — 상품을 그리는 페이지(`index`/`shop`/`product`/`customizer`/`reviews`/`qna`)는 부팅 스크립트 맨 앞에서 이걸 기다린 뒤 렌더함 |
+| `loadLookbook()` | 같은 방식으로 `/api/lookbook` 응답으로 `LOOKBOOK` 배열을 교체. `index`(룩북 티저)와 `lookbook.html`이 렌더 전에 기다림 |
 
 **테마 + 시동 진동** — `applyTheme("light"|"night")`, `initTheme()`. `localStorage.reiten_theme`에 유지.
 헤더의 `.js-theme` 버튼을 누르면 `applyTheme()` 직후 `kickEngine()`이 실행되어, `<html>` 전체가
@@ -314,6 +317,7 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | 엔드포인트 | 인증 | 설명 |
 |---|---|---|
 | `GET /api/products` | 없음 | 공개 상품 목록(`active=true`만). `products` 테이블 조회가 실패하면(예: 004 마이그레이션 미실행) `data.js`의 정적 `PRODUCTS`로 자동 폴백 |
+| `GET /api/lookbook` | 없음 | 공개 룩북 목록(`active=true`만). `lookbook` 테이블 조회가 실패하면(예: 006 마이그레이션 미실행) `data.js`의 정적 `LOOKBOOK`으로 자동 폴백 |
 | `POST /api/order` | 선택(로그인 시 주문에 연결) | `{ customer, items }`을 받아 `productId`/`charm`/`extras`만으로 서버에서 가격을 재계산(상품 가격은 `products` 테이블 기준), `decrement_inventory` RPC로 재고를 원자적으로 차감(부족하면 `409 OUT_OF_STOCK`), `orders` 테이블에 저장, Resend로 **관리자 알림 메일 + 고객 주문접수 확인 메일**을 각각 발송(둘 다 실패해도 주문은 성공 처리) |
 | `GET /api/config` | 없음 | 브라우저가 Supabase 클라이언트를 초기화할 `supabaseUrl`/`supabaseAnonKey` 반환 |
 | `POST /api/orders/lookup` | 없음 | 비회원 주문 조회. `{ orderNo, tel }`이 저장된 주문과 일치할 때만 상태·배송정보·내역을 반환(연락처는 숫자만 비교). 불일치 시 어느 쪽이 틀렸는지 알려주지 않고 `404` |
@@ -328,9 +332,11 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `GET/PATCH /api/admin/qna` | **관리자만**(role=admin) | 전체 문의 조회(비밀글 포함, **목록은 페이지네이션**), 답변 등록 시 상태가 자동으로 `답변완료`로 바뀜 |
 | `GET/POST /api/admin/products`, `PATCH/DELETE /api/admin/products/:id` | **관리자만**(role=admin) | 상품 등록·수정·삭제(**목록은 페이지네이션**). `GET`은 비공개(`active=false`) 상품도 포함해 전부 반환. `DELETE`는 영구 삭제이며 해당 상품의 `inventory` 행도 함께 정리(주문에는 항목이 스냅샷으로 저장돼 있어 과거 주문 내역에는 영향 없음) |
 | `POST /api/admin/products/photo` | **관리자만**(role=admin) | 상품 사진 한 장을 Cloudinary에 업로드(업로드 시 최대 1800px로 자동 리사이즈 + 포맷/화질 최적화)하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 상품의 `images` 배열에 채워 넣은 뒤 `POST`/`PATCH /api/admin/products`로 저장 |
+| `GET/POST /api/admin/lookbook`, `PATCH/DELETE /api/admin/lookbook/:id` | **관리자만**(role=admin) | 룩북 칸 등록·수정·삭제(**목록은 페이지네이션**). `GET`은 비공개(`active=false`) 칸도 포함해 전부 반환 |
+| `POST /api/admin/lookbook/photo` | **관리자만**(role=admin) | 룩북 사진 한 장을 Cloudinary에 업로드(최대 2000px로 자동 리사이즈 + 포맷/화질 최적화)하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 해당 칸의 `src`에 채워 넣은 뒤 `POST`/`PATCH /api/admin/lookbook`으로 저장 |
 
-> **관리자 목록 페이지네이션**: `/api/admin/orders`, `/api/admin/returns`, `/api/admin/qna`, `/api/admin/products`, `/api/admin/reviews`는
-> `?page=`(1부터)와 `?pageSize=`(기본 20, 상품은 50, 최대 100) 쿼리를 받고 `{ items, page, pageSize, total }` 형태로 응답합니다.
+> **관리자 목록 페이지네이션**: `/api/admin/orders`, `/api/admin/returns`, `/api/admin/qna`, `/api/admin/products`, `/api/admin/reviews`, `/api/admin/lookbook`은
+> `?page=`(1부터)와 `?pageSize=`(기본 20, 상품·룩북은 50, 최대 100) 쿼리를 받고 `{ items, page, pageSize, total }` 형태로 응답합니다.
 > 관리자 패널은 처음엔 1페이지만 불러오고, "더 보기" 버튼을 누르면 다음 페이지를 이어서 불러와 화면에 계속 붙입니다.
 
 가격 계산 로직(`server/lib/pricing.js`의 `priceItem()`)과 배송비 계산(`shippingFor()`)은 프런트의
@@ -596,7 +602,7 @@ hoodie: {
 
 - [x] 회원가입 · 로그인 (Supabase Auth, `account.html`)
 - [x] 로그인 시 본인 주문내역 조회
-- [x] **관리자(role=admin) 로그인 시에만 열리는 숨김 패널** — 전체 주문 조회/상태 변경, 반품·교환 신청 조회/상태 변경, 재고 수량 조회/수정, Q&A 답변, 상품 관리, 리뷰 승인. UI를 숨기는 것과 별개로 서버가 매 요청마다 권한을 재검증
+- [x] **관리자(role=admin) 로그인 시에만 열리는 숨김 패널** — 전체 주문 조회/상태 변경, 반품·교환 신청 조회/상태 변경, 재고 수량 조회/수정, Q&A 답변, 상품 관리, 리뷰 승인, 룩북 관리. UI를 숨기는 것과 별개로 서버가 매 요청마다 권한을 재검증
 - [x] **관리자 목록 페이지네이션** — 주문/반품/Q&A/상품/리뷰 목록은 서버가 페이지 단위로 나눠 보내고, 관리자 패널에서 "더 보기"로 다음 페이지를 이어서 불러옴(목록이 아무리 쌓여도 관리자 패널이 느려지지 않음)
 - [x] **관리자 패널 — 상품 관리** — 상품 등록·수정·삭제, 사진 업로드(최대 4장, Cloudinary)를 관리자 패널에서 바로 처리. `products` 테이블에 저장되며 저장 즉시 `shop.html`/`product.html`/스튜디오 등 모든 페이지에 반영됨(`data.js`의 `PRODUCTS`는 정적 배포 시의 폴백으로만 남음) — 자세한 내용은 [12번](#12-nodejs-백엔드-서버-선택) 참고
 - [x] 반품 · 교환 신청(`return-request.html`) — 비회원도 신청 가능, 로그인 시 이름 자동 채움
@@ -605,6 +611,7 @@ hoodie: {
 ### 콘텐츠
 
 - [x] 룩북 레이아웃 8칸 — 비율별 슬롯, `src` 넣으면 자동으로 사진으로 전환
+- [x] **관리자 패널 — 룩북 관리** — 칸 추가·수정·삭제, 사진 업로드(Cloudinary)를 관리자 패널에서 바로 처리. `lookbook` 테이블에 저장되며 저장 즉시 `lookbook.html`과 홈 화면 티저에 반영됨(`data.js`의 `LOOKBOOK`은 정적 배포 시의 폴백으로만 남음)
 - [x] About — 브랜드 스토리, 재귀반사 원리 설명, 소재/세탁/프린트 보호
 - [x] 정책 아코디언 — 배송, 교환·반품, 사이즈 선택(+보호대 착용 가이드), 판매자 정보
 - [x] **상품 리뷰(`reviews.html`)** — `server/`가 있으면 실제 등록·조회, 없으면 정적 폴백(빈 목록, 등록 폼 숨김)
@@ -642,7 +649,7 @@ hoodie: {
 | 항목 | 현재 상태 |
 |---|---|
 | 신규 후디 3종(레이튼 워드마크 · 스타 · 플레임 핸드) 사진 | 없음 — 회색 플레이스홀더(`badge: "Coming"`) |
-| 룩북 사진 8칸 | 없음 — 비율만 잡힌 회색 칸 |
+| 룩북 사진 8칸 | 아직 실물 사진 없음(비율만 잡힌 회색 칸) — 촬영 후 관리자 패널의 "룩북" 탭에서 바로 업로드하면 됨(코드 수정 불필요) |
 | 참 8종 + 추가 아이템 2종 실물 사진 | 없음 — `charms.html`에 자리는 만들어뒀고 SVG 미리보기로 대체 중 |
 | **보호대 착용 시 가슴단면 여유분 실측값** | 없음 — `PROTECTOR_GUIDE`에 빈칸으로 자리만 만들어둠, 실측 후 채우기 |
 | **우편번호 검색** | 수동 입력 — 다음(카카오) 우편번호 API 연결 권장 |
@@ -855,6 +862,10 @@ node convert.js
    (주문에 택배사·운송장번호 컬럼을 추가합니다 — 실행하지 않으면 관리자 패널의 배송정보 저장이 에러를 반환합니다)
    → 이어서 [`server/migrations/004_products.sql`](server/migrations/004_products.sql)도 같은 방식으로 실행
    (상품 테이블을 만들고 `data.js`의 상품 8종을 그대로 시드합니다 — 실행하지 않으면 관리자 패널의 "상품" 탭이 에러를 반환하고, 상품 목록은 `data.js`의 정적 폴백으로만 동작합니다)
+   → 이어서 [`server/migrations/005_reviews_approval.sql`](server/migrations/005_reviews_approval.sql)도 같은 방식으로 실행
+   (리뷰에 승인 여부 컬럼을 추가합니다 — 실행하지 않으면 새로 등록된 리뷰도 승인 없이 바로 공개됩니다)
+   → 이어서 [`server/migrations/006_lookbook.sql`](server/migrations/006_lookbook.sql)도 같은 방식으로 실행
+   (룩북 테이블을 만들고 `data.js`의 룩북 8칸을 그대로 시드합니다 — 실행하지 않으면 관리자 패널의 "룩북" 탭이 에러를 반환하고, 룩북 목록은 `data.js`의 정적 폴백으로만 동작합니다)
    → **Project Settings → API**에서 `Project URL`, `anon public` 키, `service_role` 키를 확인
 2. **Resend** — [resend.com](https://resend.com) 가입 → API Keys에서 키 발급. 도메인 인증 전에는
    발신 주소를 `onboarding@resend.dev`로 두면 바로 테스트 발송이 됩니다

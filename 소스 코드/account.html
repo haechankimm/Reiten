@@ -93,6 +93,7 @@
             <button class="chip" type="button" data-tab="qna" aria-pressed="false" data-i18n="Q&A">Q&amp;A</button>
             <button class="chip" type="button" data-tab="products" aria-pressed="false" data-i18n="상품">상품</button>
             <button class="chip" type="button" data-tab="reviews" aria-pressed="false" data-i18n="리뷰">리뷰</button>
+            <button class="chip" type="button" data-tab="lookbook" aria-pressed="false" data-i18n="룩북">룩북</button>
           </div>
 
           <div id="admin-orders" style="display:grid;gap:12px;max-width:80ch;margin-top:22px"></div>
@@ -186,6 +187,48 @@
 
             <div id="products-list" style="display:grid;gap:12px"></div>
           </div>
+
+          <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
+            <div class="panel">
+              <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
+              <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+                <div class="field">
+                  <label for="lf-label" data-i18n="라벨">라벨</label>
+                  <input id="lf-label" required>
+                </div>
+                <div class="field">
+                  <label for="lf-note" data-i18n="설명 (선택)">설명 (선택)</label>
+                  <input id="lf-note">
+                </div>
+                <div class="field">
+                  <label for="lf-span" data-i18n="가로 크기">가로 크기</label>
+                  <select id="lf-span">
+                    <option value="w4">w4 (1/3)</option>
+                    <option value="w6">w6 (1/2)</option>
+                    <option value="w8">w8 (2/3)</option>
+                    <option value="w12">w12 (전체)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="lf-ratio" data-i18n="가로세로 비율 (예: 16/10)">가로세로 비율 (예: 16/10)</label>
+                  <input id="lf-ratio" placeholder="16/10" required>
+                </div>
+                <div class="field">
+                  <label class="checkbox"><input type="checkbox" id="lf-active" checked><span data-i18n="공개 (체크 해제 시 숨김)">공개 (체크 해제 시 숨김)</span></label>
+                </div>
+                <div class="field">
+                  <label data-i18n="사진">사진</label>
+                  <div id="lf-photo" style="max-width:220px"></div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
+                  <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
+                </div>
+              </form>
+            </div>
+
+            <div id="lookbook-list" style="display:grid;gap:12px"></div>
+          </div>
         </section>
       </div>
     </div>
@@ -256,7 +299,7 @@
       })
     );
   }
-  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews" });
+  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
 
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
@@ -763,6 +806,158 @@
     renderAdminProducts();
   }
 
+  /* ---------- 룩북 관리 ---------- */
+  let lfEditingId = null;
+  let lfSrc = null;
+
+  function renderLfPhoto() {
+    el("lf-photo").innerHTML = `
+      ${lfSrc
+        ? `<img src="${esc(lfSrc)}" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`
+        : `<div style="width:100%;aspect-ratio:4/5;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center" class="small">${esc(t("사진 없음"))}</div>`}
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <label class="upload-btn" style="cursor:pointer;justify-content:center;width:100%">
+          ${PF_UPLOAD_ICON}
+          <span>${esc(lfSrc ? t("사진 변경") : t("사진 선택"))}</span>
+          <input type="file" accept="image/*" class="upload-input" id="lf-photo-input">
+        </label>
+        ${lfSrc ? `<button type="button" class="btn btn--sm btn--ghost" id="lf-photo-remove">${esc(t("제거"))}</button>` : ""}
+      </div>
+    `;
+    el("lf-photo-input").addEventListener("change", onLfPhotoChange);
+    el("lf-photo-remove")?.addEventListener("click", () => { lfSrc = null; renderLfPhoto(); });
+  }
+
+  async function onLfPhotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const token = await getAccessToken();
+    const fd = new FormData();
+    fd.append("photo", file);
+    e.target.disabled = true;
+    try {
+      const res = await fetch("/api/admin/lookbook/photo", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("failed");
+      const { url } = await res.json();
+      lfSrc = url;
+      renderLfPhoto();
+    } catch (err) {
+      toast(t("사진 업로드에 실패했습니다"));
+    }
+  }
+
+  function resetLookbookForm() {
+    lfEditingId = null;
+    lfSrc = null;
+    el("lookbook-form-title").textContent = t("새 룩북 칸 추가");
+    el("lf-label").value = "";
+    el("lf-note").value = "";
+    el("lf-span").value = "w6";
+    el("lf-ratio").value = "";
+    el("lf-active").checked = true;
+    el("lf-cancel").hidden = true;
+    renderLfPhoto();
+  }
+
+  function fillLookbookForm(item) {
+    lfEditingId = item.id;
+    lfSrc = item.src || null;
+    el("lookbook-form-title").textContent = t("룩북 칸 수정");
+    el("lf-label").value = item.label || "";
+    el("lf-note").value = item.note || "";
+    el("lf-span").value = item.span || "w6";
+    el("lf-ratio").value = item.ratio || "";
+    el("lf-active").checked = item.active !== false;
+    el("lf-cancel").hidden = false;
+    renderLfPhoto();
+    el("lookbook-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  el("lookbook-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      label: el("lf-label").value.trim(),
+      note: el("lf-note").value.trim(),
+      span: el("lf-span").value,
+      ratio: el("lf-ratio").value.trim(),
+      active: el("lf-active").checked,
+      src: lfSrc,
+    };
+
+    const btn = el("lf-submit");
+    btn.disabled = true;
+    try {
+      const result = lfEditingId
+        ? await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
+        : await adminFetch("/api/admin/lookbook", { method: "POST", body: JSON.stringify(body) });
+
+      if (!result) { toast(t("저장에 실패했습니다")); return; }
+      toast(t("저장했습니다"));
+      resetLookbookForm();
+      paintAdminLookbook();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  el("lf-cancel").addEventListener("click", () => resetLookbookForm());
+  resetLookbookForm();
+
+  const lookbookState = { page: 0, pageSize: 50, total: 0, items: [] };
+
+  function lookbookRowHTML(item) {
+    return `
+      <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
+        ${item.src
+          ? `<img src="${esc(item.src)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
+          : `<div style="width:56px;height:56px;border-radius:8px;border:1px dashed var(--line);flex-shrink:0"></div>`}
+        <div style="flex:1;min-width:0">
+          <b>${esc(item.label)}</b> ${item.active ? "" : `<span class="small" style="color:var(--muted)">(${esc(t("비공개"))})</span>`}
+          <div class="small">${esc(item.span)} · ${esc(item.ratio)}</div>
+        </div>
+        <button type="button" class="btn btn--sm admin-lookbook-edit" data-i18n="수정">수정</button>
+        <button type="button" class="btn btn--sm btn--ghost admin-lookbook-delete" data-i18n="삭제">삭제</button>
+      </div>`;
+  }
+
+  function renderAdminLookbook() {
+    const hasMore = lookbookState.items.length < lookbookState.total;
+    el("lookbook-list").innerHTML = lookbookState.items.map(lookbookRowHTML).join("") + loadMoreHTML(hasMore, "lookbook-list-more");
+
+    el("lookbook-list").querySelectorAll(".admin-lookbook-edit").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = lookbookState.items.find((x) => x.id === id);
+        if (item) fillLookbookForm(item);
+      })
+    );
+    el("lookbook-list").querySelectorAll(".admin-lookbook-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+        await adminFetch(`/api/admin/lookbook/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (lfEditingId === id) resetLookbookForm();
+        toast(t("삭제했습니다"));
+        paintAdminLookbook();
+      })
+    );
+
+    el("lookbook-list-more")?.addEventListener("click", () => paintAdminLookbook(true));
+  }
+
+  async function paintAdminLookbook(loadMore = false) {
+    lookbookState.page = loadMore ? lookbookState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/lookbook?page=${lookbookState.page}&pageSize=${lookbookState.pageSize}`);
+    if (!result) return;
+    lookbookState.total = result.total;
+    lookbookState.items = loadMore ? lookbookState.items.concat(result.items) : result.items;
+    renderAdminLookbook();
+  }
+
   async function tryShowAdminPanel() {
     const orders = await adminFetch("/api/admin/orders");
     if (!orders) return; // 관리자가 아니거나 서버가 이를 거부함 — 패널을 열지 않는다
@@ -774,6 +969,7 @@
     paintAdminQna();
     paintAdminProducts();
     paintAdminReviews();
+    paintAdminLookbook();
   }
 
   /* ---------- 부팅 ---------- */
