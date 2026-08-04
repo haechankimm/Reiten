@@ -10,7 +10,7 @@
 </head>
 <body>
 
-<main>
+<main id="main">
   <section class="sec sec--tight">
     <div class="wrap">
       <p class="eyebrow">Account</p>
@@ -92,12 +92,14 @@
             <button class="chip" type="button" data-tab="inventory" aria-pressed="false" data-i18n="재고">재고</button>
             <button class="chip" type="button" data-tab="qna" aria-pressed="false" data-i18n="Q&A">Q&amp;A</button>
             <button class="chip" type="button" data-tab="products" aria-pressed="false" data-i18n="상품">상품</button>
+            <button class="chip" type="button" data-tab="reviews" aria-pressed="false" data-i18n="리뷰">리뷰</button>
           </div>
 
           <div id="admin-orders" style="display:grid;gap:12px;max-width:80ch;margin-top:22px"></div>
           <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
           <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch;margin-top:22px" hidden></div>
           <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+          <div id="admin-reviews" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
 
           <div id="admin-products" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
             <div class="panel">
@@ -254,7 +256,7 @@
       })
     );
   }
-  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products" });
+  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews" });
 
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
@@ -267,12 +269,20 @@
     return res.json();
   }
 
-  async function paintAdminOrders() {
-    const orders = await adminFetch("/api/admin/orders");
-    if (!orders) return;
-    el("admin-orders").innerHTML = orders
-      .map(
-        (o) => `
+  /* 관리자 목록(주문/반품/Q&A/상품)은 서버가 페이지 단위로 나눠 보내준다.
+     "더 보기"를 누르면 다음 페이지를 이어 붙여서 다시 그린다(항상 전체 배열을 다시 그리므로
+     이벤트 리스너가 중복으로 쌓이지 않는다). */
+  function loadMoreHTML(hasMore, id) {
+    if (!hasMore) return "";
+    return `<div style="text-align:center;margin-top:8px">
+      <button type="button" id="${id}" class="btn btn--sm btn--ghost">${esc(t("더 보기"))}</button>
+    </div>`;
+  }
+
+  const ordersState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function orderCardHTML(o) {
+    return `
       <div class="panel" data-no="${esc(o.no)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
           <b class="tnum">${esc(o.no)}</b>
@@ -292,9 +302,12 @@
           <input class="admin-order-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}" style="flex:1;min-width:130px">
           <button type="button" class="btn btn--sm admin-order-tracking-save" data-i18n="저장">저장</button>
         </div>
-      </div>`
-      )
-      .join("");
+      </div>`;
+  }
+
+  function renderAdminOrders() {
+    const hasMore = ordersState.items.length < ordersState.total;
+    el("admin-orders").innerHTML = ordersState.items.map(orderCardHTML).join("") + loadMoreHTML(hasMore, "admin-orders-more");
 
     el("admin-orders").querySelectorAll(".admin-order-status").forEach((sel) =>
       sel.addEventListener("change", async () => {
@@ -320,14 +333,23 @@
         toast(t("배송정보를 저장했습니다"));
       })
     );
+
+    el("admin-orders-more")?.addEventListener("click", () => paintAdminOrders(true));
   }
 
-  async function paintAdminReturns() {
-    const returns = await adminFetch("/api/admin/returns");
-    if (!returns) return;
-    el("admin-returns").innerHTML = returns
-      .map(
-        (r) => `
+  async function paintAdminOrders(loadMore = false) {
+    ordersState.page = loadMore ? ordersState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/orders?page=${ordersState.page}&pageSize=${ordersState.pageSize}`);
+    if (!result) return;
+    ordersState.total = result.total;
+    ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
+    renderAdminOrders();
+  }
+
+  const returnsState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function returnCardHTML(r) {
+    return `
       <div class="panel" data-id="${esc(r.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
           <b class="tnum">${esc(r.orderNo)}</b>
@@ -338,9 +360,12 @@
         <div style="margin-top:10px">
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
         </div>
-      </div>`
-      )
-      .join("");
+      </div>`;
+  }
+
+  function renderAdminReturns() {
+    const hasMore = returnsState.items.length < returnsState.total;
+    el("admin-returns").innerHTML = returnsState.items.map(returnCardHTML).join("") + loadMoreHTML(hasMore, "admin-returns-more");
 
     el("admin-returns").querySelectorAll(".admin-return-status").forEach((sel) =>
       sel.addEventListener("change", async () => {
@@ -352,6 +377,17 @@
         toast(t("상태를 저장했습니다"));
       })
     );
+
+    el("admin-returns-more")?.addEventListener("click", () => paintAdminReturns(true));
+  }
+
+  async function paintAdminReturns(loadMore = false) {
+    returnsState.page = loadMore ? returnsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/returns?page=${returnsState.page}&pageSize=${returnsState.pageSize}`);
+    if (!result) return;
+    returnsState.total = result.total;
+    returnsState.items = loadMore ? returnsState.items.concat(result.items) : result.items;
+    renderAdminReturns();
   }
 
   async function paintAdminInventory() {
@@ -379,12 +415,10 @@
     );
   }
 
-  async function paintAdminQna() {
-    const items = await adminFetch("/api/admin/qna");
-    if (!items) return;
-    el("admin-qna").innerHTML = items
-      .map(
-        (q) => `
+  const qnaState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function qnaCardHTML(q) {
+    return `
       <div class="panel" data-id="${esc(q.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
           <b>${esc(q.name)}</b>
@@ -401,9 +435,12 @@
           </div>
           <button type="button" class="btn btn--sm admin-qna-submit" data-i18n="답변 등록">답변 등록</button>`
         }
-      </div>`
-      )
-      .join("");
+      </div>`;
+  }
+
+  function renderAdminQna() {
+    const hasMore = qnaState.items.length < qnaState.total;
+    el("admin-qna").innerHTML = qnaState.items.map(qnaCardHTML).join("") + loadMoreHTML(hasMore, "admin-qna-more");
 
     el("admin-qna").querySelectorAll(".admin-qna-submit").forEach((btn) =>
       btn.addEventListener("click", async () => {
@@ -416,9 +453,94 @@
           body: JSON.stringify({ answer }),
         });
         toast(t("답변을 등록했습니다"));
-        paintAdminQna();
+        const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+        if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], answer, status: "답변완료" };
+        renderAdminQna();
       })
     );
+
+    el("admin-qna-more")?.addEventListener("click", () => paintAdminQna(true));
+  }
+
+  async function paintAdminQna(loadMore = false) {
+    qnaState.page = loadMore ? qnaState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/qna?page=${qnaState.page}&pageSize=${qnaState.pageSize}`);
+    if (!result) return;
+    qnaState.total = result.total;
+    qnaState.items = loadMore ? qnaState.items.concat(result.items) : result.items;
+    renderAdminQna();
+  }
+
+  /* ---------- 리뷰 승인 ---------- */
+  const reviewsState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+
+  function reviewCardHTML(r) {
+    return `
+      <div class="panel" data-id="${esc(r.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(r.name)}</b>
+          <span class="small tnum">${fmtDate(r.at)}</span>
+        </div>
+        <div style="margin-top:6px;letter-spacing:.05em">${stars(r.rating)}</div>
+        <div class="small" style="margin-top:6px">
+          ${esc(r.productId)} ·
+          ${r.approved ? `<span style="color:var(--ok)">${esc(t("게시중"))}</span>` : `<span style="color:var(--danger)">${esc(t("승인 대기"))}</span>`}
+        </div>
+        <p style="margin-top:10px">${esc(r.comment)}</p>
+        ${r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="" loading="lazy" style="margin-top:10px;max-width:180px;border-radius:8px;display:block">` : ""}
+        ${r.instagramHandle ? `<p class="small" style="margin-top:8px">Instagram @${esc(r.instagramHandle)}</p>` : ""}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="btn btn--sm admin-review-toggle">${esc(r.approved ? t("숨기기") : t("승인"))}</button>
+          <button type="button" class="btn btn--sm btn--ghost admin-review-delete" data-i18n="삭제">삭제</button>
+        </div>
+      </div>`;
+  }
+
+  function renderAdminReviews() {
+    const hasMore = reviewsState.items.length < reviewsState.total;
+    el("admin-reviews").innerHTML = reviewsState.items.map(reviewCardHTML).join("") + loadMoreHTML(hasMore, "admin-reviews-more");
+
+    el("admin-reviews").querySelectorAll(".admin-review-toggle").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = reviewsState.items.find((x) => x.id === id);
+        if (!item) return;
+        const nextApproved = !item.approved;
+        btn.disabled = true;
+        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ approved: nextApproved }),
+        });
+        item.approved = nextApproved;
+        toast(nextApproved ? t("리뷰를 승인했습니다") : t("리뷰를 숨겼습니다"));
+        renderAdminReviews();
+      })
+    );
+
+    el("admin-reviews").querySelectorAll(".admin-review-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
+        reviewsState.items = reviewsState.items.filter((x) => x.id !== id);
+        reviewsState.total = Math.max(0, reviewsState.total - 1);
+        toast(t("리뷰를 삭제했습니다"));
+        renderAdminReviews();
+      })
+    );
+
+    el("admin-reviews-more")?.addEventListener("click", () => paintAdminReviews(true));
+  }
+
+  async function paintAdminReviews(loadMore = false) {
+    reviewsState.page = loadMore ? reviewsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/reviews?page=${reviewsState.page}&pageSize=${reviewsState.pageSize}`);
+    if (!result) return;
+    reviewsState.total = result.total;
+    reviewsState.items = loadMore ? reviewsState.items.concat(result.items) : result.items;
+    renderAdminReviews();
   }
 
   /* ---------- 상품 관리 ---------- */
@@ -589,13 +711,11 @@
   el("pf-cancel").addEventListener("click", () => resetProductForm());
   resetProductForm();
 
-  async function paintAdminProducts() {
-    const products = await adminFetch("/api/admin/products");
-    if (!products) return;
-    el("products-list").innerHTML = products
-      .map((p) => {
-        const img = p.images.find(Boolean);
-        return `
+  const productsState = { page: 0, pageSize: 50, total: 0, items: [] };
+
+  function productRowHTML(p) {
+    const img = p.images.find(Boolean);
+    return `
       <div class="panel" data-id="${esc(p.id)}" style="display:flex;gap:12px;align-items:center">
         ${img
           ? `<img src="${esc(img)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
@@ -607,13 +727,16 @@
         <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
         <button type="button" class="btn btn--sm btn--ghost admin-product-delete" data-i18n="삭제">삭제</button>
       </div>`;
-      })
-      .join("");
+  }
+
+  function renderAdminProducts() {
+    const hasMore = productsState.items.length < productsState.total;
+    el("products-list").innerHTML = productsState.items.map(productRowHTML).join("") + loadMoreHTML(hasMore, "products-list-more");
 
     el("products-list").querySelectorAll(".admin-product-edit").forEach((btn) =>
       btn.addEventListener("click", () => {
         const id = btn.closest("[data-id]").dataset.id;
-        const p = products.find((x) => x.id === id);
+        const p = productsState.items.find((x) => x.id === id);
         if (p) fillProductForm(p);
       })
     );
@@ -627,6 +750,17 @@
         paintAdminProducts();
       })
     );
+
+    el("products-list-more")?.addEventListener("click", () => paintAdminProducts(true));
+  }
+
+  async function paintAdminProducts(loadMore = false) {
+    productsState.page = loadMore ? productsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/products?page=${productsState.page}&pageSize=${productsState.pageSize}`);
+    if (!result) return;
+    productsState.total = result.total;
+    productsState.items = loadMore ? productsState.items.concat(result.items) : result.items;
+    renderAdminProducts();
   }
 
   async function tryShowAdminPanel() {
@@ -639,6 +773,7 @@
     paintAdminInventory();
     paintAdminQna();
     paintAdminProducts();
+    paintAdminReviews();
   }
 
   /* ---------- 부팅 ---------- */

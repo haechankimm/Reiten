@@ -178,6 +178,7 @@ function renderHeader(active = "") {
   document.body.insertAdjacentHTML(
     "afterbegin",
     `
+<a class="skip-link" href="#main">${esc(t("본문으로 건너뛰기"))}</a>
 <header class="hdr">
   <div class="hdr__in">
     <a class="brand" href="index.html" aria-label="${esc(t("REITEN 홈"))}">

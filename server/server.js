@@ -4,11 +4,14 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const { SITE, PRODUCTS: STATIC_PRODUCTS, COLORS, SIZE_TABLES, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
+const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
 const { sendOrderNotification, sendCustomerOrderReceived, sendCustomerPaymentConfirmed } = require("./lib/mailer");
 const { uploadReviewPhoto, uploadProductPhoto } = require("./lib/cloudinary");
+const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
+const { toProductDto, productPatchFromBody } = require("./lib/products");
+const { paginationParams } = require("./lib/pagination");
 
 const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
@@ -49,29 +52,9 @@ app.use(
 );
 
 /* ---------- 상품 (products 테이블 — 관리자 패널에서 추가·수정·삭제) ----------
-   data.js의 정적 PRODUCTS는 마이그레이션 004를 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다. */
-function toProductDto(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    nameKo: row.name_ko,
-    type: row.type,
-    category: row.category,
-    price: row.price,
-    badge: row.badge || undefined,
-    images: row.images || [],
-    colors: row.colors || [],
-    sizes: row.sizes || [],
-    soldOut: row.sold_out || [],
-    sizeTable: row.size_table || undefined,
-    short: row.short || "",
-    desc: row.description || "",
-    details: row.details || [],
-    charmReady: !!row.charm_ready,
-    active: row.active,
-  };
-}
-
+   data.js의 정적 PRODUCTS는 마이그레이션 004를 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다.
+   toProductDto/productPatchFromBody는 ./lib/products.js로, priceItem/shippingFor/orderNo는
+   ./lib/pricing.js로 분리해 Supabase 없이도 단위 테스트할 수 있게 했다(server/test/ 참고). */
 async function getActiveProducts() {
   const { data, error } = await supabaseAdmin
     .from("products")
@@ -95,56 +78,8 @@ app.get("/api/products", async (req, res) => {
   res.json(await getActiveProducts());
 });
 
-function orderNo() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return (
-    "R" +
-    String(d.getFullYear()).slice(2) +
-    p(d.getMonth() + 1) +
-    p(d.getDate()) +
-    "-" +
-    String(Math.floor(Math.random() * 9000) + 1000)
-  );
-}
-
-/* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.
-   productId + charm + extras 조합만으로 PRODUCTS/CHARM_PRICE/EXTRA_PRICE 기준 가격을 다시 계산한다. */
-function priceItem(raw, products) {
-  const qty = Math.max(1, Math.min(99, Math.floor(Number(raw.qty) || 1)));
-  const charmKey = raw.charm && raw.charm.key && raw.charm.key !== "none" ? raw.charm.key : null;
-
-  const extraKeys = Array.isArray(raw.extras) ? raw.extras : [];
-  if (extraKeys.some((k) => !EXTRAS.find((x) => x.key === k))) return null;
-  const extrasTotal = extraKeys.length * EXTRA_PRICE;
-
-  let unit;
-  if (typeof raw.productId === "string" && raw.productId.startsWith("charm-")) {
-    if (!charmKey) return null;
-    unit = CHARM_PRICE + extrasTotal;
-  } else {
-    const product = products.find((p) => p.id === raw.productId);
-    if (!product) return null;
-    unit = product.price + (charmKey ? CHARM_PRICE : 0) + extrasTotal;
-  }
-
-  return {
-    name: String(raw.name || "").slice(0, 200),
-    options: Array.isArray(raw.opts)
-      ? raw.opts.map((o) => `${o.label} ${o.value}`).join(" / ")
-      : "",
-    qty,
-    unit,
-    sum: unit * qty,
-  };
-}
-
-function shippingFor(subtotal) {
-  if (subtotal === 0) return 0;
-  return subtotal >= SITE.shipping.freeOver ? 0 : SITE.shipping.fee;
-}
-
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
+const PRICE_OPTS = { extras: EXTRAS, charmPrice: CHARM_PRICE, extraPrice: EXTRA_PRICE };
 
 app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   const { customer, items: rawItems } = req.body || {};
@@ -162,7 +97,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   }
 
   const products = await getActiveProducts();
-  const items = rawItems.map((raw) => priceItem(raw, products));
+  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
   if (items.some((it) => it === null)) {
     return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
   }
@@ -203,7 +138,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   }
 
   const subtotal = items.reduce((s, it) => s + it.sum, 0);
-  const shipping = shippingFor(subtotal);
+  const shipping = shippingFor(subtotal, SITE.shipping);
   const total = subtotal + shipping;
 
   const { data: saved, error: saveError } = await supabaseAdmin
@@ -379,15 +314,17 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
 
 /* ---------- 관리자 ---------- */
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin
+  const { page, pageSize, from, to } = paginationParams(req.query);
+  const { data, error, count } = await supabaseAdmin
     .from("orders")
-    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at")
-    .order("created_at", { ascending: false });
+    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
 
-  res.json(
-    data.map((o) => ({
+  res.json({
+    items: data.map((o) => ({
       no: o.order_no,
       at: o.created_at,
       customer: o.customer,
@@ -398,8 +335,11 @@ app.get("/api/admin/orders", requireAdmin, async (req, res) => {
       status: o.status,
       courier: o.courier || null,
       trackingNo: o.tracking_no || null,
-    }))
-  );
+    })),
+    page,
+    pageSize,
+    total: count ?? data.length,
+  });
 });
 
 /* status만 바꾸면 상태만, courier/trackingNo를 함께 보내면 배송정보도 같이 저장한다.
@@ -446,15 +386,17 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/returns", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin
+  const { page, pageSize, from, to } = paginationParams(req.query);
+  const { data, error, count } = await supabaseAdmin
     .from("return_requests")
-    .select("id, order_no, contact_name, contact_tel, reason, detail, status, created_at")
-    .order("created_at", { ascending: false });
+    .select("id, order_no, contact_name, contact_tel, reason, detail, status, created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
 
-  res.json(
-    data.map((r) => ({
+  res.json({
+    items: data.map((r) => ({
       id: r.id,
       orderNo: r.order_no,
       contactName: r.contact_name,
@@ -463,8 +405,11 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       detail: r.detail,
       status: r.status,
       at: r.created_at,
-    }))
-  );
+    })),
+    page,
+    pageSize,
+    total: count ?? data.length,
+  });
 });
 
 app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
@@ -509,70 +454,16 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
    목록(GET)은 active 여부와 무관하게 전부 보여주고, 생성·수정·삭제는 관리자 인증을 거친다.
    공개 목록(/api/products)은 active=true인 것만 노출한다. */
 app.get("/api/admin/products", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin
+  const { page, pageSize, from, to } = paginationParams(req.query, { defaultSize: 50 });
+  const { data, error, count } = await supabaseAdmin
     .from("products")
-    .select("*")
-    .order("sort_order", { ascending: true });
+    .select("*", { count: "exact" })
+    .order("sort_order", { ascending: true })
+    .range(from, to);
 
   if (error) return res.status(500).json({ error: "상품 목록을 불러오지 못했습니다." });
-  res.json(data.map(toProductDto));
+  res.json({ items: data.map(toProductDto), page, pageSize, total: count ?? data.length });
 });
-
-function productPatchFromBody(b, { forCreate }) {
-  const patch = {};
-  if (forCreate || b.name !== undefined) {
-    const v = String(b.name || "").trim().slice(0, 120);
-    if (forCreate && !v) return { error: "상품명을 입력해 주세요." };
-    patch.name = v;
-  }
-  if (forCreate || b.nameKo !== undefined) {
-    const v = String(b.nameKo || "").trim().slice(0, 120);
-    if (forCreate && !v) return { error: "한글 상품명을 입력해 주세요." };
-    patch.name_ko = v;
-  }
-  if (forCreate || b.type !== undefined) {
-    const v = String(b.type || "").trim().slice(0, 30);
-    if (forCreate && !v) return { error: "타입을 입력해 주세요." };
-    patch.type = v;
-  }
-  if (forCreate || b.category !== undefined) {
-    const v = String(b.category || "").trim().slice(0, 40);
-    if (forCreate && !v) return { error: "카테고리를 입력해 주세요." };
-    patch.category = v;
-  }
-  if (forCreate || b.price !== undefined) {
-    const price = Math.floor(Number(b.price));
-    if (!Number.isFinite(price) || price <= 0) return { error: "가격이 올바르지 않습니다." };
-    patch.price = price;
-  }
-  if (b.badge !== undefined) patch.badge = String(b.badge || "").trim().slice(0, 40) || null;
-  if (b.images !== undefined) {
-    patch.images = Array.isArray(b.images) ? b.images.slice(0, 6).map((u) => (u ? String(u).slice(0, 500) : null)) : [];
-  }
-  if (b.colors !== undefined) {
-    patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => COLORS[c]) : [];
-  }
-  if (b.sizes !== undefined) {
-    patch.sizes = Array.isArray(b.sizes) ? b.sizes.filter((s) => typeof s === "string").slice(0, 10) : [];
-  }
-  if (b.soldOut !== undefined) {
-    patch.sold_out = Array.isArray(b.soldOut) ? b.soldOut.filter((s) => typeof s === "string").slice(0, 10) : [];
-  }
-  if (b.sizeTable !== undefined) {
-    patch.size_table = b.sizeTable && SIZE_TABLES[b.sizeTable] ? b.sizeTable : null;
-  }
-  if (b.short !== undefined) patch.short = String(b.short || "").trim().slice(0, 200);
-  if (b.desc !== undefined) patch.description = String(b.desc || "").trim().slice(0, 3000);
-  if (b.details !== undefined) {
-    patch.details = Array.isArray(b.details)
-      ? b.details.filter((d) => typeof d === "string").slice(0, 20).map((d) => d.slice(0, 300))
-      : [];
-  }
-  if (b.charmReady !== undefined) patch.charm_ready = !!b.charmReady;
-  if (b.active !== undefined) patch.active = !!b.active;
-  if (b.sortOrder !== undefined) patch.sort_order = Number.isFinite(Number(b.sortOrder)) ? Math.floor(Number(b.sortOrder)) : 0;
-  return { patch };
-}
 
 app.post("/api/admin/products", requireAdmin, async (req, res) => {
   const b = req.body || {};
@@ -671,14 +562,18 @@ function toReviewDto(r) {
     photoUrl: r.photo_url,
     instagramHandle: r.instagram_handle,
     helpfulCount: r.helpful_count || 0,
+    approved: r.approved !== false,
     at: r.created_at,
   };
 }
 
+/* 승인된(approved=true) 리뷰만 공개 노출한다. 새로 등록된 리뷰는 관리자가 승인하기 전까지
+   /api/admin/reviews에서만 보인다(스팸·부적절한 사진 방지, 005_reviews_approval.sql 참고). */
 app.get("/api/reviews", async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from("reviews")
     .select("*")
+    .eq("approved", true)
     .order("created_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: "리뷰를 불러오지 못했습니다." });
@@ -735,6 +630,7 @@ app.post("/api/reviews", writeLimiter, (req, res) => {
         comment: commentStr,
         photo_url: photoUrl,
         instagram_handle: instaStr || null,
+        approved: false,
       })
       .select()
       .single();
@@ -755,6 +651,37 @@ app.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
     return res.status(500).json({ error: "처리에 실패했습니다." });
   }
   res.json({ helpfulCount: data });
+});
+
+/* ---------- 리뷰 승인 (관리자만) ----------
+   승인 대기(approved=false)인 리뷰가 먼저 오도록 정렬해 관리자가 검수할 목록을 바로 볼 수 있게 한다. */
+app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
+  const { page, pageSize, from, to } = paginationParams(req.query);
+  const { data, error, count } = await supabaseAdmin
+    .from("reviews")
+    .select("*", { count: "exact" })
+    .order("approved", { ascending: true })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) return res.status(500).json({ error: "리뷰 목록을 불러오지 못했습니다." });
+  res.json({ items: data.map(toReviewDto), page, pageSize, total: count ?? data.length });
+});
+
+app.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
+  const { approved } = req.body || {};
+  if (typeof approved !== "boolean") {
+    return res.status(400).json({ error: "approved(true/false)가 필요합니다." });
+  }
+  const { error } = await supabaseAdmin.from("reviews").update({ approved }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: "승인 처리에 실패했습니다." });
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
+  const { error } = await supabaseAdmin.from("reviews").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: "삭제에 실패했습니다." });
+  res.json({ ok: true });
 });
 
 /* ---------- 상품 Q&A ---------- */
@@ -821,13 +748,15 @@ app.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
 });
 
 app.get("/api/admin/qna", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin
+  const { page, pageSize, from, to } = paginationParams(req.query);
+  const { data, error, count } = await supabaseAdmin
     .from("qna")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
-  res.json(data.map((q) => toQnaDto(q, { redact: false })));
+  res.json({ items: data.map((q) => toQnaDto(q, { redact: false })), page, pageSize, total: count ?? data.length });
 });
 
 app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {

@@ -19,14 +19,6 @@ const SLEEVE = `
         stroke="#000" stroke-opacity=".18" stroke-width="2.5"/>
 `;
 
-/* 겨드랑이 ~ 옆선 : 몸판 위에 얹어야 소매가 앞으로 보인다 */
-const SLEEVE_SEAM = `
-  <path d="M302,302 C270,404 250,508 240,626" fill="none"
-        stroke="#000" stroke-opacity=".10" stroke-width="12" stroke-linecap="round"/>
-  <path d="M302,302 C270,404 250,508 240,626" fill="none"
-        stroke="#000" stroke-opacity=".28" stroke-width="2.2"/>
-`;
-
 /* 지퍼 하드웨어(슬라이더 · 고리 · 연결선) 색상 — 참 마감(finish)을 따라간다 */
 function zipperHardwareFill(finishKey, charmKey) {
   if (charmKey === "none" || finishKey === "silver") return "url(#metal)";
@@ -35,15 +27,64 @@ function zipperHardwareFill(finishKey, charmKey) {
   return "url(#metal)";
 }
 
-function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silver" } = {}) {
+function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silver", type = "zip" } = {}) {
   const charm = charmSVG(charmKey, finishKey, {
     attrs: `x="${-CHARM_W / 2}" y="0" width="${CHARM_W}" height="${CHARM_W * 1.2}" overflow="visible"`,
   });
   const zipperFill = zipperHardwareFill(finishKey, charmKey);
 
+  /* 크롭 실루엣 — 몸판·밑단 립·주머니를 짧게, 소매 길이는 그대로 둬서
+     소매가 밑단보다 길게 남는(크롭 특유의) 실루엣을 만든다 */
+  const isCrop = type === "crop";
+
+  const bodyPath = isCrop
+    ? "M258,228 L542,228 C554,290 560,360 562,430 L238,430 C240,360 246,290 258,228 Z"
+    : "M258,228 L542,228 C556,352 566,498 568,608 L232,608 C234,498 244,352 258,228 Z";
+
+  const ribPath = isCrop
+    ? "M238,430 L562,430 L566,470 L234,470 Z"
+    : "M232,608 L568,608 L572,662 L228,662 Z";
+
+  const ribLines = isCrop
+    ? `<path d="M240,442 L560,442 M238,456 L562,456" fill="none" stroke="#000" stroke-opacity=".13" stroke-width="2.5"/>`
+    : `<path d="M234,620 L566,620 M233,634 L567,634 M232,648 L568,648" fill="none" stroke="#000" stroke-opacity=".13" stroke-width="2.5"/>`;
+
+  const pocketLeft = isCrop
+    ? "M290,347 C289,381 294,398 311,406 L344,406"
+    : "M290,452 C288,516 298,548 330,562 L392,562";
+  const pocketRight = isCrop
+    ? "M510,347 C511,381 506,398 489,406 L456,406"
+    : "M510,452 C512,516 502,548 470,562 L408,562";
+
+  const sleeveSeamPath = isCrop
+    ? "M302,302 C282,354 264,394 254,430"
+    : "M302,302 C270,404 250,508 240,626";
+
+  // 지퍼 트랙은 밑단 립 바닥까지만 내려가야 한다 — 크롭일 때 원래 길이 그대로 두면 몸판보다 한참 길게 삐져나온다
+  const zipperBottomY = isCrop ? 470 : 662;
+  const zipperTop = 240;
+  const zipperHeight = zipperBottomY - zipperTop;
+  const zipperLineEndY = zipperBottomY - 2;
+
+  /* 소매는 원본 길이를 그대로 두되(팔 길이 자체는 기장과 무관), 크롭일 때만
+     어깨(258,228)를 기준으로 세로만 살짝 줄여 밑단과 부자연스럽게 멀어지지 않게 한다 */
+  const sleeveScale = isCrop ? 0.74 : 1;
+  const sleeveGroup = `<g transform="translate(258,228) scale(1,${sleeveScale}) translate(-258,-228)">${SLEEVE}</g>`;
+
+  const label = isCrop
+    ? t("크롭 후드집업 미리보기 — 선택한 컬러와 지퍼 참이 반영됩니다")
+    : t("후드집업 미리보기 — 선택한 컬러와 지퍼 참이 반영됩니다");
+
+  const sleeveSeamMarkup = `
+    <path d="${sleeveSeamPath}" fill="none"
+          stroke="#000" stroke-opacity=".10" stroke-width="12" stroke-linecap="round"/>
+    <path d="${sleeveSeamPath}" fill="none"
+          stroke="#000" stroke-opacity=".28" stroke-width="2.2"/>
+  `;
+
   return `
 <svg class="stage__svg" viewBox="100 46 600 660" role="img"
-     aria-label="${esc(t("후드집업 미리보기 — 선택한 컬러와 지퍼 참이 반영됩니다"))}">
+     aria-label="${esc(label)}">
   <defs>
     <linearGradient id="fabShade" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%"   stop-color="#000" stop-opacity=".20"/>
@@ -90,29 +131,28 @@ function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silve
     <path d="M400,88 L400,250" stroke="#000" stroke-opacity=".12" stroke-width="2"/>
 
     <!-- 소매 -->
-    <g class="sleeve">${SLEEVE}</g>
-    <g class="sleeve" transform="translate(800,0) scale(-1,1)">${SLEEVE}</g>
+    <g class="sleeve">${sleeveGroup}</g>
+    <g class="sleeve" transform="translate(800,0) scale(-1,1)">${sleeveGroup}</g>
 
     <!-- 몸판 -->
-    <path d="M258,228 L542,228 C556,352 566,498 568,608 L232,608 C234,498 244,352 258,228 Z"/>
-    <path d="M258,228 L542,228 C556,352 566,498 568,608 L232,608 C234,498 244,352 258,228 Z" fill="url(#fabShade)"/>
+    <path d="${bodyPath}"/>
+    <path d="${bodyPath}" fill="url(#fabShade)"/>
 
     <!-- 소매 옆선 (몸판 위) -->
-    <g>${SLEEVE_SEAM}</g>
-    <g transform="translate(800,0) scale(-1,1)">${SLEEVE_SEAM}</g>
+    <g>${sleeveSeamMarkup}</g>
+    <g transform="translate(800,0) scale(-1,1)">${sleeveSeamMarkup}</g>
 
     <!-- 밑단 립 -->
-    <path d="M232,608 L568,608 L572,662 L228,662 Z"/>
-    <path d="M232,608 L568,608 L572,662 L228,662 Z" fill="#000" opacity=".11"/>
-    <path d="M234,620 L566,620 M233,634 L567,634 M232,648 L568,648"
-          fill="none" stroke="#000" stroke-opacity=".13" stroke-width="2.5"/>
+    <path d="${ribPath}"/>
+    <path d="${ribPath}" fill="#000" opacity=".11"/>
+    ${ribLines}
 
     <!-- 캥거루 주머니 -->
-    <path d="M290,452 C288,516 298,548 330,562 L392,562" fill="none"
+    <path d="${pocketLeft}" fill="none"
           stroke="#000" stroke-opacity=".24" stroke-width="2.5"/>
-    <path d="M510,452 C512,516 502,548 470,562 L408,562" fill="none"
+    <path d="${pocketRight}" fill="none"
           stroke="#000" stroke-opacity=".24" stroke-width="2.5"/>
-    <path d="M290,452 C288,516 298,548 330,562 L392,562" fill="none"
+    <path d="${pocketLeft}" fill="none"
           stroke="#fff" stroke-opacity=".07" stroke-width="2.5" transform="translate(0,3)"/>
 
     <!-- 후드 안쪽 그늘 -->
@@ -140,11 +180,11 @@ function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silve
 
   <!-- 지퍼 -->
   <g class="hardware">
-    <rect x="390" y="240" width="20" height="422" fill="${colorHex}"/>
-    <rect x="390" y="240" width="20" height="422" fill="#000" opacity=".22"/>
-    <line x1="400" y1="244" x2="400" y2="660" stroke="#a3a8ae" stroke-width="7"
+    <rect x="390" y="${zipperTop}" width="20" height="${zipperHeight}" fill="${colorHex}"/>
+    <rect x="390" y="${zipperTop}" width="20" height="${zipperHeight}" fill="#000" opacity=".22"/>
+    <line x1="400" y1="244" x2="400" y2="${zipperLineEndY}" stroke="#a3a8ae" stroke-width="7"
           stroke-dasharray="4 4"/>
-    <line x1="400" y1="244" x2="400" y2="660" stroke="#000" stroke-opacity=".4" stroke-width="1.4"/>
+    <line x1="400" y1="244" x2="400" y2="${zipperLineEndY}" stroke="#000" stroke-opacity=".4" stroke-width="1.4"/>
     <rect x="389" y="${SLIDER_Y}" width="22" height="32" rx="6" fill="${zipperFill}"/>
     <rect x="393" y="${SLIDER_Y + 6}" width="14" height="5" rx="2.5" fill="#000" opacity=".2"/>
     <path d="M400,${SLIDER_Y + 32} L400,${RING_Y - 8}" stroke="${zipperFill}" stroke-width="5"/>

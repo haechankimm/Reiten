@@ -103,12 +103,17 @@ npm start
 │   │   ├── supabase.js           service role 클라이언트
 │   │   ├── auth.js               requireAuth / optionalAuth / requireAdmin 미들웨어
 │   │   ├── mailer.js             Resend로 주문 알림 메일 발송(관리자용 + 고객용 접수/입금확인 메일)
-│   │   └── cloudinary.js         리뷰 · 상품 사진 업로드
+│   │   ├── cloudinary.js         리뷰 · 상품 사진 업로드(업로드 즉시 리사이즈 + 포맷/화질 자동 최적화)
+│   │   ├── pricing.js            가격 재계산(priceItem) · 배송비(shippingFor) · 주문번호(orderNo) — 순수 함수, 단위 테스트 대상
+│   │   ├── products.js           상품 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
+│   │   └── pagination.js         관리자 목록 API 공용 페이지네이션 헬퍼
+│   ├── test/                     서버 핵심 로직 단위 테스트 (`npm test`, Node 내장 테스트러너 사용 — 별도 패키지 불필요)
 │   └── migrations/
 │       ├── 001_init.sql          Supabase 초기 스키마 (SQL Editor에 붙여넣어 실행)
 │       ├── 002_reviews_helpful_and_qna.sql   리뷰 공감 수 + Q&A 테이블 (001 다음에 실행)
 │       ├── 003_tracking.sql      주문에 택배사·운송장번호 컬럼 추가 (001 다음에 실행)
-│       └── 004_products.sql      상품 테이블 + data.js 상품 8종 시드 (001 다음에 실행, 관리자 상품 관리에 필요)
+│       ├── 004_products.sql      상품 테이블 + data.js 상품 8종 시드 (001 다음에 실행, 관리자 상품 관리에 필요)
+│       └── 005_reviews_approval.sql   리뷰에 approved 컬럼 추가 (001 다음에 실행, 리뷰 승인제에 필요)
 │
 └── 레퍼런스/                     원본 참고 이미지 (건드리지 않음, 후디/후드집업/크롭 후디/로고 폴더)
 ```
@@ -314,17 +319,25 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `POST /api/orders/lookup` | 없음 | 비회원 주문 조회. `{ orderNo, tel }`이 저장된 주문과 일치할 때만 상태·배송정보·내역을 반환(연락처는 숫자만 비교). 불일치 시 어느 쪽이 틀렸는지 알려주지 않고 `404` |
 | `GET /api/my/orders` | 로그인 필요 | 로그인한 회원 본인의 주문내역(배송정보 포함) |
 | `POST /api/returns` | 선택 | 반품·교환 신청 접수(비회원도 가능) |
-| `GET/PATCH /api/admin/orders`, `/api/admin/returns`, `/api/admin/inventory` | **관리자만**(role=admin) | 전체 주문/반품신청 조회 및 상태 변경, 재고 수량 조회·수정. 주문 `PATCH`는 `status`와 `courier`/`trackingNo`(택배사·운송장번호)를 함께 또는 따로 받으며, **`status`가 정확히 `"입금확인"`으로 바뀌는 순간에만** 고객에게 입금 확인 메일을 발송 |
-| `GET/POST /api/reviews` | 없음 | 리뷰 조회, 등록(사진 첨부 시 Cloudinary 업로드 후 `photoUrl` 저장, 인스타 아이디는 `instagramHandle`로 저장 — `reviews.html`이 `https://instagram.com/{아이디}` 링크로 렌더) |
+| `GET/PATCH /api/admin/orders`, `/api/admin/returns` | **관리자만**(role=admin) | 전체 주문/반품신청 조회 및 상태 변경(**목록은 페이지네이션**, 아래 참고). 주문 `PATCH`는 `status`와 `courier`/`trackingNo`(택배사·운송장번호)를 함께 또는 따로 받으며, **`status`가 정확히 `"입금확인"`으로 바뀌는 순간에만** 고객에게 입금 확인 메일을 발송 |
+| `GET/PATCH /api/admin/inventory` | **관리자만**(role=admin) | 재고 수량 조회·수정 |
+| `GET/POST /api/reviews` | 없음 | 리뷰 조회(승인된 것만, 아래 참고), 등록(사진 첨부 시 Cloudinary 업로드 후 `photoUrl` 저장, 인스타 아이디는 `instagramHandle`로 저장 — `reviews.html`이 `https://instagram.com/{아이디}` 링크로 렌더). 새로 등록된 리뷰는 승인 전까지 이 목록에 보이지 않음 |
 | `POST /api/reviews/:id/helpful` | 없음 | 리뷰 "도움돼요" 카운트를 원자적으로 +1(`increment_helpful` RPC). 중복 클릭 방지는 브라우저 `localStorage`(`reiten_liked_reviews`) 기준이라 완벽하진 않음 |
+| `GET /api/admin/reviews`, `PATCH/DELETE /api/admin/reviews/:id` | **관리자만**(role=admin) | **리뷰 승인 큐**(목록은 페이지네이션). `GET`은 승인 대기 중인 리뷰가 먼저 오도록 정렬해서 전부 반환. `PATCH`로 `{ approved: true/false }`를 보내 승인·숨김을 전환, `DELETE`로 스팸 리뷰를 영구 삭제 |
 | `GET/POST /api/qna` | 선택 | 상품 문의 조회·등록. 비밀글(`secret:true`)은 작성자 본인(로그인 시) 또는 관리자가 아니면 `question`/`answer`가 `null`로 가려져서 내려감 |
-| `GET/PATCH /api/admin/qna` | **관리자만**(role=admin) | 전체 문의 조회(비밀글 포함), 답변 등록 시 상태가 자동으로 `답변완료`로 바뀜 |
-| `GET/POST /api/admin/products`, `PATCH/DELETE /api/admin/products/:id` | **관리자만**(role=admin) | 상품 등록·수정·삭제. `GET`은 비공개(`active=false`) 상품도 포함해 전부 반환. `DELETE`는 영구 삭제이며 해당 상품의 `inventory` 행도 함께 정리(주문에는 항목이 스냅샷으로 저장돼 있어 과거 주문 내역에는 영향 없음) |
-| `POST /api/admin/products/photo` | **관리자만**(role=admin) | 상품 사진 한 장을 Cloudinary에 업로드하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 상품의 `images` 배열에 채워 넣은 뒤 `POST`/`PATCH /api/admin/products`로 저장 |
+| `GET/PATCH /api/admin/qna` | **관리자만**(role=admin) | 전체 문의 조회(비밀글 포함, **목록은 페이지네이션**), 답변 등록 시 상태가 자동으로 `답변완료`로 바뀜 |
+| `GET/POST /api/admin/products`, `PATCH/DELETE /api/admin/products/:id` | **관리자만**(role=admin) | 상품 등록·수정·삭제(**목록은 페이지네이션**). `GET`은 비공개(`active=false`) 상품도 포함해 전부 반환. `DELETE`는 영구 삭제이며 해당 상품의 `inventory` 행도 함께 정리(주문에는 항목이 스냅샷으로 저장돼 있어 과거 주문 내역에는 영향 없음) |
+| `POST /api/admin/products/photo` | **관리자만**(role=admin) | 상품 사진 한 장을 Cloudinary에 업로드(업로드 시 최대 1800px로 자동 리사이즈 + 포맷/화질 최적화)하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 상품의 `images` 배열에 채워 넣은 뒤 `POST`/`PATCH /api/admin/products`로 저장 |
 
-가격 계산 로직(`priceItem()`)과 배송비 계산(`shippingFor()`)은 프런트의 `Cart.subtotal()`/`shipping()`과
-같은 규칙을 서버에서 다시 구현한 것입니다 — 둘 중 하나만 고치면 값이 어긋나니, 배송비 정책이나
-가격 체계를 바꿀 땐 `data.js`(원천 데이터)만 고치고 `server.js`의 계산식은 그대로 두면 됩니다.
+> **관리자 목록 페이지네이션**: `/api/admin/orders`, `/api/admin/returns`, `/api/admin/qna`, `/api/admin/products`, `/api/admin/reviews`는
+> `?page=`(1부터)와 `?pageSize=`(기본 20, 상품은 50, 최대 100) 쿼리를 받고 `{ items, page, pageSize, total }` 형태로 응답합니다.
+> 관리자 패널은 처음엔 1페이지만 불러오고, "더 보기" 버튼을 누르면 다음 페이지를 이어서 불러와 화면에 계속 붙입니다.
+
+가격 계산 로직(`server/lib/pricing.js`의 `priceItem()`)과 배송비 계산(`shippingFor()`)은 프런트의
+`Cart.subtotal()`/`shipping()`과 같은 규칙을 서버에서 다시 구현한 것입니다 — 둘 중 하나만 고치면 값이
+어긋나니, 배송비 정책이나 가격 체계를 바꿀 땐 `data.js`(원천 데이터)만 고치고 계산식은 그대로 두면
+됩니다. `priceItem`/`shippingFor`와 상품 DTO 변환(`server/lib/products.js`)은 Supabase 없이 단위
+테스트가 가능하도록 `server.js`에서 분리해 두었고, `server/test/`에 테스트가 있습니다(`cd server && npm test`).
 
 인증은 브라우저가 Supabase 세션의 JWT를 `Authorization: Bearer` 헤더로 보내면 `server/lib/auth.js`의
 `requireAuth`/`requireAdmin`이 매 요청마다 다시 검증합니다 — "관리자 패널이 안 보인다"는 프런트 UI일 뿐,
@@ -583,7 +596,8 @@ hoodie: {
 
 - [x] 회원가입 · 로그인 (Supabase Auth, `account.html`)
 - [x] 로그인 시 본인 주문내역 조회
-- [x] **관리자(role=admin) 로그인 시에만 열리는 숨김 패널** — 전체 주문 조회/상태 변경, 반품·교환 신청 조회/상태 변경, 재고 수량 조회/수정, Q&A 답변, 상품 관리. UI를 숨기는 것과 별개로 서버가 매 요청마다 권한을 재검증
+- [x] **관리자(role=admin) 로그인 시에만 열리는 숨김 패널** — 전체 주문 조회/상태 변경, 반품·교환 신청 조회/상태 변경, 재고 수량 조회/수정, Q&A 답변, 상품 관리, 리뷰 승인. UI를 숨기는 것과 별개로 서버가 매 요청마다 권한을 재검증
+- [x] **관리자 목록 페이지네이션** — 주문/반품/Q&A/상품/리뷰 목록은 서버가 페이지 단위로 나눠 보내고, 관리자 패널에서 "더 보기"로 다음 페이지를 이어서 불러옴(목록이 아무리 쌓여도 관리자 패널이 느려지지 않음)
 - [x] **관리자 패널 — 상품 관리** — 상품 등록·수정·삭제, 사진 업로드(최대 4장, Cloudinary)를 관리자 패널에서 바로 처리. `products` 테이블에 저장되며 저장 즉시 `shop.html`/`product.html`/스튜디오 등 모든 페이지에 반영됨(`data.js`의 `PRODUCTS`는 정적 배포 시의 폴백으로만 남음) — 자세한 내용은 [12번](#12-nodejs-백엔드-서버-선택) 참고
 - [x] 반품 · 교환 신청(`return-request.html`) — 비회원도 신청 가능, 로그인 시 이름 자동 채움
 - [x] **상품 Q&A(`qna.html`)** — 비회원도 문의 가능, 비밀글 체크 시 작성자·관리자만 내용 열람, 관리자가 답변하면 상태가 자동으로 바뀜
@@ -594,13 +608,15 @@ hoodie: {
 - [x] About — 브랜드 스토리, 재귀반사 원리 설명, 소재/세탁/프린트 보호
 - [x] 정책 아코디언 — 배송, 교환·반품, 사이즈 선택(+보호대 착용 가이드), 판매자 정보
 - [x] **상품 리뷰(`reviews.html`)** — `server/`가 있으면 실제 등록·조회, 없으면 정적 폴백(빈 목록, 등록 폼 숨김)
-- [x] **리뷰 사진 첨부** (Cloudinary 업로드) + **인스타그램 아이디 태그** — 카드에서 클릭하면 실제 인스타그램으로 새 탭 이동(아이콘 + "인스타그램에서 보기" 라벨로 클릭 가능함을 명시)
+- [x] **리뷰 승인제** — 새로 등록된 리뷰는 관리자가 관리자 패널의 "리뷰" 탭에서 승인하기 전까지 공개 목록에 노출되지 않음(스팸·부적절한 사진 방지). 승인/숨김 전환과 삭제 모두 가능
+- [x] **리뷰 사진 첨부** (Cloudinary 업로드, 업로드 시 최대 1600px로 자동 리사이즈 + 포맷/화질 최적화) + **인스타그램 아이디 태그** — 카드에서 클릭하면 실제 인스타그램으로 새 탭 이동(아이콘 + "인스타그램에서 보기" 라벨로 클릭 가능함을 명시)
 - [x] **리뷰 정렬**(최신순/별점 높은순/별점 낮은순/인기순) + **공감(도움돼요) 버튼** — 브라우저 `localStorage`로 중복 공감 방지
 
 ### 접근성 · SEO 기초
 
 - [x] `aria-pressed` / `aria-current` / `aria-expanded` / `aria-invalid` / `aria-label`
 - [x] `:focus-visible` 아웃라인, 시맨틱 헤딩 구조, 모든 이미지 `alt`
+- [x] **"본문으로 건너뛰기" 스킵링크** — 키보드·스크린리더 사용자가 헤더 메뉴를 매번 거치지 않고 본문(`#main`)으로 바로 이동. 평소엔 화면 밖에 숨어 있다가 Tab으로 포커스되면 나타남
 - [x] 본문 텍스트 대비 WCAG AA 통과 (라이트·야간 양쪽)
 - [x] 페이지별 `<title>` / `description`, 홈 OG 태그
 - [x] 장바구니·주문완료 `noindex`
@@ -632,7 +648,6 @@ hoodie: {
 | **우편번호 검색** | 수동 입력 — 다음(카카오) 우편번호 API 연결 권장 |
 | 도메인 · 호스팅 | 미연결 |
 | 헬멧 집업 사진 배경 | 완전한 흰색이 아니라 카드 하단에 옅은 경계선이 보임 → 재촬영 또는 배경 보정 |
-| 리뷰 스팸 · 부적절 사진 방지 | `/api/reviews`에 승인제가 없어 등록 즉시 공개됨(사진 첨부 포함) → 오픈 전 관리자 검수 단계 추가 권장 |
 | 재고 초기값 미입력 | `inventory` 테이블이 비어 있으면 그 상품·사이즈는 항상 재고 0으로 처리되어 주문이 막힘 → `server/migrations/001_init.sql` 하단 예시처럼 실제 재고 수량을 넣거나 관리자 패널에서 채워야 함 |
 
 ### 🟡 오픈 직후
@@ -650,7 +665,6 @@ hoodie: {
 |---|---|
 | **카드결제(PG)** | 포트원(아임포트) 권장 → [11번](#11-카드결제pg-붙이기) |
 | 상품 검색 | 없음 (상품 수가 적어 우선순위 낮음) |
-| 리뷰 승인제 | 지금은 등록 즉시 공개. `return_requests`/`orders`처럼 관리자 패널에 "리뷰" 탭을 추가해 검수 후 노출하는 흐름으로 확장 가능 |
 | 실시간 재고 표시 | 지금은 결제 시점에만 재고를 확인·차감함(동시 주문 문제는 해결됨). 상품 상세에서 사이즈별 잔여 수량을 실시간으로 보여주는 건 별도 작업 |
 | 위시리스트 | 없음 |
 | 쿠폰 · 적립금 | 없음 |
@@ -866,6 +880,15 @@ npm start
 `http://localhost:3000`에서 사이트가 그대로 뜨고(정적 파일을 서빙), 주문서 제출·리뷰 등록·
 회원가입·반품 신청이 모두 실제로 동작합니다.
 
+가격 계산처럼 실수하면 안 되는 핵심 로직은 `server/test/`에 단위 테스트로 남겨뒀습니다.
+Supabase 연결 없이 바로 돌아가므로, `data.js`나 `server/lib/pricing.js`·`products.js`를 고친 뒤에는
+한 번씩 돌려보는 걸 권장합니다.
+
+```bash
+cd server
+npm test
+```
+
 ### 첫 관리자 계정 만들기
 
 1. `account.html`에서 일반 회원가입을 한 번 진행합니다.
@@ -912,8 +935,8 @@ npm start
 - 고객 개인정보(이름·연락처·주소)는 Supabase `orders`/`return_requests` 테이블에 저장됩니다.
   Supabase 프로젝트 접근 권한 관리와 개인정보처리방침을 반드시 갖추세요.
 - `reviews` 테이블은 닉네임 · 별점 · 후기 텍스트 · 사진 · 인스타 아이디를 저장합니다(전부
-  공개돼도 되는 정보). 다만 스팸·도배·부적절한 사진 방지용 승인제는 아직 없으니, 실제 오픈
-  전에는 관리자 검수 단계 추가를 권장합니다.
+  공개돼도 되는 정보). 새 리뷰는 관리자가 승인하기 전까지 공개 목록에 나오지 않는 승인제가
+  적용돼 있어(005_reviews_approval.sql), 관리자 패널의 "리뷰" 탭에서 검수 후 노출하면 됩니다.
 - Netlify/Vercel 같은 정적 호스팅에는 `server/`가 올라가지 않습니다. 서버 기능까지 실제
   서비스에 쓰려면 Render, Railway 같은 Node 호스팅에 `server/`만 별도로 배포하고, 위 `.env`
   값들을 그 호스팅의 환경변수로 등록하세요.

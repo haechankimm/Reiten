@@ -10,7 +10,7 @@
 </head>
 <body>
 
-<main>
+<main id="main">
   <section class="sec sec--tight">
     <div class="wrap">
       <p class="eyebrow" data-reveal>Reviews</p>
@@ -260,8 +260,8 @@
 
       const res = await fetch("/api/reviews", { method: "POST", body: fd });
       if (!res.ok) throw new Error("failed");
-      const created = await res.json();
-      reviews = [created, ...reviews];
+      // 새 리뷰는 관리자 승인 전까지 공개 목록에 나오지 않으므로(스팸 방지) 화면에 바로 추가하지 않는다.
+      await res.json();
       name.value = "";
       comment.value = "";
       el("r-photo").value = "";
@@ -270,8 +270,7 @@
       el("r-insta").value = "";
       rating = 5;
       paintRatingChips();
-      paint();
-      toast(t("리뷰가 등록되었습니다"));
+      toast(t("리뷰가 등록되었습니다. 검수 후 노출됩니다."));
     } catch (err) {
       toast(t("리뷰 등록에 실패했습니다"));
     } finally {

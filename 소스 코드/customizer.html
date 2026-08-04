@@ -10,7 +10,7 @@
 </head>
 <body>
 
-<main>
+<main id="main">
   <section class="sec sec--tight">
     <div class="wrap">
       <p class="eyebrow" data-reveal>Zip Charm Studio</p>
@@ -164,6 +164,7 @@
       colorHex: COLORS[state.color].hex,
       charmKey: state.charm,
       finishKey: state.finish,
+      type: state.base.type,
     });
     const c = getCharm(state.charm);
     el("stage-caption").textContent =

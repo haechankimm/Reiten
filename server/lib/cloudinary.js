@@ -8,24 +8,33 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
   });
 }
 
-function uploadReviewPhoto(buffer) {
+/* 업로드 즉시 리사이즈 + 포맷/화질 자동 최적화한다.
+   crop:"limit"은 지정한 박스보다 큰 사진만 줄이고 작은 사진은 확대하지 않는다.
+   quality/fetch_format을 "auto"로 두면 Cloudinary가 브라우저에 맞춰 WebP/AVIF 등으로 자동 변환한다 —
+   관리자가 원본 대용량 사진을 그대로 올려도 저장·전송 용량이 커지지 않는다. */
+function upload(buffer, folder, { maxSize }) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: "reiten-reviews", resource_type: "image" },
+      {
+        folder,
+        resource_type: "image",
+        transformation: [
+          { width: maxSize, height: maxSize, crop: "limit" },
+          { quality: "auto:good", fetch_format: "auto" },
+        ],
+      },
       (err, result) => (err ? reject(err) : resolve(result.secure_url))
     );
     stream.end(buffer);
   });
 }
 
+function uploadReviewPhoto(buffer) {
+  return upload(buffer, "reiten-reviews", { maxSize: 1600 });
+}
+
 function uploadProductPhoto(buffer) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder: "reiten-products", resource_type: "image" },
-      (err, result) => (err ? reject(err) : resolve(result.secure_url))
-    );
-    stream.end(buffer);
-  });
+  return upload(buffer, "reiten-products", { maxSize: 1800 });
 }
 
 module.exports = { uploadReviewPhoto, uploadProductPhoto };
