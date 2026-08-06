@@ -84,7 +84,13 @@
         <section id="admin-panel" hidden style="margin-top:64px">
           <hr class="rule" style="margin-bottom:34px">
           <p class="eyebrow">Admin</p>
-          <h2 class="h-md" style="margin-top:10px" data-i18n="관리자 패널">관리자 패널</h2>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <h2 class="h-md" style="margin-top:10px" data-i18n="관리자 패널">관리자 패널</h2>
+            <div class="chips" id="admin-lang-switch">
+              <button class="chip" type="button" data-admin-lang="ko" aria-pressed="true">한국어</button>
+              <button class="chip" type="button" data-admin-lang="de" aria-pressed="false">Deutsch</button>
+            </div>
+          </div>
 
           <div class="chips" id="admin-tabs" style="margin-top:20px">
             <button class="chip" type="button" data-tab="orders" aria-pressed="true" data-i18n="전체 주문">전체 주문</button>
@@ -270,7 +276,7 @@
         </div>
         <p class="small" style="margin-top:8px">${itemsLine}</p>
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-top:10px">
-          <span class="small">${esc(o.status || "입금대기")}</span>
+          <span class="small">${esc(t(o.status || "입금대기"))}</span>
           <b class="tnum">${money(o.total)}</b>
         </div>
         ${trackingLine(o)}
@@ -300,6 +306,14 @@
     );
   }
   switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
+
+  /* 관리자 패널 전용 언어 전환 — 동업자(독일어 사용)를 위한 것으로, 사이트 공용 언어 스위처(헤더)에는
+     노출하지 않는다. setLang()이 reiten_lang을 갱신하고 새로고침하므로, 관리자 패널 밖의 나머지
+     페이지 텍스트는 아직 번역이 없는 경우 한국어로 자연히 폴백된다. */
+  el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
+    b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
+    b.addEventListener("click", () => setLang(b.dataset.adminLang));
+  });
 
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
@@ -334,7 +348,7 @@
         <p class="small" style="margin-top:6px">${esc(o.customer.name)} · ${esc(o.customer.tel)}</p>
         <p class="small" style="margin-top:4px">${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</p>
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px">
-          <select class="admin-order-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <select class="admin-order-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
           <b class="tnum">${money(o.total)}</b>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
@@ -401,7 +415,7 @@
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
         <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px">
-          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
         </div>
       </div>`;
   }

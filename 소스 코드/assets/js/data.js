@@ -11,10 +11,10 @@ const SITE = {
 
   /* ── 주문 접수용 정보 ── 반드시 실제 값으로 교체하세요 ── */
   order: {
-    bankName: "[은행명 입력]",
-    accountNo: "[계좌번호 입력]",
-    holder: "[예금주 입력]",
-    email: "[주문접수 이메일 입력]",
+    bankName: "토스뱅크",
+    accountNo: "1002-7055-2427",
+    holder: "김해찬",
+    email: "Reiten.customersupport@gmail.com",
     kakao: "[카카오톡 채널 주소 입력]",
     instagram: "[인스타그램 계정 입력]",
 
@@ -26,13 +26,13 @@ const SITE = {
 
   /* ── 통신판매업 고지 (전자상거래법 필수) ── */
   biz: {
-    company: "[상호 입력]",
-    ceo: "[대표자명 입력]",
-    regNo: "[사업자등록번호 입력]",
-    mailOrderNo: "[통신판매업신고번호 입력]",
-    address: "[사업장 주소 입력]",
+    company: "Reiten",
+    ceo: "김해찬",
+    regNo: "154-44-01222",
+    mailOrderNo: "제-2026-용인기흥-00638 호",
+    address: "용인시 기흥구 죽현로 80번길 38",
     tel: "[전화번호 입력]",
-    privacyOfficer: "[개인정보관리책임자 입력]",
+    privacyOfficer: "김해찬",
   },
 
   shipping: {
@@ -323,7 +323,7 @@ const PRODUCTS = [
    ---------------------------------------------------------
    viewBox 0 0 100 120 기준. 상단 링은 스튜디오가 그립니다.
    ========================================================= */
-const CHARM_PRICE = 5900;
+const CHARM_PRICE = 0;
 
 const FINISHES = [
   { key: "silver", label: "리플렉티브 실버", note: "빛을 받으면 발광" },

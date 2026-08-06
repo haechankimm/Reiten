@@ -185,7 +185,7 @@ function renderHeader(active = "") {
   ).join("");
 
   const lang = getLang();
-  const langMenu = LANGS.map(
+  const langMenu = PUBLIC_LANGS.map(
     (l) =>
       `<button type="button" data-lang="${l}" aria-current="${l === lang}">${LANG_LABEL[l]}</button>`
   ).join("");

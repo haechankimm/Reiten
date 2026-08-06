@@ -6,8 +6,11 @@
    ========================================================= */
 
 const LANG_KEY = "reiten_lang";
-const LANGS = ["ko", "en", "ja"];
-const LANG_LABEL = { ko: "한국어", en: "English", ja: "日本語" };
+const LANGS = ["ko", "en", "ja", "de"];
+/* 고객용 헤더 언어 전환 메뉴에는 "de"를 노출하지 않는다 — 독일어는 관리자 패널 전용(계정 페이지의
+   전용 스위치)으로만 제공된다. app.js의 헤더 렌더링은 이 배열을 사용해야 한다(LANGS 전체가 아님). */
+const PUBLIC_LANGS = ["ko", "en", "ja"];
+const LANG_LABEL = { ko: "한국어", en: "English", ja: "日本語", de: "Deutsch" };
 
 function getLang() {
   try {
@@ -58,6 +61,15 @@ const I18N = {
     en: "Zip hoodie preview — reflects the selected color and zip charm",
     ja: "ジップフーディーのプレビュー — 選択したカラーとジップチャームを反映",
   },
+  "크롭 후드집업 미리보기 — 선택한 컬러와 지퍼 참이 반영됩니다": {
+    en: "Crop zip hoodie preview — reflects the selected color and zip charm",
+    ja: "クロップジップフーディーのプレビュー — 選択したカラーとジップチャームを反映",
+  },
+  "본문으로 건너뛰기": { en: "Skip to content", ja: "本文へスキップ" },
+  "내 계정": { en: "My Account", ja: "マイページ", de: "Mein Konto" },
+  "상품 문의": { en: "Product Q&A", ja: "商品に関するお問い合わせ" },
+  "주문 조회": { en: "Track Order", ja: "注文照会" },
+  "반품 · 교환 신청": { en: "Returns & Exchanges", ja: "返品・交換申請" },
 
   /* ---------- 홈 ---------- */
   "Reiten — 독일어로 '타다'": { en: "Reiten — German for 'to ride'", ja: "Reiten — ドイツ語で「乗る」" },
@@ -136,7 +148,7 @@ const I18N = {
     en: "— Exchanges/returns aren't possible if the item shows signs of wear/washing or the tag has been removed.",
     ja: "— 着用・洗濯の跡がある場合やタグを外した場合は交換・返品が難しくなります。",
   },
-  "컬러": { en: "Color", ja: "カラー" },
+  "컬러": { en: "Color", ja: "カラー", de: "Farbe" },
   "사이즈": { en: "Size", ja: "サイズ" },
   "{name} · {size} 담았습니다": { en: "Added {name} · {size} to cart", ja: "{name}・{size}をカートに追加しました" },
 
@@ -224,7 +236,7 @@ const I18N = {
   "대표자": { en: "CEO", ja: "代表者" },
   "사업장 주소": { en: "Business Address", ja: "事業所住所" },
   "연락처": { en: "Contact", ja: "連絡先" },
-  "이메일": { en: "Email", ja: "メール" },
+  "이메일": { en: "Email", ja: "メール", de: "E-Mail" },
 
   /* ---------- Cart / Order ---------- */
   "장바구니가 비어 있습니다.": { en: "Your cart is empty.", ja: "カートは空です。" },
@@ -274,7 +286,7 @@ const I18N = {
   "입력값을 확인해 주세요": { en: "Please check your entries", ja: "入力内容をご確認ください" },
   "장바구니가 비어 있습니다": { en: "Your cart is empty", ja: "カートは空です" },
   "처리 중…": { en: "Processing…", ja: "処理中…" },
-  "삭제": { en: "Remove", ja: "削除" },
+  "삭제": { en: "Remove", ja: "削除", de: "Löschen" },
   "개당 {price}": { en: "{price} each", ja: "1点あたり {price}" },
 
   /* ---------- Order complete ---------- */
@@ -389,12 +401,43 @@ const I18N = {
   "핏 : 여유 있는 크롭 (남녀공용)": { en: "Fit: Relaxed crop (unisex)", ja: "フィット：ゆったりクロップ（男女兼用）" },
   "부자재 : 립 조직 밑단": { en: "Trims: Ribbed hem", ja: "付属：リブ編みの裾" },
 
+  "리플렉트 크롭 집업 후디": { en: "Reflect Crop Zip Hoodie", ja: "リフレクトクロップジップフーディー" },
+  "숏 기장 지퍼 집업 · 지퍼 참 커스텀 가능": { en: "Cropped zip hoodie · zip charm customizable", ja: "ショート丈ジップ・ジップチャームカスタム可能" },
+  "탱크에 엎드린 자세에서 밑단이 말려 올라가지 않도록 앞뒤 기장 차를 둔 크롭 집업입니다. 지퍼 슬라이더에 참(charm)을 달 수 있고, 소매에는 리플렉티브 스크립트 로고가 들어갑니다.": {
+    en: "A crop zip hoodie with a front-back length difference so the hem doesn't ride up when leaning over the tank. Hang a charm on the zip slider, and the sleeve carries a reflective script logo.",
+    ja: "タンクに伏せた姿勢でも裾がまくれ上がらないよう、前後の丈に差をつけたクロップジップフーディー。ジップスライダーにチャームを付けられ、袖にはリフレクティブスクリプトロゴが入ります。",
+  },
+  "부자재 : YKK 양방향 지퍼 · 립 조직 밑단 · 참(charm) 탈부착 가능": { en: "Trims: YKK two-way zipper · ribbed hem · charm attaches/detaches", ja: "付属：YKK両開きジッパー・リブ編みの裾・チャーム着脱可能" },
+
+  "리플렉트 레이튼 후디": { en: "Reflect Reiten Hoodie", ja: "リフレクトレイテンフーディー" },
+  "Reiten 워드마크 스카치 전사 · 백 프린트": { en: "Reiten wordmark Scotch transfer · back print", ja: "Reitenワードマーク スコッチ転写・バックプリント" },
+  "등판 전체에 브랜드 워드마크 'Reiten'을 스카치라이트 리플렉티브 전사로 크게 올린 헤비 후디입니다. 낮에는 무광 실버 레터링으로 보이고, 야간 주행 중 헤드라이트를 받으면 글자 전체가 발광합니다.": {
+    en: "A heavyweight hoodie with the brand wordmark 'Reiten' rendered large across the back in Scotchlite reflective transfer. It reads as matte silver lettering by day, and lights up entirely under headlights during a night ride.",
+    ja: "背面全体にブランドワードマーク「Reiten」を大きくスコッチライト反射転写であしらったヘビーウェイトフーディー。昼はマットシルバーのレタリングに見え、夜間走行中にヘッドライトを受けると文字全体が発光します。",
+  },
+
+  "리플렉트 스타 후디": { en: "Reflect Star Hoodie", ja: "リフレクトスターフーディー" },
+  "트라이벌 스타 스카치 전사 · 백 프린트": { en: "Tribal star Scotch transfer · back print", ja: "トライバルスター スコッチ転写・バックプリント" },
+  "별 모양을 트라이벌 라인으로 옮긴 백 그래픽입니다. 하트 후디와 같은 라인 굵기로 디자인해 시리즈로 매치하기 좋습니다. 어두울수록 라인이 또렷하게 발광합니다.": {
+    en: "A back graphic that renders a star shape as tribal line art. Designed with the same line weight as the Heart Hoodie, so it pairs well as a series. The darker it gets, the more sharply the lines glow.",
+    ja: "星の形をトライバルラインで表現したバックグラフィック。ハートフーディーと同じ線の太さでデザインしており、シリーズとして合わせやすい仕様です。暗いほどラインがくっきりと発光します。",
+  },
+
+  "리플렉트 플레임 핸드 후디": { en: "Reflect Flame Hand Hoodie", ja: "リフレクトフレイムハンドフーディー" },
+  "머플러를 쥔 손 · 플레임 스카치 전사 백 프린트": { en: "Hand gripping the muffler · flame Scotch transfer back print", ja: "マフラーを握る手・フレイム スコッチ転写バックプリント" },
+  "이그저스트 후디의 화염 머플러 그래픽에 그것을 움켜쥔 손을 더한 버전입니다. 라인이 가늘수록 반사 대비가 강해져서, 어두울수록 그림이 또렷해집니다.": {
+    en: "A version of the Exhaust Hoodie's flaming muffler graphic with a hand gripping it added in. The thinner the lines, the stronger the reflective contrast — the darker it gets, the sharper the image.",
+    ja: "エキゾーストフーディーの炎のマフラーグラフィックに、それを握る手を加えたバージョン。線が細いほど反射のコントラストが強くなり、暗いほど絵がくっきり浮かび上がります。",
+  },
+
   "블랙": { en: "Black", ja: "ブラック" },
   "워시드 차콜": { en: "Washed Charcoal", ja: "ウォッシュドチャコール" },
   "크림": { en: "Cream", ja: "クリーム" },
   "스카이 블루": { en: "Sky Blue", ja: "スカイブルー" },
   "포레스트": { en: "Forest", ja: "フォレスト" },
   "클레이": { en: "Clay", ja: "クレイ" },
+  "워시드 카키": { en: "Washed Khaki", ja: "ウォッシュドカーキ" },
+  "머스타드 옐로우": { en: "Mustard Yellow", ja: "マスタードイエロー" },
 
   "사이즈": { en: "Size", ja: "サイズ" },
   "총장": { en: "Length", ja: "着丈" },
@@ -436,7 +479,7 @@ const I18N = {
   "REITEN을 입어본 분들의 솔직한 후기입니다.": { en: "Honest reviews from people who've worn REITEN.", ja: "REITENを着用した方々の率直なレビューです。" },
   "아직 등록된 리뷰가 없습니다.": { en: "No reviews yet.", ja: "まだレビューがありません。" },
   "리뷰 남기기": { en: "Write a Review", ja: "レビューを書く" },
-  "상품": { en: "Product", ja: "商品" },
+  "상품": { en: "Product", ja: "商品", de: "Produkte" },
   "별점": { en: "Rating", ja: "評価" },
   '닉네임 <span class="req">*</span>': { en: 'Nickname <span class="req">*</span>', ja: 'ニックネーム <span class="req">*</span>' },
   "닉네임을 입력해 주세요.": { en: "Please enter a nickname.", ja: "ニックネームをご入力ください。" },
@@ -450,6 +493,123 @@ const I18N = {
   "리뷰가 등록되었습니다": { en: "Your review has been posted", ja: "レビューが投稿されました" },
   "리뷰 등록에 실패했습니다": { en: "Failed to post the review", ja: "レビューの投稿に失敗しました" },
   "리뷰 보기": { en: "See reviews", ja: "レビューを見る" },
+  "착용 사진 (선택)": { en: "Photo (optional)", ja: "着用写真（任意）" },
+  "사진 선택": { en: "Choose Photo", ja: "写真を選択" },
+  "선택된 파일 없음": { en: "No file chosen", ja: "ファイルが選択されていません" },
+  "인스타그램 아이디 (선택)": { en: "Instagram handle (optional)", ja: "Instagram ID（任意）" },
+  "@ 없이 아이디만": { en: "Handle only, no @", ja: "@なしのIDのみ" },
+  "인스타그램에서 보기": { en: "View on Instagram", ja: "Instagramで見る" },
+  "도움돼요": { en: "Helpful", ja: "参考になった" },
+
+  /* ---------- 계정 / 로그인 ---------- */
+  "지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.": {
+    en: "This page is currently served statically, so member login isn't available. Run the server/ backend alongside it to enable login.",
+    ja: "現在は静的サイトとして閲覧中のため、会員ログインはご利用いただけません。server/のバックエンドを一緒に起動するとログインできます。",
+  },
+  "로그인": { en: "Log In", ja: "ログイン", de: "Anmelden" },
+  "회원가입": { en: "Sign Up", ja: "会員登録", de: "Registrieren" },
+  "비밀번호": { en: "Password", ja: "パスワード", de: "Passwort" },
+  "비회원으로 주문하셨나요?": { en: "Ordered as a guest?", ja: "会員登録せずにご注文されましたか？", de: "Als Gast bestellt?" },
+  "주문번호로 조회하기": { en: "Look up by order number", ja: "注文番号で照会する", de: "Mit Bestellnummer nachverfolgen" },
+  "이름": { en: "Name", ja: "お名前", de: "Name" },
+  "로그아웃": { en: "Log Out", ja: "ログアウト", de: "Abmelden" },
+  "주문내역": { en: "Order History", ja: "注文履歴", de: "Bestellverlauf" },
+  "아직 주문 내역이 없습니다.": { en: "No orders yet.", ja: "まだ注文履歴がありません。", de: "Noch keine Bestellungen." },
+
+  /* ---------- 주문 조회 ---------- */
+  "회원가입 없이도 주문번호와 연락처만으로 주문 상태를 확인할 수 있습니다.": {
+    en: "Check your order status with just your order number and phone number — no account needed.",
+    ja: "会員登録なしでも、注文番号と連絡先だけでご注文状況を確認できます。",
+  },
+  "주문번호를 입력해 주세요.": { en: "Please enter your order number.", ja: "注文番号をご入力ください。" },
+  "연락처를 입력해 주세요.": { en: "Please enter your phone number.", ja: "連絡先をご入力ください。" },
+  "조회하기": { en: "Look Up", ja: "照会する" },
+  "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요.": {
+    en: "No matching order found. Please double-check your order number and phone number.",
+    ja: "一致する注文が見つかりません。注文番号と連絡先をもう一度ご確認ください。",
+  },
+
+  /* ---------- 상품 Q&A ---------- */
+  "궁금한 점을 남겨주시면 판매자가 직접 답변드립니다.": { en: "Leave your question and the seller will answer directly.", ja: "ご質問を残していただければ、販売者が直接回答いたします。" },
+  "아직 등록된 문의가 없습니다.": { en: "No questions yet.", ja: "まだお問い合わせがありません。" },
+  "문의 남기기": { en: "Ask a Question", ja: "お問い合わせを残す" },
+  "문의 내용을 입력해 주세요.": { en: "Please enter your question.", ja: "お問い合わせ内容をご入力ください。" },
+  "비밀글로 남기기 (판매자와 작성자만 볼 수 있어요)": { en: "Post as private (visible only to you and the seller)", ja: "非公開で投稿する（販売者と投稿者のみ閲覧可能）" },
+  "문의 등록": { en: "Submit Question", ja: "問い合わせを投稿" },
+  "지금은 정적 사이트로만 열람 중이라 문의 등록을 받을 수 없습니다. server/를 함께 실행하면 문의를 남길 수 있습니다.": {
+    en: "This page is currently served statically, so questions can't be submitted. Run the server/ backend alongside it to enable this.",
+    ja: "現在は静的サイトとして閲覧中のため、お問い合わせの投稿はできません。server/のバックエンドを一緒に起動すると投稿できます。",
+  },
+  "판매자 답변": { en: "Seller's Answer", ja: "販売者からの回答" },
+
+  /* ---------- 반품 · 교환 신청 ---------- */
+  "주문번호를 확인한 뒤 신청해 주세요. 접수 후 담당자가 순차적으로 연락드립니다.": {
+    en: "Please check your order number before applying. We'll contact you in the order requests are received.",
+    ja: "注文番号をご確認の上、お申し込みください。受付後、担当者より順次ご連絡いたします。",
+  },
+  "단순변심": { en: "Change of mind", ja: "単純な気持ちの変化" },
+  "사이즈 불만족": { en: "Size doesn't fit", ja: "サイズ不満足" },
+  "불량": { en: "Defective", ja: "不良品" },
+  "오배송": { en: "Wrong item shipped", ja: "誤配送" },
+  "기타": { en: "Other", ja: "その他" },
+  "상세 내용": { en: "Details", ja: "詳細内容" },
+  "교환하실 사이즈, 불량 부위 등을 적어주세요": { en: "e.g. size to exchange to, location of the defect, etc.", ja: "交換希望サイズ、不良箇所などをご記入ください" },
+  "신청하기": { en: "Submit Request", ja: "申請する" },
+  "접수되었습니다.": { en: "Your request has been received.", ja: "受付が完了しました。" },
+  "담당자가 확인 후 입력하신 연락처로 안내드립니다.": { en: "Our team will review it and reach out to the contact number you provided.", ja: "担当者が確認の上、ご入力いただいた連絡先にご案内いたします。" },
+
+  /* ---------- 주문 · 반품 상태 (고객 주문내역 + 관리자 패널 공용) ---------- */
+  "입금대기": { en: "Awaiting Payment", ja: "入金待ち", de: "Zahlung ausstehend" },
+  "입금확인": { en: "Payment Confirmed", ja: "入金確認", de: "Zahlung bestätigt" },
+  "배송중": { en: "Shipping", ja: "配送中", de: "Versand läuft" },
+  "완료": { en: "Completed", ja: "完了", de: "Abgeschlossen" },
+  "취소": { en: "Cancelled", ja: "キャンセル", de: "Storniert" },
+  "접수": { en: "Received", ja: "受付済み", de: "Eingegangen" },
+  "처리중": { en: "Processing", ja: "処理中", de: "In Bearbeitung" },
+  "반려": { en: "Rejected", ja: "却下", de: "Abgelehnt" },
+
+  /* ---------- 관리자 패널 (한국어 / Deutsch 전용 — 동업자용, 사이트 공용 언어 메뉴에는 노출 안 함) ---------- */
+  "관리자 패널": { en: "Admin Panel", ja: "管理者パネル", de: "Admin-Bereich" },
+  "전체 주문": { de: "Alle Bestellungen" },
+  "반품·교환 신청": { de: "Rücksendung & Umtausch" },
+  "재고": { de: "Lagerbestand" },
+  "리뷰": { de: "Bewertungen" },
+  "룩북": { de: "Lookbook" },
+  "택배사 선택": { en: "Select courier", ja: "配送業者を選択", de: "Versanddienst wählen" },
+  "운송장번호": { en: "Tracking number", ja: "追跡番号", de: "Sendungsverfolgungsnummer" },
+  "더 보기": { en: "Load more", ja: "もっと見る", de: "Mehr laden" },
+  "상태를 저장했습니다": { en: "Status saved", ja: "ステータスを保存しました", de: "Status gespeichert" },
+  "배송정보를 저장했습니다": { en: "Shipping info saved", ja: "配送情報を保存しました", de: "Versandinformationen gespeichert" },
+  "새 상품 추가": { de: "Neues Produkt hinzufügen" },
+  "상품 ID (영문 소문자·숫자·하이픈)": { de: "Produkt-ID (Kleinbuchstaben, Zahlen, Bindestrich)" },
+  "영문명": { de: "Name (Englisch)" },
+  "한글명": { de: "Name (Koreanisch)" },
+  "타입 (hoodie / zip / crop)": { de: "Typ (hoodie / zip / crop)" },
+  "카테고리": { de: "Kategorie" },
+  "가격": { de: "Preis" },
+  "배지 (선택)": { de: "Badge (optional)" },
+  "한 줄 설명": { de: "Kurzbeschreibung" },
+  "상세 설명": { de: "Ausführliche Beschreibung" },
+  "상세 정보 (한 줄에 하나씩)": { de: "Details (eine Zeile pro Eintrag)" },
+  "사이즈 (쉼표로 구분, 예: S,M,L,XL)": { de: "Größen (durch Komma getrennt, z. B. S,M,L,XL)" },
+  "품절 사이즈 (쉼표로 구분)": { de: "Ausverkaufte Größen (durch Komma getrennt)" },
+  "사이즈표": { de: "Größentabelle" },
+  "지퍼 참 커스텀 가능": { en: "Zip charm customizable", ja: "ジップチャームカスタム可能", de: "Zipper-Anhänger anpassbar" },
+  "공개 (체크 해제 시 매장에서 숨김)": { de: "Sichtbar (deaktivieren, um im Shop auszublenden)" },
+  "사진 (컬러 선택 순서대로, 최대 4장)": { de: "Fotos (in Reihenfolge der gewählten Farben, max. 4)" },
+  "위 컬러를 먼저 선택하면 그 순서에 맞춰 사진 칸에 컬러명이 표시됩니다.": { de: "Wenn Sie oben zuerst die Farben auswählen, werden die Farbnamen in dieser Reihenfolge bei den Fotofeldern angezeigt." },
+  "상품 저장": { de: "Produkt speichern" },
+  "새 룩북 칸 추가": { de: "Neue Lookbook-Kachel hinzufügen" },
+  "라벨": { de: "Bezeichnung" },
+  "설명 (선택)": { de: "Beschreibung (optional)" },
+  "가로 크기": { de: "Breite" },
+  "가로세로 비율 (예: 16/10)": { de: "Seitenverhältnis (z. B. 16/10)" },
+  "공개 (체크 해제 시 숨김)": { de: "Sichtbar (deaktivieren zum Ausblenden)" },
+  "사진": { de: "Foto" },
+  "저장": { de: "Speichern" },
+  "답변 등록": { de: "Antwort veröffentlichen" },
+  "수정": { de: "Bearbeiten" },
+  "답변을 입력하세요": { de: "Antwort eingeben" },
 
   /* ---------- 라이더 사이즈 가이드 ---------- */
   "보호대 착용 시 사이즈 가이드": { en: "Sizing With Body Armor", ja: "プロテクター着用時のサイズガイド" },

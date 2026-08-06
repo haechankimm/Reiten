@@ -66,7 +66,7 @@
 
   document.getElementById("charm-grid").innerHTML = CHARMS
     .filter(c => c.key !== "none")
-    .map(c => tile(c.image || null, t(c.label), money(CHARM_PRICE), `customizer.html?charm=${encodeURIComponent(c.key)}`))
+    .map(c => tile(c.image || null, t(c.label), CHARM_PRICE ? money(CHARM_PRICE) : t("무료"), `customizer.html?charm=${encodeURIComponent(c.key)}`))
     .join("");
 
   document.getElementById("extra-grid").innerHTML = EXTRAS

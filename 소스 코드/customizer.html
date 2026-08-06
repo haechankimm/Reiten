@@ -99,7 +99,8 @@
             <button class="btn btn--ghost" type="button" id="buy" data-i18n="바로 주문">바로 주문</button>
           </div>
 
-          <div class="notice" style="margin-top:20px">
+          <!-- 참이 무료가 되면서 "참만 구매"를 열어두면 무제한 무료 주문이 가능해져 숨김 처리(요청에 따름) -->
+          <div class="notice" style="margin-top:20px" hidden>
             <b data-i18n="참만 따로 구매">참만 따로 구매</b><br>
             <span data-i18n="이미 REITEN 집업을 갖고 계시다면 참만 구매할 수 있습니다. 개당">이미 REITEN 집업을 갖고 계시다면 참만 구매할 수 있습니다. 개당</span> <span id="charm-price-1"></span>
             <button class="btn btn--line btn--sm" type="button" id="add-charm" style="margin-top:12px" data-i18n="참만 담기">참만 담기</button>
@@ -223,7 +224,7 @@
     el("sum-base").textContent = t(state.base.nameKo);
     el("sum-base-v").textContent = money(state.base.price);
     el("sum-charm").textContent = state.charm === "none" ? t("지퍼 참 (선택 안 함)") : t("지퍼 참 — {charm}", { charm: t(getCharm(state.charm).label) });
-    el("sum-charm-v").textContent = charmCost() ? money(charmCost()) : "—";
+    el("sum-charm-v").textContent = state.charm === "none" ? "—" : t("무료");
     el("sum-extras-v").textContent = extrasCost() ? money(extrasCost()) : "—";
     el("sum-total").textContent = money(unitPrice() * state.qty);
   }
@@ -331,7 +332,7 @@
     <button class="charm-btn" type="button" data-k="${c.key}" data-reveal="${i * 40}" style="padding:20px 10px 14px">
       <span style="display:block;width:56px">${charmSVG(c.key, "silver", { attrs: 'style="width:56px;height:56px"' })}</span>
       <small style="font-size:12px;color:var(--ink)">${esc(t(c.label))}</small>
-      <small>${money(CHARM_PRICE)}</small>
+      <small>${CHARM_PRICE ? money(CHARM_PRICE) : t("무료")}</small>
     </button>`).join("");
   el("catalogue").querySelectorAll(".charm-btn").forEach(b =>
     b.addEventListener("click", () => {
@@ -341,8 +342,8 @@
     })
   );
 
-  el("charm-price-1").textContent = money(CHARM_PRICE);
-  el("charm-price-2").textContent = money(CHARM_PRICE);
+  el("charm-price-1").textContent = CHARM_PRICE ? money(CHARM_PRICE) : t("무료");
+  el("charm-price-2").textContent = CHARM_PRICE ? money(CHARM_PRICE) : t("무료");
 
   paint();
   renderFooter();
