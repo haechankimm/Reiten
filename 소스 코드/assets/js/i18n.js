@@ -682,6 +682,8 @@ const I18N = {
   "저장했습니다": { de: "Gespeichert" },
   "이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Diese Lookbook-Kachel löschen? Das kann nicht rückgängig gemacht werden." },
   "삭제했습니다": { de: "Gelöscht" },
+  "로그인이 만료되었습니다. 다시 로그인해 주세요.": { de: "Anmeldung abgelaufen. Bitte melden Sie sich erneut an." },
+  "요청이 실패했습니다": { de: "Anfrage fehlgeschlagen" },
 
   /* ---------- 라이더 사이즈 가이드 ---------- */
   "보호대 착용 시 사이즈 가이드": { en: "Sizing With Body Armor", ja: "プロテクター着用時のサイズガイド" },

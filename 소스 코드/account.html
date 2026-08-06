@@ -355,14 +355,28 @@
     b.addEventListener("click", () => setLang(b.dataset.adminLang));
   });
 
+  /* 실패해도 이유를 숨기지 않는다 — 세션 만료(401)와 서버가 알려준 구체적인 에러 메시지를
+     구분해서 보여줘야 "저장에 실패했습니다"만 반복되는 상황을 디버깅할 수 있다. */
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
-    if (!token) return null;
+    if (!token) {
+      toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
+      return null;
+    }
     const res = await fetch(path, {
       ...opts,
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, ...(opts && opts.headers) },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401) {
+        toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
+      } else {
+        let message = "";
+        try { message = (await res.json()).error || ""; } catch (e) {}
+        toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
+      }
+      return null;
+    }
     return res.json();
   }
 
@@ -796,7 +810,7 @@
         ? await adminFetch(`/api/admin/products/${encodeURIComponent(pfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
         : await adminFetch("/api/admin/products", { method: "POST", body: JSON.stringify({ id, ...body }) });
 
-      if (!result) { toast(t("저장에 실패했습니다")); return; }
+      if (!result) return;
       toast(t("상품을 저장했습니다"));
       resetProductForm();
       paintAdminProducts();
@@ -949,7 +963,7 @@
         ? await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
         : await adminFetch("/api/admin/lookbook", { method: "POST", body: JSON.stringify(body) });
 
-      if (!result) { toast(t("저장에 실패했습니다")); return; }
+      if (!result) return;
       toast(t("저장했습니다"));
       resetLookbookForm();
       paintAdminLookbook();
