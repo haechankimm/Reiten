@@ -32,19 +32,36 @@ async function getSupabaseClient() {
   return _reitenSupabasePromise;
 }
 
+/* 로그인 세션은 기본적으로 localStorage에 저장되어 브라우저를 껐다 켜도 유지되고,
+   supabase-js가 백그라운드 타이머로 만료 전에 자동 갱신한다. 다만 브라우저가 비활성
+   탭의 타이머를 늦추면(백그라운드 throttling) 그 자동 갱신이 늦게 돌아 잠깐 만료된
+   토큰이 쓰일 수 있다 — 그래서 세션을 쓰기 직전에 한 번 더 만료 여부를 확인해 필요하면
+   즉시 갱신한다. getAccessToken/getCurrentProfile이 공통으로 이 헬퍼를 거친다. */
+async function getFreshSession(client) {
+  const { data } = await client.auth.getSession();
+  let session = data && data.session;
+  if (!session) return null;
+
+  const expiresInMs = (session.expires_at || 0) * 1000 - Date.now();
+  if (expiresInMs < 60_000) {
+    const { data: refreshed } = await client.auth.refreshSession();
+    if (refreshed && refreshed.session) session = refreshed.session;
+  }
+  return session;
+}
+
 async function getAccessToken() {
   const client = await getSupabaseClient();
   if (!client) return null;
-  const { data } = await client.auth.getSession();
-  return data && data.session ? data.session.access_token : null;
+  const session = await getFreshSession(client);
+  return session ? session.access_token : null;
 }
 
 /* 로그인 상태면 { id, email, name, role }, 아니면 null */
 async function getCurrentProfile() {
   const client = await getSupabaseClient();
   if (!client) return null;
-  const { data } = await client.auth.getSession();
-  const session = data && data.session;
+  const session = await getFreshSession(client);
   if (!session) return null;
 
   const { data: profile } = await client
