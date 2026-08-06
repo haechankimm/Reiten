@@ -12,6 +12,37 @@
 
 ---
 
+## 0. 현재 배포 상태 (다음 작업 전에 이 섹션부터 읽으세요)
+
+> 이 섹션은 실제 운영 환경(GitHub·Render·Supabase·도메인)이 어디까지 설정됐는지 기록해두는
+> 곳입니다. Claude와의 대화는 세션이 바뀌면 이전 대화 내용을 기억하지 못하므로, "지금 뭐가
+> 되어 있고 뭐가 안 되어 있는지"는 대화가 아니라 **이 섹션을 최신 상태로 유지하는 것**으로
+> 인수인계하세요. 작업할 때마다 이 섹션을 업데이트해 주세요.
+
+| 항목 | 상태 |
+|---|---|
+| **GitHub** | `https://github.com/haechankimm/Reiten`, `main` 브랜치. 로컬에서 push하려면 **GitHub Desktop**으로 해야 함(터미널 `git push`는 이 컴퓨터에 인증정보가 없어서 항상 실패함 — GitHub Desktop 열어서 Push origin 클릭) |
+| **Render** | Web Service 이름 `Reiten`, Root Directory `server`, `main` 브랜치에 연결되어 **push할 때마다 자동 재배포**. 기본 주소 `https://reiten.onrender.com`. 무료 플랜이라 무활동 시 슬립됨(첫 방문자 30~50초 지연) |
+| **도메인** | `reiten.kr` (후이즈도메인에서 구매). Render Custom Domain 연결 및 DNS 설정 **진행 중** — 완료 여부는 실제로 `https://reiten.kr` 접속해서 확인 필요 |
+| **Supabase** | 프로젝트 URL `https://oyzqsdcstliknqlmfejr.supabase.co`. 키 값은 로컬 `server/.env`와 Render 환경변수에 있음(레포에는 안 올라감) |
+| **관리자 계정** | `haechankimm@gmail.com` → `profiles.role = 'admin'`으로 승격 완료. 새 관리자를 추가하려면: ① 해당 사람이 `account.html`에서 회원가입 → ② Supabase 대시보드 SQL Editor에서 `update profiles set role = 'admin' where id = '해당 UUID';` |
+| **사업자 정보** | `assets/js/data.js`의 `SITE.biz` 전부 채움(상호 Reiten · 대표 김해찬 · 사업자등록번호 154-44-01222 · 통신판매업신고 제-2026-용인기흥-00638 호 · 주소 · 전화번호 010-9399-6861). **`privacy.html`(개인정보처리방침)·`terms.html`(이용약관) 페이지는 아직 없음** — 전자상거래법상 공개 판매 전 반드시 작성 필요 |
+| **참(charm)** | 가격 0원(무료)으로 변경됨. "이미 집업이 있으면 참만 구매" 기능은 무료 상품 무제한 주문 악용 우려로 숨김 처리(코드는 남아있어 필요시 재활성화 가능) |
+| **다국어** | 고객 화면: 한국어/English/日本語(헤더에서 전환). 관리자 패널: 한국어/Deutsch(계정 페이지의 관리자 패널 안쪽에서만 전환 — 독일인 동업자용, 헤더 언어 메뉴에는 안 나옴) |
+| **비밀번호 재설정** | 계정 페이지에 이메일 링크 방식으로 구현됨(Supabase Auth 내장 기능 사용). 동작하려면 Supabase 대시보드 **Authentication → URL Configuration → Redirect URLs**에 실제 도메인이 등록돼 있어야 함 — **진행 중, 아직 미완료** |
+
+### 지금 막혀 있는 것 (다음에 이어서 할 일)
+1. Supabase Redirect URLs에 `https://reiten.kr/account.html`, `https://reiten.kr/**` 등록 (형식은 반드시 `https://`부터, 도메인만 넣으면 에러남)
+2. Render Custom Domain에 `reiten.kr` 연결 + 후이즈도메인 DNS 레코드 설정
+3. `privacy.html` / `terms.html` 작성
+4. (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
+
+### 관리자 패널 변경 vs 코드 변경 — 반영되는 방식이 다릅니다
+- **관리자 패널(상품·재고·룩북·리뷰 승인 등)에서 하는 수정**은 Supabase 데이터베이스 변경입니다. 사이트가 켜져 있는 한 새로고침만 해도 바로 반영되고, 이건 어떤 대화 세션에서 하든 항상 동일하게 즉시 반영됩니다.
+- **코드 자체를 고치는 작업**(디자인·기능·문구 등)은 파일 수정 → git commit → GitHub push(GitHub Desktop) → Render 자동 재배포 순서를 거쳐야 실제 사이트에 반영됩니다. 이 절차는 대화 세션이 바뀌어도 동일하지만, 새 세션의 Claude는 이 대화를 기억하지 못하므로 무엇이 되어 있고 안 되어 있는지는 이 README(특히 이 0번 섹션)를 통해서만 전달됩니다.
+
+---
+
 ## 목차
 
 1. [빠른 시작](#1-빠른-시작)
@@ -974,11 +1005,15 @@ npm test
 
 ### 배포 전 체크리스트
 
-- [ ] `data.js`의 `SITE.biz` · `SITE.order` 자리표시자를 전부 실제 값으로 교체
-- [ ] 개인정보처리방침 · 이용약관 페이지 작성
+> 실제 배포 진행 상태는 [0번 섹션](#0-현재-배포-상태-다음-작업-전에-이-섹션부터-읽으세요)을 참고하세요.
+
+- [x] `data.js`의 `SITE.biz`(사업자정보) 전부 실제 값으로 교체
+- [ ] `data.js`의 `SITE.order.kakao` · `SITE.order.instagram` 자리표시자 교체(카카오톡 채널·인스타그램 계정 개설 후)
+- [ ] 개인정보처리방침(`privacy.html`) · 이용약관(`terms.html`) 페이지 작성
 - [ ] 상품 가격 · 재고(`soldOut`) 최종 확인
 - [x] 이미지 WebP 최적화
 - [ ] 실제 기기(아이폰/안드로이드)에서 주문 흐름 1회 테스트
-- [ ] `sitemap.xml` · `robots.txt` · OG 이미지 추가
-- [ ] 파일 수정 후에는 **호스팅에 폴더를 다시 올려야** 반영됩니다(자동 배포 아님) — 재배포 후
-      브라우저 강력 새로고침(Cmd/Ctrl+Shift+R)까지 확인하세요
+- [x] `sitemap.xml` · `robots.txt` 추가 (OG 이미지는 아직)
+- [x] GitHub(`haechankimm/Reiten`)와 Render를 연결해뒀다면, 이제는 **push만 하면 자동 재배포**됩니다
+      (Netlify/Cloudflare Pages 등 정적 호스팅에 별도로 폴더를 올리는 방식이라면 그때는 재배포 후
+      브라우저 강력 새로고침(Cmd/Ctrl+Shift+R)까지 확인하세요)
