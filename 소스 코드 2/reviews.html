@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reviews — REITEN</title>
+<meta name="description" content="REITEN을 입어본 분들의 상품 후기.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Reviews</p>
+      <h1 class="h-xl" style="margin-top:12px" data-reveal="60" data-i18n="상품 리뷰">상품 리뷰</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-reveal="100" data-i18n="REITEN을 입어본 분들의 솔직한 후기입니다.">
+        REITEN을 입어본 분들의 솔직한 후기입니다.
+      </p>
+
+      <div class="chips" style="margin-top:30px" id="filters" data-reveal="140"></div>
+      <div class="chips" style="margin-top:14px" id="sorts" data-reveal="160"></div>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div id="list" style="display:grid;gap:16px;max-width:70ch"></div>
+      <div id="empty" class="empty" hidden>
+        <p class="lede" data-i18n="아직 등록된 리뷰가 없습니다.">아직 등록된 리뷰가 없습니다.</p>
+      </div>
+
+      <h2 class="h-md" style="margin-top:56px" data-i18n="리뷰 남기기">리뷰 남기기</h2>
+      <div id="form-wrap" style="margin-top:18px;max-width:56ch">
+        <form id="review-form" novalidate>
+          <div class="field">
+            <label for="r-product" data-i18n="상품">상품</label>
+            <select id="r-product" name="product" required></select>
+          </div>
+          <div class="field">
+            <label data-i18n="별점">별점</label>
+            <div class="chips" id="r-rating"></div>
+          </div>
+          <div class="field">
+            <label for="r-name" data-i18n-html data-i18n='닉네임 <span class="req">*</span>'>닉네임 <span class="req">*</span></label>
+            <input id="r-name" name="name" maxlength="40" required>
+            <p class="err" data-i18n="닉네임을 입력해 주세요.">닉네임을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="r-comment" data-i18n-html data-i18n='후기 내용 <span class="req">*</span>'>후기 내용 <span class="req">*</span></label>
+            <textarea id="r-comment" name="comment" maxlength="1000" required></textarea>
+            <p class="err" data-i18n="후기 내용을 입력해 주세요.">후기 내용을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="r-photo" data-i18n="착용 사진 (선택)">착용 사진 (선택)</label>
+            <div class="upload-row">
+              <label for="r-photo" class="upload-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                <span data-i18n="사진 선택">사진 선택</span>
+              </label>
+              <input id="r-photo" name="photo" type="file" accept="image/*" class="upload-input">
+              <span class="small upload-filename" id="r-photo-name" data-i18n="선택된 파일 없음">선택된 파일 없음</span>
+            </div>
+            <img id="r-photo-preview" class="upload-preview" alt="" hidden>
+          </div>
+          <div class="field">
+            <label for="r-insta" data-i18n="인스타그램 아이디 (선택)">인스타그램 아이디 (선택)</label>
+            <input id="r-insta" name="instagram" placeholder="@ 없이 아이디만" data-i18n-attr="placeholder:@ 없이 아이디만">
+          </div>
+          <button class="btn" type="submit" id="r-submit" data-i18n="리뷰 등록">리뷰 등록</button>
+        </form>
+        <div class="notice" id="no-server-notice" hidden style="margin-top:8px">
+          <span data-i18n="지금은 정적 사이트로만 열람 중이라 리뷰 등록을 받을 수 없습니다. server/를 함께 실행하면 리뷰를 남길 수 있습니다.">
+            지금은 정적 사이트로만 열람 중이라 리뷰 등록을 받을 수 없습니다. server/를 함께 실행하면 리뷰를 남길 수 있습니다.
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  (async () => {
+  await loadProducts();
+
+  const el = (id) => document.getElementById(id);
+  const filterProduct = qs("product");
+  let serverUp = false;
+  let reviews = REVIEWS;
+  let activeFilter = filterProduct && PRODUCTS.some(p => p.id === filterProduct) ? filterProduct : "all";
+  let rating = 5;
+
+  const SORTS = [
+    { key: "latest", label: "최신순" },
+    { key: "rating-desc", label: "별점 높은순" },
+    { key: "rating-asc", label: "별점 낮은순" },
+    { key: "helpful", label: "인기순" },
+  ];
+  let activeSort = "latest";
+
+  const LIKED_KEY = "reiten_liked_reviews";
+  function getLiked() {
+    try { return JSON.parse(localStorage.getItem(LIKED_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function markLiked(id) {
+    const liked = getLiked();
+    if (!liked.includes(id)) {
+      liked.push(id);
+      try { localStorage.setItem(LIKED_KEY, JSON.stringify(liked)); } catch (e) {}
+    }
+  }
+
+  function sortReviews(list) {
+    const sorted = list.slice();
+    if (activeSort === "rating-desc") sorted.sort((a, b) => b.rating - a.rating || new Date(b.at) - new Date(a.at));
+    else if (activeSort === "rating-asc") sorted.sort((a, b) => a.rating - b.rating || new Date(b.at) - new Date(a.at));
+    else if (activeSort === "helpful") sorted.sort((a, b) => (b.helpfulCount || 0) - (a.helpfulCount || 0) || new Date(b.at) - new Date(a.at));
+    else sorted.sort((a, b) => new Date(b.at) - new Date(a.at));
+    return sorted;
+  }
+
+  function paintSorts() {
+    el("sorts").innerHTML = SORTS.map(s => `
+      <button class="chip" type="button" data-sort="${s.key}" aria-pressed="${s.key === activeSort}">
+        ${esc(t(s.label))}
+      </button>`).join("");
+    el("sorts").querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => { activeSort = b.dataset.sort; paint(); }));
+  }
+
+  function productName(id) {
+    if (id === "general") return t("전체 상품");
+    const p = getProduct(id);
+    return p ? t(p.nameKo) : id;
+  }
+
+  function paintFilters() {
+    const cats = ["all", "general", ...PRODUCTS.map(p => p.id)];
+    el("filters").innerHTML = cats.map(id => `
+      <button class="chip" type="button" data-id="${id}" aria-pressed="${id === activeFilter}">
+        ${id === "all" ? esc(t("전체")) : esc(productName(id))}
+      </button>`).join("");
+    el("filters").querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => { activeFilter = b.dataset.id; paint(); }));
+  }
+
+  function stars(n) {
+    return "★".repeat(n) + "☆".repeat(5 - n);
+  }
+
+  function paintList() {
+    const filtered = activeFilter === "all" ? reviews : reviews.filter(r => r.productId === activeFilter);
+    const list = sortReviews(filtered);
+    const liked = getLiked();
+    el("list").innerHTML = list.map(r => `
+      <div class="panel" data-reveal data-review-id="${esc(r.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(r.name)}</b>
+          <span class="small tnum">${new Date(r.at).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US")}</span>
+        </div>
+        <div style="margin-top:6px;color:var(--ink);letter-spacing:.05em">${stars(r.rating)}</div>
+        <div class="small" style="margin-top:6px">${esc(productName(r.productId))}</div>
+        <p style="margin-top:10px">${esc(r.comment)}</p>
+        ${r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="" loading="lazy" style="margin-top:12px;max-width:220px;border-radius:8px;display:block">` : ""}
+        ${r.instagramHandle ? `
+          <a href="https://instagram.com/${esc(r.instagramHandle)}" target="_blank" rel="noopener noreferrer" class="insta-link" title="${esc(t("인스타그램에서 보기"))}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1"/></svg>
+            <span data-i18n="인스타그램에서 보기">${esc(t("인스타그램에서 보기"))}</span> · @${esc(r.instagramHandle)}
+          </a>` : ""}
+        <div>
+          <button type="button" class="helpful-btn" data-id="${esc(r.id)}" aria-pressed="${liked.includes(r.id)}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3Zm0 0 4.5-8a2 2 0 0 1 3.6 1.7L14 9h4.5a2 2 0 0 1 2 2.3l-1.3 8A2 2 0 0 1 17.2 21H7"/></svg>
+            <span data-i18n="도움돼요">${esc(t("도움돼요"))}</span> (${r.helpfulCount || 0})
+          </button>
+        </div>
+      </div>`).join("");
+    el("empty").hidden = list.length > 0;
+
+    el("list").querySelectorAll(".helpful-btn").forEach(b =>
+      b.addEventListener("click", () => onHelpfulClick(b.dataset.id)));
+
+    initReveal();
+  }
+
+  async function onHelpfulClick(id) {
+    if (getLiked().includes(id)) return;
+    const btn = el("list").querySelector(`.helpful-btn[data-id="${id}"]`);
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`/api/reviews/${encodeURIComponent(id)}/helpful`, { method: "POST" });
+      if (!res.ok) throw new Error("failed");
+      const { helpfulCount } = await res.json();
+      const r = reviews.find(x => x.id === id);
+      if (r) r.helpfulCount = helpfulCount;
+      markLiked(id);
+      paintList();
+    } catch (err) {
+      toast(t("처리에 실패했습니다"));
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function paintRatingChips() {
+    el("r-rating").innerHTML = [1, 2, 3, 4, 5].map(n => `
+      <button class="chip" type="button" data-n="${n}" aria-pressed="${n === rating}">${stars(n)}</button>
+    `).join("");
+    el("r-rating").querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => { rating = Number(b.dataset.n); paintRatingChips(); }));
+  }
+
+  function paint() {
+    paintFilters();
+    paintSorts();
+    paintList();
+  }
+
+  el("r-product").innerHTML = ["general", ...PRODUCTS.map(p => p.id)]
+    .map(id => `<option value="${id}">${esc(productName(id))}</option>`).join("");
+  if (filterProduct && PRODUCTS.some(p => p.id === filterProduct)) el("r-product").value = filterProduct;
+  paintRatingChips();
+
+  el("r-photo").addEventListener("change", () => {
+    const file = el("r-photo").files[0];
+    el("r-photo-name").textContent = file ? file.name : t("선택된 파일 없음");
+    if (file) {
+      el("r-photo-preview").src = URL.createObjectURL(file);
+      el("r-photo-preview").hidden = false;
+    } else {
+      el("r-photo-preview").hidden = true;
+    }
+  });
+
+  el("review-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = el("r-name");
+    const comment = el("r-comment");
+    let ok = true;
+    if (!name.value.trim()) { name.setAttribute("aria-invalid", "true"); name.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
+    else { name.setAttribute("aria-invalid", "false"); name.closest(".field").querySelector(".err").classList.remove("on"); }
+    if (!comment.value.trim()) { comment.setAttribute("aria-invalid", "true"); comment.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
+    else { comment.setAttribute("aria-invalid", "false"); comment.closest(".field").querySelector(".err").classList.remove("on"); }
+    if (!ok) return;
+
+    const btn = el("r-submit");
+    btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("productId", el("r-product").value);
+      fd.append("name", name.value.trim());
+      fd.append("rating", rating);
+      fd.append("comment", comment.value.trim());
+      fd.append("instagram", el("r-insta").value.trim());
+      const photoFile = el("r-photo").files[0];
+      if (photoFile) fd.append("photo", photoFile);
+
+      const res = await fetch("/api/reviews", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("failed");
+      // 새 리뷰는 관리자 승인 전까지 공개 목록에 나오지 않으므로(스팸 방지) 화면에 바로 추가하지 않는다.
+      await res.json();
+      name.value = "";
+      comment.value = "";
+      el("r-photo").value = "";
+      el("r-photo-name").textContent = t("선택된 파일 없음");
+      el("r-photo-preview").hidden = true;
+      el("r-insta").value = "";
+      rating = 5;
+      paintRatingChips();
+      toast(t("리뷰가 등록되었습니다. 검수 후 노출됩니다."));
+    } catch (err) {
+      toast(t("리뷰 등록에 실패했습니다"));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  try {
+    const res = await fetch("/api/reviews");
+    if (res.ok) {
+      reviews = await res.json();
+      serverUp = true;
+    }
+  } catch (err) {}
+
+  if (!serverUp) {
+    el("review-form").hidden = true;
+    el("no-server-notice").hidden = false;
+  }
+  paint();
+
+  renderFooter();
+  })();
+</script>
+</body>
+</html>

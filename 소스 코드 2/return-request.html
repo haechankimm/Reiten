@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>반품 · 교환 신청 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Returns</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="반품 · 교환 신청">반품 · 교환 신청</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-i18n="주문번호를 확인한 뒤 신청해 주세요. 접수 후 담당자가 순차적으로 연락드립니다.">
+        주문번호를 확인한 뒤 신청해 주세요. 접수 후 담당자가 순차적으로 연락드립니다.
+      </p>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <form id="return-form" novalidate style="max-width:56ch">
+        <div class="field">
+          <label for="rq-no" data-i18n-html data-i18n='주문번호 <span class="req">*</span>'>주문번호 <span class="req">*</span></label>
+          <input id="rq-no" placeholder="R260801-6041" required>
+          <p class="err" data-i18n="주문번호를 입력해 주세요.">주문번호를 입력해 주세요.</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="rq-name" data-i18n-html data-i18n='이름 <span class="req">*</span>'>이름 <span class="req">*</span></label>
+            <input id="rq-name" autocomplete="name" required>
+            <p class="err" data-i18n="이름을 입력해 주세요.">이름을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="rq-tel" data-i18n-html data-i18n='연락처 <span class="req">*</span>'>연락처 <span class="req">*</span></label>
+            <input id="rq-tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+            <p class="err" data-i18n="연락처를 입력해 주세요.">연락처를 입력해 주세요.</p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="rq-reason" data-i18n-html data-i18n='사유 <span class="req">*</span>'>사유 <span class="req">*</span></label>
+          <select id="rq-reason" required>
+            <option value="단순변심" data-i18n="단순변심">단순변심</option>
+            <option value="사이즈 불만족" data-i18n="사이즈 불만족">사이즈 불만족</option>
+            <option value="불량" data-i18n="불량">불량</option>
+            <option value="오배송" data-i18n="오배송">오배송</option>
+            <option value="기타" data-i18n="기타">기타</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="rq-detail" data-i18n="상세 내용">상세 내용</label>
+          <textarea id="rq-detail" placeholder="교환하실 사이즈, 불량 부위 등을 적어주세요" data-i18n-attr="placeholder:교환하실 사이즈, 불량 부위 등을 적어주세요"></textarea>
+        </div>
+        <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="신청하기">신청하기</button>
+      </form>
+
+      <div id="done" class="notice" hidden style="margin-top:24px;max-width:56ch">
+        <b data-i18n="접수되었습니다.">접수되었습니다.</b>
+        <p class="small" style="margin-top:6px" data-i18n="담당자가 확인 후 입력하신 연락처로 안내드립니다.">담당자가 확인 후 입력하신 연락처로 안내드립니다.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+
+  (async () => {
+    const profile = await getCurrentProfile();
+    if (profile && profile.name) el("rq-name").value = profile.name;
+  })();
+
+  el("return-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const no = el("rq-no");
+    const name = el("rq-name");
+    const tel = el("rq-tel");
+    let ok = true;
+    [
+      [no, no.value.trim()],
+      [name, name.value.trim()],
+      [tel, tel.value.trim()],
+    ].forEach(([field, val]) => {
+      const invalid = !val;
+      field.setAttribute("aria-invalid", String(invalid));
+      field.closest(".field").querySelector(".err")?.classList.toggle("on", invalid);
+      if (invalid) ok = false;
+    });
+    if (!ok) { toast(t("입력값을 확인해 주세요")); return; }
+
+    const btn = el("rq-submit");
+    btn.disabled = true;
+
+    try {
+      const token = await getAccessToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+
+      const res = await fetch("/api/returns", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          orderNo: no.value.trim(),
+          contactName: name.value.trim(),
+          contactTel: tel.value.trim(),
+          reason: el("rq-reason").value,
+          detail: el("rq-detail").value.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("failed");
+
+      el("return-form").hidden = true;
+      el("done").hidden = false;
+    } catch (err) {
+      toast(t("접수에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
+      btn.disabled = false;
+    }
+  });
+
+  renderFooter();
+</script>
+</body>
+</html>

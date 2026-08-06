@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lookbook — REITEN</title>
+<meta name="description" content="REITEN 룩북과 라이딩 필름. 주간과 야간, 두 개의 얼굴을 가진 옷.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Lookbook · Riding Film</p>
+      <h1 class="h-xl" style="margin-top:12px;max-width:16ch" data-reveal="60" data-i18n-html data-i18n="낮과 밤,<br>두 벌처럼 입는 한 벌">
+        낮과 밤,<br>두 벌처럼 입는 한 벌
+      </h1>
+      <p class="lede" style="margin-top:16px;max-width:52ch" data-reveal="100" data-i18n="같은 옷이 조명 아래에서 어떻게 달라지는지 기록합니다. 룩북과 라이딩 필름 스틸은 촬영이 끝나는 대로 이 자리에 채워집니다.">
+        같은 옷이 조명 아래에서 어떻게 달라지는지 기록합니다.
+        룩북과 라이딩 필름 스틸은 촬영이 끝나는 대로 이 자리에 채워집니다.
+      </p>
+
+      <hr class="rule" style="margin:34px 0 40px">
+      <div class="look" id="look"></div>
+
+      <div class="notice" style="margin-top:44px;max-width:56ch">
+        <b data-i18n="촬영 준비 중">촬영 준비 중</b><br>
+        <span data-i18n="아래 칸은 실제 사진이 들어갈 자리입니다. 각 칸의 비율에 맞춰 이미지를 준비해 주세요.">아래 칸은 실제 사진이 들어갈 자리입니다. 각 칸의 비율에 맞춰 이미지를 준비해 주세요.</span>
+        <span class="small">(<code>assets/js/data.js</code> → <code>LOOKBOOK</code> <span data-i18n="배열에">배열에</span> <code>src</code><span data-i18n="를 추가하면 자동으로 채워집니다.">를 추가하면 자동으로 채워집니다.</span>)</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("lookbook.html");
+
+  (async () => {
+    await loadLookbook();
+
+    document.getElementById("look").innerHTML = LOOKBOOK.map((l, i) => `
+      <figure class="${l.span}" data-reveal="${(i % 3) * 70}">
+        ${l.src
+          ? `<div class="shot" style="aspect-ratio:${l.ratio}"><img src="${l.src}" alt="${esc(t(l.label))}" loading="lazy"></div>`
+          : `<div class="ph" style="aspect-ratio:${l.ratio}">
+               <span class="ph__label">${esc(l.ratio.replace("/", " : "))} · ${t("사진 준비중")}</span>
+             </div>`}
+        <figcaption><span>${esc(t(l.label))}</span><span>${esc(t(l.note))}</span></figcaption>
+      </figure>`).join("");
+
+    renderFooter();
+    initReveal();
+    initBeams();
+  })();
+</script>
+</body>
+</html>

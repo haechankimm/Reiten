@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상품 문의 — REITEN</title>
+<meta name="description" content="REITEN 판매자에게 궁금한 점을 물어보세요.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Q&amp;A</p>
+      <h1 class="h-xl" style="margin-top:12px" data-reveal="60" data-i18n="상품 문의">상품 문의</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-reveal="100" data-i18n="궁금한 점을 남겨주시면 판매자가 직접 답변드립니다.">
+        궁금한 점을 남겨주시면 판매자가 직접 답변드립니다.
+      </p>
+
+      <div class="chips" style="margin-top:30px" id="filters" data-reveal="140"></div>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div id="list" style="display:grid;gap:16px;max-width:70ch"></div>
+      <div id="empty" class="empty" hidden>
+        <p class="lede" data-i18n="아직 등록된 문의가 없습니다.">아직 등록된 문의가 없습니다.</p>
+      </div>
+
+      <h2 class="h-md" style="margin-top:56px" data-i18n="문의 남기기">문의 남기기</h2>
+      <div id="form-wrap" style="margin-top:18px;max-width:56ch">
+        <form id="qna-form" novalidate>
+          <div class="field">
+            <label for="q-product" data-i18n="상품">상품</label>
+            <select id="q-product" name="product" required></select>
+          </div>
+          <div class="field">
+            <label for="q-name" data-i18n-html data-i18n='이름 <span class="req">*</span>'>이름 <span class="req">*</span></label>
+            <input id="q-name" name="name" maxlength="40" required>
+            <p class="err" data-i18n="이름을 입력해 주세요.">이름을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="q-question" data-i18n-html data-i18n='문의 내용 <span class="req">*</span>'>문의 내용 <span class="req">*</span></label>
+            <textarea id="q-question" name="question" maxlength="1000" required></textarea>
+            <p class="err" data-i18n="문의 내용을 입력해 주세요.">문의 내용을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label class="checkbox">
+              <input type="checkbox" id="q-secret">
+              <span data-i18n="비밀글로 남기기 (판매자와 작성자만 볼 수 있어요)">비밀글로 남기기 (판매자와 작성자만 볼 수 있어요)</span>
+            </label>
+          </div>
+          <button class="btn" type="submit" id="q-submit" data-i18n="문의 등록">문의 등록</button>
+        </form>
+        <div class="notice" id="no-server-notice" hidden style="margin-top:8px">
+          <span data-i18n="지금은 정적 사이트로만 열람 중이라 문의 등록을 받을 수 없습니다. server/를 함께 실행하면 문의를 남길 수 있습니다.">
+            지금은 정적 사이트로만 열람 중이라 문의 등록을 받을 수 없습니다. server/를 함께 실행하면 문의를 남길 수 있습니다.
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  (async () => {
+  await loadProducts();
+
+  const el = (id) => document.getElementById(id);
+  const filterProduct = qs("product");
+  let serverUp = false;
+  let items = [];
+  let activeFilter = filterProduct && PRODUCTS.some(p => p.id === filterProduct) ? filterProduct : "all";
+
+  function productName(id) {
+    if (id === "general") return t("전체 상품");
+    const p = getProduct(id);
+    return p ? t(p.nameKo) : id;
+  }
+
+  function paintFilters() {
+    const cats = ["all", "general", ...PRODUCTS.map(p => p.id)];
+    el("filters").innerHTML = cats.map(id => `
+      <button class="chip" type="button" data-id="${id}" aria-pressed="${id === activeFilter}">
+        ${id === "all" ? esc(t("전체")) : esc(productName(id))}
+      </button>`).join("");
+    el("filters").querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => { activeFilter = b.dataset.id; paintList(); }));
+  }
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+  }
+
+  function paintList() {
+    const list = activeFilter === "all" ? items : items.filter(q => q.productId === activeFilter);
+    el("list").innerHTML = list.map(q => `
+      <div class="panel" data-reveal>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(q.name)}</b>
+          <span class="small tnum">${fmtDate(q.at)}</span>
+        </div>
+        <div class="small" style="margin-top:6px">${esc(productName(q.productId))} · ${q.status === "답변완료" ? esc(t("답변완료")) : esc(t("답변대기"))}</div>
+        <p style="margin-top:10px">${
+          q.secret && q.question === null
+            ? `🔒 ${esc(t("비밀글입니다."))}`
+            : esc(q.question)
+        }</p>
+        ${q.answer ? `
+          <div class="notice" style="margin-top:12px">
+            <b data-i18n="판매자 답변">판매자 답변</b>
+            <p style="margin-top:6px">${esc(q.answer)}</p>
+          </div>` : ""}
+      </div>`).join("");
+    el("empty").hidden = list.length > 0;
+    initReveal();
+  }
+
+  el("q-product").innerHTML = ["general", ...PRODUCTS.map(p => p.id)]
+    .map(id => `<option value="${id}">${esc(productName(id))}</option>`).join("");
+  if (filterProduct && PRODUCTS.some(p => p.id === filterProduct)) el("q-product").value = filterProduct;
+
+  (async () => {
+    const profile = await getCurrentProfile();
+    if (profile && profile.name) el("q-name").value = profile.name;
+  })();
+
+  el("qna-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = el("q-name");
+    const question = el("q-question");
+    let ok = true;
+    if (!name.value.trim()) { name.setAttribute("aria-invalid", "true"); name.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
+    else { name.setAttribute("aria-invalid", "false"); name.closest(".field").querySelector(".err").classList.remove("on"); }
+    if (!question.value.trim()) { question.setAttribute("aria-invalid", "true"); question.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
+    else { question.setAttribute("aria-invalid", "false"); question.closest(".field").querySelector(".err").classList.remove("on"); }
+    if (!ok) return;
+
+    const btn = el("q-submit");
+    btn.disabled = true;
+    try {
+      const token = await getAccessToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+
+      const res = await fetch("/api/qna", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          productId: el("q-product").value,
+          name: name.value.trim(),
+          question: question.value.trim(),
+          secret: el("q-secret").checked,
+        }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const created = await res.json();
+      items = [created, ...items];
+      question.value = "";
+      el("q-secret").checked = false;
+      paintList();
+      toast(t("문의가 등록되었습니다"));
+    } catch (err) {
+      toast(t("문의 등록에 실패했습니다"));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  (async () => {
+    try {
+      const token = await getAccessToken();
+      const headers = {};
+      if (token) headers.Authorization = "Bearer " + token;
+      const res = await fetch("/api/qna", { headers });
+      if (res.ok) {
+        items = await res.json();
+        serverUp = true;
+      }
+    } catch (err) {}
+
+    if (!serverUp) {
+      el("qna-form").hidden = true;
+      el("no-server-notice").hidden = false;
+    }
+    paintFilters();
+    paintList();
+  })();
+
+  renderFooter();
+  })();
+</script>
+</body>
+</html>

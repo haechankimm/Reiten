@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Charm Gallery — REITEN</title>
+<meta name="description" content="REITEN 지퍼 참 실물 사진 갤러리. 벡터 미리보기가 아닌 실제 제품 사진으로 참을 확인하세요.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Charm Gallery</p>
+      <h1 class="h-xl" style="margin-top:12px" data-reveal="60" data-i18n="참 갤러리">참 갤러리</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-reveal="100" data-i18n="지퍼 참 스튜디오의 벡터 미리보기와 달리, 여기서는 실제 참 사진을 확인할 수 있습니다. 촬영이 끝나는 대로 하나씩 채워집니다.">
+        지퍼 참 스튜디오의 벡터 미리보기와 달리, 여기서는 실제 참 사진을 확인할 수 있습니다.
+        촬영이 끝나는 대로 하나씩 채워집니다.
+      </p>
+      <hr class="rule" style="margin:30px 0 40px">
+
+      <p class="eyebrow" data-reveal data-i18n="지퍼 참 8종">지퍼 참 8종</p>
+      <div class="grid" id="charm-grid" style="margin-top:18px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))"></div>
+
+      <hr class="rule" style="margin:44px 0 40px">
+
+      <p class="eyebrow" data-reveal data-i18n="추가 아이템">추가 아이템</p>
+      <p class="small" style="margin-top:8px;max-width:56ch" data-i18n="인형·비즈 팔찌 등 실물 참입니다. 여러 개 함께 담을 수 있어요.">
+        인형·비즈 팔찌 등 실물 참입니다. 여러 개 함께 담을 수 있어요.
+      </p>
+      <div class="grid" id="extra-grid" style="margin-top:18px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))"></div>
+
+      <div class="notice" style="margin-top:44px;max-width:56ch">
+        <b data-i18n="촬영 준비 중">촬영 준비 중</b><br>
+        <span data-i18n="아래 칸은 실제 사진이 들어갈 자리입니다.">아래 칸은 실제 사진이 들어갈 자리입니다.</span>
+        <span class="small">(<code>assets/js/data.js</code> → <code>CHARMS</code> / <code>EXTRAS</code><span data-i18n="배열에">배열에</span> <code>image</code><span data-i18n="를 추가하면 자동으로 채워집니다.">를 추가하면 자동으로 채워집니다.</span>)</span>
+      </div>
+
+      <p style="margin-top:34px"><a class="btn" href="customizer.html" data-i18n="스튜디오에서 조합하기">스튜디오에서 조합하기</a></p>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  function tile(image, label, priceText, href) {
+    const media = image
+      ? `<div class="card__media"><img src="${image}" alt="${esc(label)}" loading="lazy"></div>`
+      : `<div class="card__media ph"><span class="ph__label">${t("사진 준비중")}</span></div>`;
+    return `
+      <a class="card" href="${href}" data-reveal>
+        ${media}
+        <div class="card__body">
+          <div class="card__name">${esc(label)}</div>
+          <div class="card__price tnum">${priceText}</div>
+        </div>
+      </a>`;
+  }
+
+  document.getElementById("charm-grid").innerHTML = CHARMS
+    .filter(c => c.key !== "none")
+    .map(c => tile(c.image || null, t(c.label), money(CHARM_PRICE), `customizer.html?charm=${encodeURIComponent(c.key)}`))
+    .join("");
+
+  document.getElementById("extra-grid").innerHTML = EXTRAS
+    .map(x => tile(x.image || null, t(x.label), money(EXTRA_PRICE), "customizer.html"))
+    .join("");
+
+  renderFooter();
+  initReveal();
+</script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip Studio — 지퍼 참 만들기 | REITEN</title>
+<meta name="description" content="후드집업 컬러와 지퍼 참(charm)을 골라 실시간으로 조합을 확인하고 그대로 주문하세요.">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow" data-reveal>Zip Charm Studio</p>
+      <h1 class="h-xl" style="margin-top:12px" data-reveal="60" data-i18n="지퍼 참 만들기">지퍼 참 만들기</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-reveal="100" data-i18n-html
+         data-i18n="컬러와 참을 고르면 왼쪽 미리보기에 바로 반영됩니다. <b>라이트</b> 스위치를 켜면 야간 주행 상황에서 어떻게 보이는지 확인할 수 있습니다.">
+        컬러와 참을 고르면 왼쪽 미리보기에 바로 반영됩니다.
+        <b>라이트</b> 스위치를 켜면 야간 주행 상황에서 어떻게 보이는지 확인할 수 있습니다.
+      </p>
+      <hr class="rule" style="margin:30px 0 40px">
+
+      <div class="studio">
+        <!-- ============ 미리보기 ============ -->
+        <div>
+          <div class="stage" id="stage">
+            <div id="preview"></div>
+            <div class="stage__bar">
+              <span class="small" id="stage-caption"></span>
+              <button class="toggle js-light" type="button" aria-pressed="false">
+                <span class="toggle__track"></span>
+                <span data-i18n="라이트">라이트</span>
+              </button>
+            </div>
+          </div>
+          <p class="small" style="margin-top:12px" data-i18n="* 미리보기는 조합 확인용 벡터 이미지입니다. 실제 제품의 색상 · 광택과 차이가 있을 수 있습니다.">
+            * 미리보기는 조합 확인용 벡터 이미지입니다. 실제 제품의 색상 · 광택과 차이가 있을 수 있습니다.
+          </p>
+        </div>
+
+        <!-- ============ 컨트롤 ============ -->
+        <div>
+          <div class="opt" style="margin-top:0">
+            <div class="opt__label"><span>Base</span><b id="base-name"></b></div>
+            <div class="chips" id="bases"></div>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label"><span>Color</span><b id="color-name"></b></div>
+            <div class="color-row" id="colors"></div>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label"><span>Charm</span><b id="charm-name"></b></div>
+            <div class="charm-grid" id="charms"></div>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label"><span>Finish</span><b id="finish-note"></b></div>
+            <div class="chips" id="finishes"></div>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label">
+              <span data-i18n="추가 아이템">추가 아이템</span>
+              <b id="extras-note"></b>
+            </div>
+            <div class="chips" id="extras"></div>
+            <p class="small" style="margin-top:8px" data-i18n="인형·비즈 팔찌 등 실물 참입니다. 여러 개 함께 담을 수 있어요.">
+              인형·비즈 팔찌 등 실물 참입니다. 여러 개 함께 담을 수 있어요.
+            </p>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label"><span>Size</span><b data-i18n="남녀공용 오버핏">남녀공용 오버핏</b></div>
+            <div class="chips" id="sizes"></div>
+          </div>
+
+          <div class="opt">
+            <div class="opt__label"><span>Quantity</span></div>
+            <div class="qty">
+              <button type="button" id="minus" data-i18n-attr="aria-label:수량 줄이기" aria-label="수량 줄이기">−</button>
+              <output id="qty">1</output>
+              <button type="button" id="plus" data-i18n-attr="aria-label:수량 늘리기" aria-label="수량 늘리기">+</button>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary__row"><span id="sum-base">후드집업</span><span class="tnum" id="sum-base-v"></span></div>
+            <div class="summary__row"><span id="sum-charm">지퍼 참</span><span class="tnum" id="sum-charm-v"></span></div>
+            <div class="summary__row"><span id="sum-extras" data-i18n="추가 아이템">추가 아이템</span><span class="tnum" id="sum-extras-v"></span></div>
+            <div class="summary__row total"><span data-i18n="합계">합계</span><span class="tnum" id="sum-total"></span></div>
+          </div>
+
+          <div class="buy-row">
+            <button class="btn" type="button" id="add" data-i18n="장바구니 담기">장바구니 담기</button>
+            <button class="btn btn--ghost" type="button" id="buy" data-i18n="바로 주문">바로 주문</button>
+          </div>
+
+          <div class="notice" style="margin-top:20px">
+            <b data-i18n="참만 따로 구매">참만 따로 구매</b><br>
+            <span data-i18n="이미 REITEN 집업을 갖고 계시다면 참만 구매할 수 있습니다. 개당">이미 REITEN 집업을 갖고 계시다면 참만 구매할 수 있습니다. 개당</span> <span id="charm-price-1"></span>
+            <button class="btn btn--line btn--sm" type="button" id="add-charm" style="margin-top:12px" data-i18n="참만 담기">참만 담기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 참 카탈로그 ============ -->
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <div class="sec__head">
+        <div>
+          <p class="eyebrow">Charm Catalogue</p>
+          <h2 class="h-lg" style="margin-top:10px" data-i18n="참 8종">참 8종</h2>
+        </div>
+        <span class="small" style="text-align:right">
+          <span data-i18n="전 품목 개당">전 품목 개당</span> <span id="charm-price-2"></span> <span data-i18n="· 리플렉티브 실버 / 매트 블랙 / 컬러">· 리플렉티브 실버 / 매트 블랙 / 컬러</span><br>
+          <a class="link-u" href="charms.html" data-i18n="실물 사진으로 보기">실물 사진으로 보기</a>
+        </span>
+      </div>
+      <div class="grid" id="catalogue" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/hoodie.js"></script>
+<script>
+  applyI18n();
+  renderHeader("customizer.html");
+
+  (async () => {
+  await loadProducts();
+
+  const BASES = PRODUCTS.filter(p => p.charmReady);
+
+  const state = {
+    base: BASES.find(b => b.id === qs("id")) || BASES[0],
+    color: null,
+    charm: qs("charm") && getCharm(qs("charm")) ? qs("charm") : "star",
+    finish: "silver",
+    extras: [],
+    size: null,
+    qty: 1,
+    light: false,
+  };
+  state.color = state.base.colors[0];
+  state.size = state.base.sizes[1] || state.base.sizes[0];
+
+  const el = (id) => document.getElementById(id);
+
+  function charmCost() { return state.charm === "none" ? 0 : CHARM_PRICE; }
+  function extrasCost() { return state.extras.length * EXTRA_PRICE; }
+  function unitPrice() { return state.base.price + charmCost() + extrasCost(); }
+
+  function paintPreview() {
+    el("preview").innerHTML = hoodieSVG({
+      colorHex: COLORS[state.color].hex,
+      charmKey: state.charm,
+      finishKey: state.finish,
+      type: state.base.type,
+    });
+    const c = getCharm(state.charm);
+    el("stage-caption").textContent =
+      `${t(state.base.nameKo)} · ${t(COLORS[state.color].label)}` +
+      (state.charm === "none" ? " · " + t("참 없음") : ` · ${t(c.label)} (${t(getFinish(state.finish).label)})`);
+  }
+
+  function paintControls() {
+    // base
+    el("bases").innerHTML = BASES.map(b =>
+      `<button class="chip" type="button" data-b="${b.id}" aria-pressed="${b.id === state.base.id}">${esc(t(b.nameKo))}</button>`
+    ).join("");
+    el("base-name").textContent = money(state.base.price);
+
+    // color
+    el("colors").innerHTML = state.base.colors.map(c =>
+      `<button class="color-dot" type="button" data-c="${c}" aria-pressed="${c === state.color}"
+               aria-label="${esc(t(COLORS[c].label))}" style="background:${COLORS[c].hex}"></button>`
+    ).join("");
+    el("color-name").textContent = t(COLORS[state.color].label);
+
+    // charms
+    el("charms").innerHTML = CHARMS.map(c => `
+      <button class="charm-btn" type="button" data-k="${c.key}" aria-pressed="${c.key === state.charm}">
+        ${c.key === "none"
+          ? `<svg viewBox="0 0 100 120" aria-hidden="true"><path d="M28,44 L72,88 M72,44 L28,88" stroke="currentColor" stroke-width="7" stroke-linecap="round" opacity=".35" fill="none"/></svg>`
+          : charmSVG(c.key, state.finish)}
+        <small>${esc(t(c.label))}</small>
+      </button>`).join("");
+    el("charm-name").textContent = t(getCharm(state.charm).label);
+
+    // finish
+    el("finishes").innerHTML = FINISHES.map(f =>
+      `<button class="chip" type="button" data-f="${f.key}" aria-pressed="${f.key === state.finish}"
+               ${state.charm === "none" ? "disabled" : ""}>${esc(t(f.label))}</button>`
+    ).join("");
+    el("finish-note").textContent = state.charm === "none" ? "—" : t(getFinish(state.finish).note);
+
+    // extras
+    el("extras").innerHTML = EXTRAS.map(x => `
+      <button class="chip" type="button" data-x="${x.key}" aria-pressed="${state.extras.includes(x.key)}">${esc(t(x.label))}</button>
+    `).join("");
+    el("extras-note").textContent = state.extras.length
+      ? t("{n}개 선택", { n: state.extras.length })
+      : "—";
+
+    // size
+    el("sizes").innerHTML = state.base.sizes.map(s => {
+      const out = state.base.soldOut.includes(s);
+      return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""} aria-pressed="${s === state.size}">${s}</button>`;
+    }).join("");
+
+    el("qty").textContent = state.qty;
+
+    // summary
+    el("sum-base").textContent = t(state.base.nameKo);
+    el("sum-base-v").textContent = money(state.base.price);
+    el("sum-charm").textContent = state.charm === "none" ? t("지퍼 참 (선택 안 함)") : t("지퍼 참 — {charm}", { charm: t(getCharm(state.charm).label) });
+    el("sum-charm-v").textContent = charmCost() ? money(charmCost()) : "—";
+    el("sum-extras-v").textContent = extrasCost() ? money(extrasCost()) : "—";
+    el("sum-total").textContent = money(unitPrice() * state.qty);
+  }
+
+  function paint() {
+    paintPreview();
+    paintControls();
+    bind();
+  }
+
+  function bind() {
+    el("bases").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+      state.base = getProduct(b.dataset.b);
+      if (!state.base.colors.includes(state.color)) state.color = state.base.colors[0];
+      if (!state.base.sizes.includes(state.size)) state.size = state.base.sizes[0];
+      paint();
+    }));
+    el("colors").querySelectorAll(".color-dot").forEach(b => b.addEventListener("click", () => {
+      state.color = b.dataset.c; paint();
+    }));
+    el("charms").querySelectorAll(".charm-btn").forEach(b => b.addEventListener("click", () => {
+      state.charm = b.dataset.k; paint();
+    }));
+    el("finishes").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+      state.finish = b.dataset.f; paint();
+    }));
+    el("extras").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+      const k = b.dataset.x;
+      state.extras = state.extras.includes(k)
+        ? state.extras.filter(x => x !== k)
+        : [...state.extras, k];
+      paint();
+    }));
+    el("sizes").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+      state.size = b.dataset.s; paint();
+    }));
+  }
+
+  el("minus").addEventListener("click", () => { state.qty = Math.max(1, state.qty - 1); paintControls(); bind(); });
+  el("plus").addEventListener("click", () => { state.qty = Math.min(99, state.qty + 1); paintControls(); bind(); });
+
+  // 라이트 스위치
+  document.querySelectorAll(".js-light").forEach(btn =>
+    btn.addEventListener("click", () => {
+      state.light = !state.light;
+      btn.setAttribute("aria-pressed", String(state.light));
+      el("stage").classList.toggle("dark", state.light);
+    })
+  );
+
+  // 담기
+  function comboItem() {
+    const opts = [
+      { label: t("컬러"), value: t(COLORS[state.color].label) },
+      { label: t("사이즈"), value: state.size },
+      {
+        label: t("지퍼 참"),
+        value: state.charm === "none" ? t("선택 안 함")
+          : `${t(getCharm(state.charm).label)} · ${t(getFinish(state.finish).label)}`,
+      },
+    ];
+    if (state.extras.length) {
+      opts.push({
+        label: t("추가 아이템"),
+        value: state.extras.map(k => t(EXTRAS.find(x => x.key === k).label)).join(", "),
+      });
+    }
+    return {
+      sig: [state.base.id, state.color, state.size, state.charm, state.finish, ...state.extras].join("|"),
+      productId: state.base.id,
+      name: t(state.base.nameKo),
+      image: state.base.images.find(Boolean) || null,
+      size: state.size,
+      charm: state.charm === "none" ? null : { key: state.charm, finish: state.finish },
+      extras: state.extras,
+      unit: unitPrice(),
+      qty: state.qty,
+      opts,
+    };
+  }
+
+  el("add").addEventListener("click", () => {
+    Cart.add(comboItem());
+    toast(t("조합을 장바구니에 담았습니다"));
+  });
+  el("buy").addEventListener("click", () => { Cart.add(comboItem()); location.href = "cart.html"; });
+
+  el("add-charm").addEventListener("click", () => {
+    if (state.charm === "none") { toast(t("먼저 참을 선택해 주세요")); return; }
+    Cart.add({
+      sig: ["charm", state.charm, state.finish].join("|"),
+      productId: "charm-" + state.charm,
+      name: t("지퍼 참 — {charm}", { charm: t(getCharm(state.charm).label) }),
+      image: null,
+      charm: { key: state.charm, finish: state.finish },
+      unit: CHARM_PRICE,
+      qty: 1,
+      opts: [{ label: t("마감"), value: t(getFinish(state.finish).label) }],
+    });
+    toast(t("참을 장바구니에 담았습니다"));
+  });
+
+  // 카탈로그
+  el("catalogue").innerHTML = CHARMS.filter(c => c.key !== "none").map((c, i) => `
+    <button class="charm-btn" type="button" data-k="${c.key}" data-reveal="${i * 40}" style="padding:20px 10px 14px">
+      <span style="display:block;width:56px">${charmSVG(c.key, "silver", { attrs: 'style="width:56px;height:56px"' })}</span>
+      <small style="font-size:12px;color:var(--ink)">${esc(t(c.label))}</small>
+      <small>${money(CHARM_PRICE)}</small>
+    </button>`).join("");
+  el("catalogue").querySelectorAll(".charm-btn").forEach(b =>
+    b.addEventListener("click", () => {
+      state.charm = b.dataset.k;
+      paint();
+      document.querySelector(".studio").scrollIntoView({ behavior: "smooth", block: "start" });
+    })
+  );
+
+  el("charm-price-1").textContent = money(CHARM_PRICE);
+  el("charm-price-2").textContent = money(CHARM_PRICE);
+
+  paint();
+  renderFooter();
+  initReveal();
+  })();
+</script>
+</body>
+</html>

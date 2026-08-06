@@ -1,0 +1,1048 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 계정 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/img/logo-mark.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Account</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="내 계정">내 계정</h1>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div class="notice" id="no-server-notice" hidden>
+        <span data-i18n="지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.">
+          지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.
+        </span>
+      </div>
+
+      <!-- ============ 비로그인: 로그인/회원가입 ============ -->
+      <div id="auth-view" hidden>
+        <div class="chips" id="auth-tabs">
+          <button class="chip" type="button" data-tab="login" aria-pressed="true" data-i18n="로그인">로그인</button>
+          <button class="chip" type="button" data-tab="signup" aria-pressed="false" data-i18n="회원가입">회원가입</button>
+        </div>
+
+        <form id="login-form" novalidate style="margin-top:24px;max-width:44ch">
+          <div class="field">
+            <label for="li-email" data-i18n="이메일">이메일</label>
+            <input id="li-email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
+            <input id="li-pw" type="password" autocomplete="current-password" required>
+            <p class="err" id="li-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+        </form>
+
+        <p class="small" style="margin-top:18px">
+          <span data-i18n="비회원으로 주문하셨나요?">비회원으로 주문하셨나요?</span>
+          <a href="order-lookup.html" data-i18n="주문번호로 조회하기">주문번호로 조회하기</a>
+        </p>
+
+        <form id="signup-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
+          <div class="field">
+            <label for="su-name" data-i18n="이름">이름</label>
+            <input id="su-name" required>
+          </div>
+          <div class="field">
+            <label for="su-email" data-i18n="이메일">이메일</label>
+            <input id="su-email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="su-pw" data-i18n="비밀번호">비밀번호</label>
+            <input id="su-pw" type="password" autocomplete="new-password" minlength="6" required>
+            <p class="err" id="su-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="su-submit" data-i18n="회원가입">회원가입</button>
+        </form>
+      </div>
+
+      <!-- ============ 로그인 상태 ============ -->
+      <div id="me-view" hidden>
+        <p class="lede" id="me-greeting"></p>
+        <p style="margin-top:10px">
+          <a class="btn" href="return-request.html" data-i18n="반품 · 교환 신청">반품 · 교환 신청</a>
+          <button class="btn" type="button" id="logout" style="margin-left:8px" data-i18n="로그아웃">로그아웃</button>
+        </p>
+
+        <h2 class="h-md" style="margin-top:44px" data-i18n="주문내역">주문내역</h2>
+        <div id="my-orders" style="display:grid;gap:14px;max-width:70ch;margin-top:16px"></div>
+        <div id="my-orders-empty" class="empty" hidden>
+          <p class="lede" data-i18n="아직 주문 내역이 없습니다.">아직 주문 내역이 없습니다.</p>
+        </div>
+
+        <!-- ============ 관리자 전용 (role=admin일 때만) ============ -->
+        <section id="admin-panel" hidden style="margin-top:64px">
+          <hr class="rule" style="margin-bottom:34px">
+          <p class="eyebrow">Admin</p>
+          <h2 class="h-md" style="margin-top:10px" data-i18n="관리자 패널">관리자 패널</h2>
+
+          <div class="chips" id="admin-tabs" style="margin-top:20px">
+            <button class="chip" type="button" data-tab="orders" aria-pressed="true" data-i18n="전체 주문">전체 주문</button>
+            <button class="chip" type="button" data-tab="returns" aria-pressed="false" data-i18n="반품·교환 신청">반품·교환 신청</button>
+            <button class="chip" type="button" data-tab="inventory" aria-pressed="false" data-i18n="재고">재고</button>
+            <button class="chip" type="button" data-tab="qna" aria-pressed="false" data-i18n="Q&A">Q&amp;A</button>
+            <button class="chip" type="button" data-tab="products" aria-pressed="false" data-i18n="상품">상품</button>
+            <button class="chip" type="button" data-tab="reviews" aria-pressed="false" data-i18n="리뷰">리뷰</button>
+            <button class="chip" type="button" data-tab="lookbook" aria-pressed="false" data-i18n="룩북">룩북</button>
+          </div>
+
+          <div id="admin-orders" style="display:grid;gap:12px;max-width:80ch;margin-top:22px"></div>
+          <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+          <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch;margin-top:22px" hidden></div>
+          <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+          <div id="admin-reviews" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+
+          <div id="admin-products" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
+            <div class="panel">
+              <b id="product-form-title" data-i18n="새 상품 추가">새 상품 추가</b>
+              <form id="product-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+                <div class="field">
+                  <label for="pf-id" data-i18n="상품 ID (영문 소문자·숫자·하이픈)">상품 ID (영문 소문자·숫자·하이픈)</label>
+                  <input id="pf-id" required pattern="[a-z0-9-]{2,60}">
+                </div>
+                <div class="field">
+                  <label for="pf-name" data-i18n="영문명">영문명</label>
+                  <input id="pf-name" required>
+                </div>
+                <div class="field">
+                  <label for="pf-nameko" data-i18n="한글명">한글명</label>
+                  <input id="pf-nameko" required>
+                </div>
+                <div class="field">
+                  <label for="pf-type" data-i18n="타입 (hoodie / zip / crop)">타입 (hoodie / zip / crop)</label>
+                  <input id="pf-type" required>
+                </div>
+                <div class="field">
+                  <label for="pf-category" data-i18n="카테고리">카테고리</label>
+                  <input id="pf-category" required>
+                </div>
+                <div class="field">
+                  <label for="pf-price" data-i18n="가격">가격</label>
+                  <input id="pf-price" type="number" min="0" required>
+                </div>
+                <div class="field">
+                  <label for="pf-badge" data-i18n="배지 (선택)">배지 (선택)</label>
+                  <input id="pf-badge">
+                </div>
+                <div class="field">
+                  <label for="pf-short" data-i18n="한 줄 설명">한 줄 설명</label>
+                  <input id="pf-short">
+                </div>
+                <div class="field">
+                  <label for="pf-desc" data-i18n="상세 설명">상세 설명</label>
+                  <textarea id="pf-desc"></textarea>
+                </div>
+                <div class="field">
+                  <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
+                  <textarea id="pf-details"></textarea>
+                </div>
+                <div class="field">
+                  <label data-i18n="컬러">컬러</label>
+                  <div class="chips" id="pf-colors"></div>
+                </div>
+                <div class="field">
+                  <label for="pf-sizes" data-i18n="사이즈 (쉼표로 구분, 예: S,M,L,XL)">사이즈 (쉼표로 구분, 예: S,M,L,XL)</label>
+                  <input id="pf-sizes" placeholder="S,M,L,XL">
+                </div>
+                <div class="field">
+                  <label for="pf-soldout" data-i18n="품절 사이즈 (쉼표로 구분)">품절 사이즈 (쉼표로 구분)</label>
+                  <input id="pf-soldout">
+                </div>
+                <div class="field">
+                  <label for="pf-sizetable" data-i18n="사이즈표">사이즈표</label>
+                  <select id="pf-sizetable">
+                    <option value="hoodie">hoodie</option>
+                    <option value="crop">crop</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="checkbox"><input type="checkbox" id="pf-charmready"><span data-i18n="지퍼 참 커스텀 가능">지퍼 참 커스텀 가능</span></label>
+                </div>
+                <div class="field">
+                  <label class="checkbox"><input type="checkbox" id="pf-active" checked><span data-i18n="공개 (체크 해제 시 매장에서 숨김)">공개 (체크 해제 시 매장에서 숨김)</span></label>
+                </div>
+                <div class="field">
+                  <label data-i18n="사진 (컬러 선택 순서대로, 최대 4장)">사진 (컬러 선택 순서대로, 최대 4장)</label>
+                  <p class="small" style="margin:-4px 0 10px;color:var(--muted)" data-i18n="위 컬러를 먼저 선택하면 그 순서에 맞춰 사진 칸에 컬러명이 표시됩니다.">
+                    위 컬러를 먼저 선택하면 그 순서에 맞춰 사진 칸에 컬러명이 표시됩니다.
+                  </p>
+                  <div id="pf-photos" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
+                  <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="취소">취소</button>
+                </div>
+              </form>
+            </div>
+
+            <div id="products-list" style="display:grid;gap:12px"></div>
+          </div>
+
+          <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
+            <div class="panel">
+              <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
+              <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+                <div class="field">
+                  <label for="lf-label" data-i18n="라벨">라벨</label>
+                  <input id="lf-label" required>
+                </div>
+                <div class="field">
+                  <label for="lf-note" data-i18n="설명 (선택)">설명 (선택)</label>
+                  <input id="lf-note">
+                </div>
+                <div class="field">
+                  <label for="lf-span" data-i18n="가로 크기">가로 크기</label>
+                  <select id="lf-span">
+                    <option value="w4">w4 (1/3)</option>
+                    <option value="w6">w6 (1/2)</option>
+                    <option value="w8">w8 (2/3)</option>
+                    <option value="w12">w12 (전체)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="lf-ratio" data-i18n="가로세로 비율 (예: 16/10)">가로세로 비율 (예: 16/10)</label>
+                  <input id="lf-ratio" placeholder="16/10" required>
+                </div>
+                <div class="field">
+                  <label class="checkbox"><input type="checkbox" id="lf-active" checked><span data-i18n="공개 (체크 해제 시 숨김)">공개 (체크 해제 시 숨김)</span></label>
+                </div>
+                <div class="field">
+                  <label data-i18n="사진">사진</label>
+                  <div id="lf-photo" style="max-width:220px"></div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
+                  <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
+                </div>
+              </form>
+            </div>
+
+            <div id="lookbook-list" style="display:grid;gap:12px"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+  const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
+  const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+  }
+
+  function trackingLine(o) {
+    const courier = COURIERS.find((c) => c.key === o.courier);
+    if (!courier || !o.trackingNo) return "";
+    const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(o.trackingNo));
+    return `<p class="small" style="margin-top:8px">
+      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(courier.label)} ${esc(o.trackingNo)}</a>
+    </p>`;
+  }
+
+  function orderCard(o) {
+    const itemsLine = o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ");
+    return `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(o.no)}</b>
+          <span class="small tnum">${fmtDate(o.at)}</span>
+        </div>
+        <p class="small" style="margin-top:8px">${itemsLine}</p>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-top:10px">
+          <span class="small">${esc(o.status || "입금대기")}</span>
+          <b class="tnum">${money(o.total)}</b>
+        </div>
+        ${trackingLine(o)}
+      </div>`;
+  }
+
+  async function paintMyOrders() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/my/orders", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const orders = await res.json();
+      el("my-orders").innerHTML = orders.map(orderCard).join("");
+      el("my-orders-empty").hidden = orders.length > 0;
+    } catch (e) {}
+  }
+
+  /* ---------- 관리자 패널 ---------- */
+  function switchTabs(tabsId, panelIds) {
+    const tabs = el(tabsId);
+    tabs.querySelectorAll(".chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        tabs.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        Object.keys(panelIds).forEach((key) => (el(panelIds[key]).hidden = key !== b.dataset.tab));
+      })
+    );
+  }
+  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
+
+  async function adminFetch(path, opts) {
+    const token = await getAccessToken();
+    if (!token) return null;
+    const res = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, ...(opts && opts.headers) },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  /* 관리자 목록(주문/반품/Q&A/상품)은 서버가 페이지 단위로 나눠 보내준다.
+     "더 보기"를 누르면 다음 페이지를 이어 붙여서 다시 그린다(항상 전체 배열을 다시 그리므로
+     이벤트 리스너가 중복으로 쌓이지 않는다). */
+  function loadMoreHTML(hasMore, id) {
+    if (!hasMore) return "";
+    return `<div style="text-align:center;margin-top:8px">
+      <button type="button" id="${id}" class="btn btn--sm btn--ghost">${esc(t("더 보기"))}</button>
+    </div>`;
+  }
+
+  const ordersState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function orderCardHTML(o) {
+    return `
+      <div class="panel" data-no="${esc(o.no)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(o.no)}</b>
+          <span class="small tnum">${fmtDate(o.at)}</span>
+        </div>
+        <p class="small" style="margin-top:6px">${esc(o.customer.name)} · ${esc(o.customer.tel)}</p>
+        <p class="small" style="margin-top:4px">${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</p>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px">
+          <select class="admin-order-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <b class="tnum">${money(o.total)}</b>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <select class="admin-order-courier" style="flex:1;min-width:110px">
+            <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
+            ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
+          </select>
+          <input class="admin-order-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}" style="flex:1;min-width:130px">
+          <button type="button" class="btn btn--sm admin-order-tracking-save" data-i18n="저장">저장</button>
+        </div>
+      </div>`;
+  }
+
+  function renderAdminOrders() {
+    const hasMore = ordersState.items.length < ordersState.total;
+    el("admin-orders").innerHTML = ordersState.items.map(orderCardHTML).join("") + loadMoreHTML(hasMore, "admin-orders-more");
+
+    el("admin-orders").querySelectorAll(".admin-order-status").forEach((sel) =>
+      sel.addEventListener("change", async () => {
+        const no = sel.closest("[data-no]").dataset.no;
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: sel.value }),
+        });
+        toast(t("상태를 저장했습니다"));
+      })
+    );
+
+    el("admin-orders").querySelectorAll(".admin-order-tracking-save").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-no]");
+        const no = card.dataset.no;
+        const courier = card.querySelector(".admin-order-courier").value;
+        const trackingNo = card.querySelector(".admin-order-tracking").value.trim();
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ courier, trackingNo }),
+        });
+        toast(t("배송정보를 저장했습니다"));
+      })
+    );
+
+    el("admin-orders-more")?.addEventListener("click", () => paintAdminOrders(true));
+  }
+
+  async function paintAdminOrders(loadMore = false) {
+    ordersState.page = loadMore ? ordersState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/orders?page=${ordersState.page}&pageSize=${ordersState.pageSize}`);
+    if (!result) return;
+    ordersState.total = result.total;
+    ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
+    renderAdminOrders();
+  }
+
+  const returnsState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function returnCardHTML(r) {
+    return `
+      <div class="panel" data-id="${esc(r.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(r.orderNo)}</b>
+          <span class="small tnum">${fmtDate(r.at)}</span>
+        </div>
+        <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
+        <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
+        <div style="margin-top:10px">
+          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+        </div>
+      </div>`;
+  }
+
+  function renderAdminReturns() {
+    const hasMore = returnsState.items.length < returnsState.total;
+    el("admin-returns").innerHTML = returnsState.items.map(returnCardHTML).join("") + loadMoreHTML(hasMore, "admin-returns-more");
+
+    el("admin-returns").querySelectorAll(".admin-return-status").forEach((sel) =>
+      sel.addEventListener("change", async () => {
+        const id = sel.closest("[data-id]").dataset.id;
+        await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: sel.value }),
+        });
+        toast(t("상태를 저장했습니다"));
+      })
+    );
+
+    el("admin-returns-more")?.addEventListener("click", () => paintAdminReturns(true));
+  }
+
+  async function paintAdminReturns(loadMore = false) {
+    returnsState.page = loadMore ? returnsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/returns?page=${returnsState.page}&pageSize=${returnsState.pageSize}`);
+    if (!result) return;
+    returnsState.total = result.total;
+    returnsState.items = loadMore ? returnsState.items.concat(result.items) : result.items;
+    renderAdminReturns();
+  }
+
+  async function paintAdminInventory() {
+    const rows = await adminFetch("/api/admin/inventory");
+    if (!rows) return;
+    el("admin-inventory").innerHTML = rows
+      .map(
+        (r) => `
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center" data-product="${esc(r.productId)}" data-size="${esc(r.size)}">
+        <span class="small">${esc(r.productId)} · ${esc(r.size)}</span>
+        <input type="number" min="0" class="admin-inv-qty" value="${r.qty}" style="width:80px">
+      </div>`
+      )
+      .join("");
+
+    el("admin-inventory").querySelectorAll(".admin-inv-qty").forEach((input) =>
+      input.addEventListener("change", async () => {
+        const row = input.closest("[data-product]");
+        await adminFetch("/api/admin/inventory", {
+          method: "PATCH",
+          body: JSON.stringify({ productId: row.dataset.product, size: row.dataset.size, qty: Number(input.value) }),
+        });
+        toast(t("재고를 저장했습니다"));
+      })
+    );
+  }
+
+  const qnaState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function qnaCardHTML(q) {
+    return `
+      <div class="panel" data-id="${esc(q.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(q.name)}</b>
+          <span class="small tnum">${fmtDate(q.at)}</span>
+        </div>
+        <div class="small" style="margin-top:6px">${esc(q.productId)} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
+        <p style="margin-top:10px">${esc(q.question)}</p>
+        ${
+          q.status === "답변완료"
+            ? `<div class="notice" style="margin-top:12px"><b>${esc(t("답변"))}</b><p style="margin-top:6px">${esc(q.answer)}</p></div>`
+            : `
+          <div class="field" style="margin-top:12px">
+            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}" data-i18n-attr="placeholder:답변을 입력하세요"></textarea>
+          </div>
+          <button type="button" class="btn btn--sm admin-qna-submit" data-i18n="답변 등록">답변 등록</button>`
+        }
+      </div>`;
+  }
+
+  function renderAdminQna() {
+    const hasMore = qnaState.items.length < qnaState.total;
+    el("admin-qna").innerHTML = qnaState.items.map(qnaCardHTML).join("") + loadMoreHTML(hasMore, "admin-qna-more");
+
+    el("admin-qna").querySelectorAll(".admin-qna-submit").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-id]");
+        const answer = card.querySelector(".admin-qna-answer").value.trim();
+        if (!answer) { toast(t("답변 내용을 입력해 주세요.")); return; }
+        btn.disabled = true;
+        await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ answer }),
+        });
+        toast(t("답변을 등록했습니다"));
+        const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+        if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], answer, status: "답변완료" };
+        renderAdminQna();
+      })
+    );
+
+    el("admin-qna-more")?.addEventListener("click", () => paintAdminQna(true));
+  }
+
+  async function paintAdminQna(loadMore = false) {
+    qnaState.page = loadMore ? qnaState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/qna?page=${qnaState.page}&pageSize=${qnaState.pageSize}`);
+    if (!result) return;
+    qnaState.total = result.total;
+    qnaState.items = loadMore ? qnaState.items.concat(result.items) : result.items;
+    renderAdminQna();
+  }
+
+  /* ---------- 리뷰 승인 ---------- */
+  const reviewsState = { page: 0, pageSize: 20, total: 0, items: [] };
+
+  function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+
+  function reviewCardHTML(r) {
+    return `
+      <div class="panel" data-id="${esc(r.id)}">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b>${esc(r.name)}</b>
+          <span class="small tnum">${fmtDate(r.at)}</span>
+        </div>
+        <div style="margin-top:6px;letter-spacing:.05em">${stars(r.rating)}</div>
+        <div class="small" style="margin-top:6px">
+          ${esc(r.productId)} ·
+          ${r.approved ? `<span style="color:var(--ok)">${esc(t("게시중"))}</span>` : `<span style="color:var(--danger)">${esc(t("승인 대기"))}</span>`}
+        </div>
+        <p style="margin-top:10px">${esc(r.comment)}</p>
+        ${r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="" loading="lazy" style="margin-top:10px;max-width:180px;border-radius:8px;display:block">` : ""}
+        ${r.instagramHandle ? `<p class="small" style="margin-top:8px">Instagram @${esc(r.instagramHandle)}</p>` : ""}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="btn btn--sm admin-review-toggle">${esc(r.approved ? t("숨기기") : t("승인"))}</button>
+          <button type="button" class="btn btn--sm btn--ghost admin-review-delete" data-i18n="삭제">삭제</button>
+        </div>
+      </div>`;
+  }
+
+  function renderAdminReviews() {
+    const hasMore = reviewsState.items.length < reviewsState.total;
+    el("admin-reviews").innerHTML = reviewsState.items.map(reviewCardHTML).join("") + loadMoreHTML(hasMore, "admin-reviews-more");
+
+    el("admin-reviews").querySelectorAll(".admin-review-toggle").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = reviewsState.items.find((x) => x.id === id);
+        if (!item) return;
+        const nextApproved = !item.approved;
+        btn.disabled = true;
+        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ approved: nextApproved }),
+        });
+        item.approved = nextApproved;
+        toast(nextApproved ? t("리뷰를 승인했습니다") : t("리뷰를 숨겼습니다"));
+        renderAdminReviews();
+      })
+    );
+
+    el("admin-reviews").querySelectorAll(".admin-review-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
+        reviewsState.items = reviewsState.items.filter((x) => x.id !== id);
+        reviewsState.total = Math.max(0, reviewsState.total - 1);
+        toast(t("리뷰를 삭제했습니다"));
+        renderAdminReviews();
+      })
+    );
+
+    el("admin-reviews-more")?.addEventListener("click", () => paintAdminReviews(true));
+  }
+
+  async function paintAdminReviews(loadMore = false) {
+    reviewsState.page = loadMore ? reviewsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/reviews?page=${reviewsState.page}&pageSize=${reviewsState.pageSize}`);
+    if (!result) return;
+    reviewsState.total = result.total;
+    reviewsState.items = loadMore ? reviewsState.items.concat(result.items) : result.items;
+    renderAdminReviews();
+  }
+
+  /* ---------- 상품 관리 ---------- */
+  let pfEditingId = null;
+  let pfImages = [null, null, null, null];
+  let pfSelectedColors = [];
+
+  function renderPfColors() {
+    el("pf-colors").innerHTML = Object.values(COLORS).map((c) => `
+      <button type="button" class="chip pf-color" data-c="${c.key}" aria-pressed="${pfSelectedColors.includes(c.key)}">${esc(t(c.label))}</button>
+    `).join("");
+    el("pf-colors").querySelectorAll(".pf-color").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.c;
+        pfSelectedColors = pfSelectedColors.includes(k) ? pfSelectedColors.filter((x) => x !== k) : [...pfSelectedColors, k];
+        renderPfColors();
+        renderPfPhotos();
+      })
+    );
+  }
+
+  const PF_UPLOAD_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>`;
+
+  function renderPfPhotos() {
+    el("pf-photos").innerHTML = pfImages.map((url, i) => {
+      const colorLabel = pfSelectedColors[i] ? t(COLORS[pfSelectedColors[i]].label) : t("여분 사진 {n}", { n: i + 1 });
+      return `
+      <div>
+        <div class="small" style="margin-bottom:6px;font-weight:600">${esc(colorLabel)}</div>
+        ${url
+          ? `<img src="${esc(url)}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`
+          : `<div style="width:100%;aspect-ratio:1;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center" class="small">${esc(t("사진 없음"))}</div>`}
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <label class="upload-btn" style="cursor:pointer;justify-content:center;width:100%">
+            ${PF_UPLOAD_ICON}
+            <span>${esc(url ? t("사진 변경") : t("사진 선택"))}</span>
+            <input type="file" accept="image/*" class="upload-input pf-photo-input" data-i="${i}">
+          </label>
+          ${url ? `<button type="button" class="btn btn--sm btn--ghost pf-photo-remove" data-i="${i}">${esc(t("제거"))}</button>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    el("pf-photos").querySelectorAll(".pf-photo-input").forEach((inp) => inp.addEventListener("change", () => onPfPhotoChange(inp)));
+    el("pf-photos").querySelectorAll(".pf-photo-remove").forEach((btn) =>
+      btn.addEventListener("click", () => { pfImages[Number(btn.dataset.i)] = null; renderPfPhotos(); })
+    );
+  }
+
+  async function onPfPhotoChange(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const i = Number(input.dataset.i);
+    const token = await getAccessToken();
+    const fd = new FormData();
+    fd.append("photo", file);
+    input.disabled = true;
+    try {
+      const res = await fetch("/api/admin/products/photo", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("failed");
+      const { url } = await res.json();
+      pfImages[i] = url;
+      renderPfPhotos();
+    } catch (e) {
+      toast(t("사진 업로드에 실패했습니다"));
+    }
+  }
+
+  function resetProductForm() {
+    pfEditingId = null;
+    pfImages = [null, null, null, null];
+    pfSelectedColors = [];
+    el("product-form-title").textContent = t("새 상품 추가");
+    el("pf-id").value = "";
+    el("pf-id").disabled = false;
+    el("pf-name").value = "";
+    el("pf-nameko").value = "";
+    el("pf-type").value = "";
+    el("pf-category").value = "";
+    el("pf-price").value = "";
+    el("pf-badge").value = "";
+    el("pf-short").value = "";
+    el("pf-desc").value = "";
+    el("pf-details").value = "";
+    el("pf-sizes").value = "";
+    el("pf-soldout").value = "";
+    el("pf-sizetable").value = "hoodie";
+    el("pf-charmready").checked = false;
+    el("pf-active").checked = true;
+    el("pf-cancel").hidden = true;
+    renderPfColors();
+    renderPfPhotos();
+  }
+
+  function fillProductForm(p) {
+    pfEditingId = p.id;
+    pfImages = [0, 1, 2, 3].map((i) => p.images[i] || null);
+    pfSelectedColors = [...(p.colors || [])];
+    el("product-form-title").textContent = t("상품 수정") + " — " + p.id;
+    el("pf-id").value = p.id;
+    el("pf-id").disabled = true;
+    el("pf-name").value = p.name || "";
+    el("pf-nameko").value = p.nameKo || "";
+    el("pf-type").value = p.type || "";
+    el("pf-category").value = p.category || "";
+    el("pf-price").value = p.price;
+    el("pf-badge").value = p.badge || "";
+    el("pf-short").value = p.short || "";
+    el("pf-desc").value = p.desc || "";
+    el("pf-details").value = (p.details || []).join("\n");
+    el("pf-sizes").value = (p.sizes || []).join(",");
+    el("pf-soldout").value = (p.soldOut || []).join(",");
+    el("pf-sizetable").value = p.sizeTable || "hoodie";
+    el("pf-charmready").checked = !!p.charmReady;
+    el("pf-active").checked = p.active !== false;
+    el("pf-cancel").hidden = false;
+    renderPfColors();
+    renderPfPhotos();
+    el("product-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  el("product-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = el("pf-id").value.trim();
+    if (!pfEditingId && !/^[a-z0-9-]{2,60}$/.test(id)) {
+      toast(t("상품 ID는 영문 소문자·숫자·하이픈만 2~60자로 입력해 주세요."));
+      return;
+    }
+
+    const body = {
+      name: el("pf-name").value.trim(),
+      nameKo: el("pf-nameko").value.trim(),
+      type: el("pf-type").value.trim(),
+      category: el("pf-category").value.trim(),
+      price: Number(el("pf-price").value),
+      badge: el("pf-badge").value.trim(),
+      short: el("pf-short").value.trim(),
+      desc: el("pf-desc").value.trim(),
+      details: el("pf-details").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      colors: pfSelectedColors,
+      sizes: el("pf-sizes").value.split(",").map((s) => s.trim()).filter(Boolean),
+      soldOut: el("pf-soldout").value.split(",").map((s) => s.trim()).filter(Boolean),
+      sizeTable: el("pf-sizetable").value,
+      charmReady: el("pf-charmready").checked,
+      active: el("pf-active").checked,
+      images: pfImages,
+    };
+
+    const btn = el("pf-submit");
+    btn.disabled = true;
+    try {
+      const result = pfEditingId
+        ? await adminFetch(`/api/admin/products/${encodeURIComponent(pfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
+        : await adminFetch("/api/admin/products", { method: "POST", body: JSON.stringify({ id, ...body }) });
+
+      if (!result) { toast(t("저장에 실패했습니다")); return; }
+      toast(t("상품을 저장했습니다"));
+      resetProductForm();
+      paintAdminProducts();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  el("pf-cancel").addEventListener("click", () => resetProductForm());
+  resetProductForm();
+
+  const productsState = { page: 0, pageSize: 50, total: 0, items: [] };
+
+  function productRowHTML(p) {
+    const img = p.images.find(Boolean);
+    return `
+      <div class="panel" data-id="${esc(p.id)}" style="display:flex;gap:12px;align-items:center">
+        ${img
+          ? `<img src="${esc(img)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
+          : `<div style="width:56px;height:56px;border-radius:8px;border:1px dashed var(--line);flex-shrink:0"></div>`}
+        <div style="flex:1;min-width:0">
+          <b>${esc(t(p.nameKo))}</b> ${p.active ? "" : `<span class="small" style="color:var(--muted)">(${esc(t("비공개"))})</span>`}
+          <div class="small tnum">${money(p.price)} · ${esc(p.id)}</div>
+        </div>
+        <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
+        <button type="button" class="btn btn--sm btn--ghost admin-product-delete" data-i18n="삭제">삭제</button>
+      </div>`;
+  }
+
+  function renderAdminProducts() {
+    const hasMore = productsState.items.length < productsState.total;
+    el("products-list").innerHTML = productsState.items.map(productRowHTML).join("") + loadMoreHTML(hasMore, "products-list-more");
+
+    el("products-list").querySelectorAll(".admin-product-edit").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const p = productsState.items.find((x) => x.id === id);
+        if (p) fillProductForm(p);
+      })
+    );
+    el("products-list").querySelectorAll(".admin-product-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("정말 삭제하시겠습니까? 되돌릴 수 없습니다.") + "\n" + id)) return;
+        await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (pfEditingId === id) resetProductForm();
+        toast(t("상품을 삭제했습니다"));
+        paintAdminProducts();
+      })
+    );
+
+    el("products-list-more")?.addEventListener("click", () => paintAdminProducts(true));
+  }
+
+  async function paintAdminProducts(loadMore = false) {
+    productsState.page = loadMore ? productsState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/products?page=${productsState.page}&pageSize=${productsState.pageSize}`);
+    if (!result) return;
+    productsState.total = result.total;
+    productsState.items = loadMore ? productsState.items.concat(result.items) : result.items;
+    renderAdminProducts();
+  }
+
+  /* ---------- 룩북 관리 ---------- */
+  let lfEditingId = null;
+  let lfSrc = null;
+
+  function renderLfPhoto() {
+    el("lf-photo").innerHTML = `
+      ${lfSrc
+        ? `<img src="${esc(lfSrc)}" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`
+        : `<div style="width:100%;aspect-ratio:4/5;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center" class="small">${esc(t("사진 없음"))}</div>`}
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <label class="upload-btn" style="cursor:pointer;justify-content:center;width:100%">
+          ${PF_UPLOAD_ICON}
+          <span>${esc(lfSrc ? t("사진 변경") : t("사진 선택"))}</span>
+          <input type="file" accept="image/*" class="upload-input" id="lf-photo-input">
+        </label>
+        ${lfSrc ? `<button type="button" class="btn btn--sm btn--ghost" id="lf-photo-remove">${esc(t("제거"))}</button>` : ""}
+      </div>
+    `;
+    el("lf-photo-input").addEventListener("change", onLfPhotoChange);
+    el("lf-photo-remove")?.addEventListener("click", () => { lfSrc = null; renderLfPhoto(); });
+  }
+
+  async function onLfPhotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const token = await getAccessToken();
+    const fd = new FormData();
+    fd.append("photo", file);
+    e.target.disabled = true;
+    try {
+      const res = await fetch("/api/admin/lookbook/photo", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("failed");
+      const { url } = await res.json();
+      lfSrc = url;
+      renderLfPhoto();
+    } catch (err) {
+      toast(t("사진 업로드에 실패했습니다"));
+    }
+  }
+
+  function resetLookbookForm() {
+    lfEditingId = null;
+    lfSrc = null;
+    el("lookbook-form-title").textContent = t("새 룩북 칸 추가");
+    el("lf-label").value = "";
+    el("lf-note").value = "";
+    el("lf-span").value = "w6";
+    el("lf-ratio").value = "";
+    el("lf-active").checked = true;
+    el("lf-cancel").hidden = true;
+    renderLfPhoto();
+  }
+
+  function fillLookbookForm(item) {
+    lfEditingId = item.id;
+    lfSrc = item.src || null;
+    el("lookbook-form-title").textContent = t("룩북 칸 수정");
+    el("lf-label").value = item.label || "";
+    el("lf-note").value = item.note || "";
+    el("lf-span").value = item.span || "w6";
+    el("lf-ratio").value = item.ratio || "";
+    el("lf-active").checked = item.active !== false;
+    el("lf-cancel").hidden = false;
+    renderLfPhoto();
+    el("lookbook-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  el("lookbook-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      label: el("lf-label").value.trim(),
+      note: el("lf-note").value.trim(),
+      span: el("lf-span").value,
+      ratio: el("lf-ratio").value.trim(),
+      active: el("lf-active").checked,
+      src: lfSrc,
+    };
+
+    const btn = el("lf-submit");
+    btn.disabled = true;
+    try {
+      const result = lfEditingId
+        ? await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
+        : await adminFetch("/api/admin/lookbook", { method: "POST", body: JSON.stringify(body) });
+
+      if (!result) { toast(t("저장에 실패했습니다")); return; }
+      toast(t("저장했습니다"));
+      resetLookbookForm();
+      paintAdminLookbook();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  el("lf-cancel").addEventListener("click", () => resetLookbookForm());
+  resetLookbookForm();
+
+  const lookbookState = { page: 0, pageSize: 50, total: 0, items: [] };
+
+  function lookbookRowHTML(item) {
+    return `
+      <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
+        ${item.src
+          ? `<img src="${esc(item.src)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
+          : `<div style="width:56px;height:56px;border-radius:8px;border:1px dashed var(--line);flex-shrink:0"></div>`}
+        <div style="flex:1;min-width:0">
+          <b>${esc(item.label)}</b> ${item.active ? "" : `<span class="small" style="color:var(--muted)">(${esc(t("비공개"))})</span>`}
+          <div class="small">${esc(item.span)} · ${esc(item.ratio)}</div>
+        </div>
+        <button type="button" class="btn btn--sm admin-lookbook-edit" data-i18n="수정">수정</button>
+        <button type="button" class="btn btn--sm btn--ghost admin-lookbook-delete" data-i18n="삭제">삭제</button>
+      </div>`;
+  }
+
+  function renderAdminLookbook() {
+    const hasMore = lookbookState.items.length < lookbookState.total;
+    el("lookbook-list").innerHTML = lookbookState.items.map(lookbookRowHTML).join("") + loadMoreHTML(hasMore, "lookbook-list-more");
+
+    el("lookbook-list").querySelectorAll(".admin-lookbook-edit").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = lookbookState.items.find((x) => x.id === id);
+        if (item) fillLookbookForm(item);
+      })
+    );
+    el("lookbook-list").querySelectorAll(".admin-lookbook-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+        await adminFetch(`/api/admin/lookbook/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (lfEditingId === id) resetLookbookForm();
+        toast(t("삭제했습니다"));
+        paintAdminLookbook();
+      })
+    );
+
+    el("lookbook-list-more")?.addEventListener("click", () => paintAdminLookbook(true));
+  }
+
+  async function paintAdminLookbook(loadMore = false) {
+    lookbookState.page = loadMore ? lookbookState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/lookbook?page=${lookbookState.page}&pageSize=${lookbookState.pageSize}`);
+    if (!result) return;
+    lookbookState.total = result.total;
+    lookbookState.items = loadMore ? lookbookState.items.concat(result.items) : result.items;
+    renderAdminLookbook();
+  }
+
+  async function tryShowAdminPanel() {
+    const orders = await adminFetch("/api/admin/orders");
+    if (!orders) return; // 관리자가 아니거나 서버가 이를 거부함 — 패널을 열지 않는다
+    el("admin-panel").hidden = false;
+    el("admin-orders").innerHTML = "";
+    paintAdminOrders();
+    paintAdminReturns();
+    paintAdminInventory();
+    paintAdminQna();
+    paintAdminProducts();
+    paintAdminReviews();
+    paintAdminLookbook();
+  }
+
+  /* ---------- 부팅 ---------- */
+  (async () => {
+    const client = await getSupabaseClient();
+    if (!client) {
+      el("no-server-notice").hidden = false;
+      return;
+    }
+
+    const profile = await getCurrentProfile();
+
+    if (!profile) {
+      el("auth-view").hidden = false;
+    } else {
+      el("me-view").hidden = false;
+      el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
+      paintMyOrders();
+      if (profile.role === "admin") tryShowAdminPanel();
+    }
+
+    el("auth-tabs")?.querySelectorAll(".chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        el("auth-tabs").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        el("login-form").hidden = b.dataset.tab !== "login";
+        el("signup-form").hidden = b.dataset.tab !== "signup";
+      })
+    );
+
+    el("login-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("li-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signInWithPassword({
+        email: el("li-email").value.trim(),
+        password: el("li-pw").value,
+      });
+      if (error) {
+        el("li-err").textContent = t("이메일 또는 비밀번호가 올바르지 않습니다.");
+        el("li-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      location.reload();
+    });
+
+    el("signup-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("su-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signUp({
+        email: el("su-email").value.trim(),
+        password: el("su-pw").value,
+        options: { data: { name: el("su-name").value.trim() } },
+      });
+      if (error) {
+        el("su-err").textContent = error.message;
+        el("su-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      toast(t("가입이 완료되었습니다. 로그인해 주세요."));
+      el("auth-tabs").querySelector('[data-tab="login"]')?.click();
+      btn.disabled = false;
+    });
+
+    el("logout")?.addEventListener("click", async () => {
+      await client.auth.signOut();
+      location.reload();
+    });
+  })();
+
+  renderFooter();
+</script>
+</body>
+</html>
