@@ -316,7 +316,9 @@ function renderFooter() {
       <div>
         ${esc(b.company)} · ${t("대표")} ${esc(b.ceo)}<br>
         ${t("사업자등록번호")} ${esc(b.regNo)} · ${t("통신판매업신고")} ${esc(b.mailOrderNo)}<br>
-        ${esc(b.address)} · ${esc(b.tel)} · ${t("개인정보관리책임자")} ${esc(b.privacyOfficer)}
+        ${esc(b.address)} · ${esc(b.tel)} · ${t("개인정보관리책임자")} ${esc(b.privacyOfficer)}<br>
+        <a class="link-u" href="privacy.html">${t("개인정보처리방침")}</a> ·
+        <a class="link-u" href="terms.html">${t("이용약관")}</a>
       </div>
       <div>© ${new Date().getFullYear()} REITEN™. All rights reserved.</div>
     </div>

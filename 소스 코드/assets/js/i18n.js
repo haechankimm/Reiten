@@ -51,6 +51,8 @@ const I18N = {
   "룩북 / 라이딩 필름": { en: "Lookbook / Riding Film", ja: "ルックブック / ライディングフィルム" },
   "소재 & 관리법": { en: "Material & Care", ja: "素材とお手入れ" },
   "배송 · 교환 안내": { en: "Shipping & Exchanges", ja: "配送・交換案内" },
+  "개인정보처리방침": { en: "Privacy Policy", ja: "プライバシーポリシー" },
+  "이용약관": { en: "Terms of Service", ja: "利用規約" },
   "대표": { en: "CEO", ja: "代表" },
   "사업자등록번호": { en: "Business Reg. No.", ja: "事業者登録番号" },
   "통신판매업신고": { en: "Mail-order Business No.", ja: "通信販売業申告番号" },
