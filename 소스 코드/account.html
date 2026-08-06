@@ -14,7 +14,10 @@
   <section class="sec sec--tight">
     <div class="wrap">
       <p class="eyebrow">Account</p>
-      <h1 class="h-xl" style="margin-top:12px" data-i18n="내 계정">내 계정</h1>
+      <h1 class="h-xl" style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span data-i18n="내 계정">내 계정</span>
+        <span id="admin-badge" class="admin-badge" hidden data-i18n="관리자">관리자</span>
+      </h1>
       <hr class="rule" style="margin:26px 0 34px">
 
       <div class="notice" id="no-server-notice" hidden>
@@ -240,7 +243,7 @@
                     <option value="w4">w4 (1/3)</option>
                     <option value="w6">w6 (1/2)</option>
                     <option value="w8">w8 (2/3)</option>
-                    <option value="w12">w12 (전체)</option>
+                    <option value="w12" data-i18n="w12 (전체)">w12 (전체)</option>
                   </select>
                 </div>
                 <div class="field">
@@ -267,6 +270,49 @@
       </div>
     </div>
   </section>
+
+  <!-- ============ 관리자 전용 초록 테마 장식 — 로밍 말 애니메이션(role=admin일 때만 표시) ============ -->
+  <div id="admin-horse-scene" hidden aria-hidden="true">
+    <div class="horse-ground"></div>
+    <svg class="horse-tuft horse-tuft--1" viewBox="0 0 24 24" fill="none">
+      <path d="M12 22 C12 14 8 10 4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 22 C12 12 12 8 12 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 22 C12 14 16 10 20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <svg class="horse-tuft horse-tuft--2" viewBox="0 0 24 24" fill="none">
+      <path d="M12 22 C12 14 8 10 4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 22 C12 12 12 8 12 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 22 C12 14 16 10 20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div class="horse-rig">
+      <svg viewBox="0 0 200 120">
+        <g class="horse-fig" style="fill:var(--ink)">
+          <g class="horse-tail">
+            <path d="M62,50 C75,49 80,63 71,78 C67,86 56,88 51,84 C58,80 61,68 59,58 C58,53 60,51 62,50 Z"/>
+          </g>
+          <ellipse cx="100" cy="68" rx="42" ry="20"/>
+          <g class="horse-legs-back">
+            <rect x="56" y="88" width="9" height="28" rx="4"/>
+            <rect x="74" y="88" width="9" height="28" rx="4"/>
+            <ellipse cx="60.5" cy="116" rx="6" ry="3"/>
+            <ellipse cx="78.5" cy="116" rx="6" ry="3"/>
+          </g>
+          <g class="horse-legs-front">
+            <rect x="118" y="88" width="9" height="28" rx="4"/>
+            <rect x="136" y="88" width="9" height="28" rx="4"/>
+            <ellipse cx="122.5" cy="116" rx="6" ry="3"/>
+            <ellipse cx="140.5" cy="116" rx="6" ry="3"/>
+          </g>
+          <g class="horse-neck">
+            <path d="M132,60 C144,44 158,30 172,26 L186,34 C170,40 154,54 142,66 Z"/>
+            <path d="M168,16 L172,6 L177,17 Z"/>
+            <path d="M177,15 L182,6 L186,17 Z"/>
+            <path d="M172,26 C174,18 182,14 190,15 C202,17 212,23 216,28 C211,32 202,36 197,39 C188,44 176,41 170,34 C168,31 169,28 172,26 Z"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
 </main>
 
 <script src="assets/js/data.js"></script>
@@ -1026,10 +1072,25 @@
     renderAdminLookbook();
   }
 
-  async function tryShowAdminPanel() {
+  /* 관리자 로그인을 시각적으로 티나게: 배지 + 인사말 접두어 + 초록(grass) 테마 + 로밍 말 애니메이션.
+     profile.role만으로 판단하지 않고, tryShowAdminPanel()이 /api/admin/orders 호출에 실제로
+     성공했을 때(=서버가 관리자로 인정했을 때)만 실행한다 — role 필드만 보고 켜면 서버 판단과
+     어긋날 수 있다. 특정 계정이 아니라 role=admin인 모든 사용자에게 동일하게 적용된다. */
+  function activateAdminExperience(profile) {
+    document.documentElement.setAttribute("data-admin-theme", "grass");
+    el("admin-badge").hidden = false;
+    el("me-greeting").textContent =
+      "(Admin) " + t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el("admin-horse-scene").hidden = false;
+    }
+  }
+
+  async function tryShowAdminPanel(profile) {
     const orders = await adminFetch("/api/admin/orders");
     if (!orders) return; // 관리자가 아니거나 서버가 이를 거부함 — 패널을 열지 않는다
     el("admin-panel").hidden = false;
+    activateAdminExperience(profile);
     el("admin-orders").innerHTML = "";
     paintAdminOrders();
     paintAdminReturns();
@@ -1065,7 +1126,7 @@
       el("me-view").hidden = false;
       el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
       paintMyOrders();
-      if (profile.role === "admin") tryShowAdminPanel();
+      if (profile.role === "admin") tryShowAdminPanel(profile);
     }
 
     el("auth-tabs")?.querySelectorAll(".chip").forEach((b) =>

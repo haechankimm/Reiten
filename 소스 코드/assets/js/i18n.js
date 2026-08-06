@@ -69,9 +69,10 @@ const I18N = {
   },
   "본문으로 건너뛰기": { en: "Skip to content", ja: "本文へスキップ" },
   "내 계정": { en: "My Account", ja: "マイページ", de: "Mein Konto" },
+  "관리자": { en: "Admin", ja: "管理者", de: "Admin" },
   "상품 문의": { en: "Product Q&A", ja: "商品に関するお問い合わせ" },
   "주문 조회": { en: "Track Order", ja: "注文照会" },
-  "반품 · 교환 신청": { en: "Returns & Exchanges", ja: "返品・交換申請" },
+  "반품 · 교환 신청": { en: "Returns & Exchanges", ja: "返品・交換申請", de: "Rückgabe · Umtausch" },
 
   /* ---------- 홈 ---------- */
   "Reiten — 독일어로 '타다'": { en: "Reiten — German for 'to ride'", ja: "Reiten — ドイツ語で「乗る」" },
@@ -505,7 +506,7 @@ const I18N = {
   "리뷰 등록에 실패했습니다": { en: "Failed to post the review", ja: "レビューの投稿に失敗しました" },
   "리뷰 보기": { en: "See reviews", ja: "レビューを見る" },
   "착용 사진 (선택)": { en: "Photo (optional)", ja: "着用写真（任意）" },
-  "사진 선택": { en: "Choose Photo", ja: "写真を選択" },
+  "사진 선택": { en: "Choose Photo", ja: "写真を選択", de: "Foto auswählen" },
   "선택된 파일 없음": { en: "No file chosen", ja: "ファイルが選択されていません" },
   "인스타그램 아이디 (선택)": { en: "Instagram handle (optional)", ja: "Instagram ID（任意）" },
   "@ 없이 아이디만": { en: "Handle only, no @", ja: "@なしのIDのみ" },
@@ -517,6 +518,7 @@ const I18N = {
   "지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.": {
     en: "This page is currently served statically, so member login isn't available. Run the server/ backend alongside it to enable login.",
     ja: "現在は静的サイトとして閲覧中のため、会員ログインはご利用いただけません。server/のバックエンドを一緒に起動するとログインできます。",
+    de: "Diese Seite wird derzeit nur statisch bereitgestellt, daher ist die Mitgliederanmeldung nicht verfügbar. Starten Sie das server/-Backend zusätzlich, um sich anmelden zu können.",
   },
   "로그인": { en: "Log In", ja: "ログイン", de: "Anmelden" },
   "회원가입": { en: "Sign Up", ja: "会員登録", de: "Registrieren" },
@@ -655,6 +657,7 @@ const I18N = {
   "라벨": { de: "Bezeichnung" },
   "설명 (선택)": { de: "Beschreibung (optional)" },
   "가로 크기": { de: "Breite" },
+  "w12 (전체)": { de: "w12 (Gesamt)" },
   "가로세로 비율 (예: 16/10)": { de: "Seitenverhältnis (z. B. 16/10)" },
   "공개 (체크 해제 시 숨김)": { de: "Sichtbar (deaktivieren zum Ausblenden)" },
   "사진": { de: "Foto" },

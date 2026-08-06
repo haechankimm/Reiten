@@ -981,3 +981,122 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { opacity: 1; transform: none; transition: none; }
 }
+
+/* =========================================================
+   관리자 전용 — 초록(grass) 테마 + 로밍 말 애니메이션
+   account.html이 profile.role === "admin"을 확인했을 때만
+   html[data-admin-theme="grass"]를 붙인다(계정 페이지 한정, 다른 페이지는 영향 없음).
+   ========================================================= */
+html[data-admin-theme="grass"] {
+  --paper: #eef4e5;
+  --paper-2: #f5f9ee;
+  --paper-3: #e1ecd4;
+  --ink: #16311b;
+  --ink-soft: #2c4a30;
+  --muted: #5c7654;
+  --line: #c6dab3;
+  --line-soft: #d8e8c8;
+  --field: #ffffff;
+  --shade: #dbe9cb;
+  --ok: #2f6b3c;
+}
+html[data-admin-theme="grass"][data-theme="night"] {
+  --paper: #081409;
+  --paper-2: #0d1b0e;
+  --paper-3: #142615;
+  --ink: #e9f3e1;
+  --ink-soft: #c6dbbd;
+  --muted: #8aab7e;
+  --line: #1f3a20;
+  --line-soft: #17280f;
+  --field: #10200f;
+  --shade: #182c19;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: #2f6b3c;
+  color: #eef4e5;
+  vertical-align: middle;
+}
+.admin-badge::before { content: "●"; font-size: 7px; line-height: 1; color: #9ee6ab; }
+.admin-badge[hidden] { display: none; }
+
+/* ---------- 로밍 말 애니메이션 ---------- */
+#admin-horse-scene {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.horse-ground {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 12px;
+  background: linear-gradient(180deg, #4a8a44, #2f6b3c);
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12) inset;
+}
+.horse-tuft {
+  position: fixed;
+  bottom: 10px;
+  width: 22px; height: 22px;
+  color: #cdeec0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+}
+.horse-tuft--1 { left: 19vw; }
+.horse-tuft--2 { left: 54vw; }
+
+.horse-rig {
+  position: fixed;
+  bottom: 8px;
+  left: 0;
+  width: 96px;
+  height: 58px;
+  animation: horseWalk 28s linear infinite;
+  will-change: transform;
+}
+.horse-rig svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.horse-tail { transform-origin: 62px 58px; animation: horseTailSway 1.1s ease-in-out infinite; }
+.horse-legs-back { transform-origin: 68px 88px; animation: horseLegSwing 0.62s ease-in-out infinite; }
+.horse-legs-front { transform-origin: 128px 88px; animation: horseLegSwing 0.62s ease-in-out infinite reverse; }
+.horse-neck { transform-origin: 138px 56px; animation: horseGraze 28s linear infinite; }
+
+@keyframes horseWalk {
+  0%     { transform: translateX(-15vw); }
+  16%    { transform: translateX(15vw); }
+  30%    { transform: translateX(15vw); }
+  46%    { transform: translateX(50vw); }
+  60%    { transform: translateX(50vw); }
+  100%   { transform: translateX(118vw); }
+}
+@keyframes horseGraze {
+  0%, 12%   { transform: rotate(0deg); }
+  18%, 28%  { transform: rotate(72deg); }
+  34%, 42%  { transform: rotate(0deg); }
+  52%, 58%  { transform: rotate(72deg); }
+  64%, 100% { transform: rotate(0deg); }
+}
+@keyframes horseLegSwing {
+  0%, 100% { transform: rotate(-9deg); }
+  50%      { transform: rotate(9deg); }
+}
+@keyframes horseTailSway {
+  0%, 100% { transform: rotate(-6deg); }
+  50%      { transform: rotate(10deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #admin-horse-scene { display: none; }
+}
+@media (max-width: 640px) {
+  #admin-horse-scene { display: none; }
+}
