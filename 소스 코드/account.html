@@ -41,6 +41,34 @@
             <p class="err" id="li-err"></p>
           </div>
           <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+          <p class="small" style="margin-top:10px">
+            <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
+          </p>
+        </form>
+
+        <form id="reset-request-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
+          <p class="small" data-i18n="가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.">가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.</p>
+          <div class="field">
+            <label for="rq-email" data-i18n="이메일">이메일</label>
+            <input id="rq-email" type="email" autocomplete="email" required>
+            <p class="err" id="rq-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
+          <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="취소">취소</button>
+        </form>
+
+        <form id="reset-confirm-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
+          <p class="small" data-i18n="새 비밀번호를 입력해 주세요.">새 비밀번호를 입력해 주세요.</p>
+          <div class="field">
+            <label for="rc-pw" data-i18n="새 비밀번호">새 비밀번호</label>
+            <input id="rc-pw" type="password" autocomplete="new-password" minlength="6" required>
+          </div>
+          <div class="field">
+            <label for="rc-pw2" data-i18n="새 비밀번호 확인">새 비밀번호 확인</label>
+            <input id="rc-pw2" type="password" autocomplete="new-password" minlength="6" required>
+            <p class="err" id="rc-err"></p>
+          </div>
+          <button class="btn btn--full" type="submit" id="rc-submit" data-i18n="비밀번호 변경">비밀번호 변경</button>
         </form>
 
         <p class="small" style="margin-top:18px">
@@ -250,6 +278,18 @@
   renderHeader("");
 
   const el = (id) => document.getElementById(id);
+
+  /* Supabase Auth 에러는 항상 영어 원문(error.message)이라 자주 나오는 것만 번역해 보여주고,
+     모르는 메시지는 원문을 그대로 보여준다(안 보여주는 것보다는 낫다). */
+  function authErrorMessage(error) {
+    const msg = String((error && error.message) || "");
+    if (/already registered|already exists/i.test(msg)) return t("이미 가입된 이메일입니다.");
+    if (/password.*(least|weak)/i.test(msg)) return t("비밀번호는 6자 이상이어야 합니다.");
+    if (/invalid.*email/i.test(msg)) return t("이메일 형식이 올바르지 않습니다.");
+    if (/rate limit/i.test(msg)) return t("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+    return msg;
+  }
+
   const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
   const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
 
@@ -994,9 +1034,18 @@
       return;
     }
 
-    const profile = await getCurrentProfile();
+    /* 비밀번호 재설정 이메일의 링크를 타고 들어오면 URL 해시에 type=recovery가 붙어서 온다.
+       이 경우 로그인 세션이 이미 잡혀 있어도 내 계정 화면 대신 새 비밀번호 설정 폼을 먼저 보여준다. */
+    const isRecovery = /type=recovery/.test(location.hash);
+    const profile = isRecovery ? null : await getCurrentProfile();
 
-    if (!profile) {
+    if (isRecovery) {
+      el("auth-view").hidden = false;
+      el("auth-tabs").hidden = true;
+      el("login-form").hidden = true;
+      el("signup-form").hidden = true;
+      el("reset-confirm-form").hidden = false;
+    } else if (!profile) {
       el("auth-view").hidden = false;
     } else {
       el("me-view").hidden = false;
@@ -1030,6 +1079,67 @@
       location.reload();
     });
 
+    el("forgot-pw-link")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      el("login-form").hidden = true;
+      el("signup-form").hidden = true;
+      el("auth-tabs").hidden = true;
+      el("reset-request-form").hidden = false;
+    });
+
+    el("rq-cancel")?.addEventListener("click", () => {
+      el("reset-request-form").hidden = true;
+      el("auth-tabs").hidden = false;
+      el("login-form").hidden = false;
+    });
+
+    el("reset-request-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("rq-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.resetPasswordForEmail(el("rq-email").value.trim(), {
+        redirectTo: location.origin + "/account.html",
+      });
+      btn.disabled = false;
+      if (error) {
+        el("rq-err").textContent = authErrorMessage(error);
+        el("rq-err").classList.add("on");
+        return;
+      }
+      toast(t("재설정 링크를 이메일로 보내드렸습니다."));
+      el("reset-request-form").hidden = true;
+      el("auth-tabs").hidden = false;
+      el("login-form").hidden = false;
+    });
+
+    el("reset-confirm-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pw1 = el("rc-pw").value;
+      const pw2 = el("rc-pw2").value;
+      if (pw1.length < 6) {
+        el("rc-err").textContent = t("비밀번호는 6자 이상이어야 합니다.");
+        el("rc-err").classList.add("on");
+        return;
+      }
+      if (pw1 !== pw2) {
+        el("rc-err").textContent = t("비밀번호가 일치하지 않습니다.");
+        el("rc-err").classList.add("on");
+        return;
+      }
+      const btn = el("rc-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.updateUser({ password: pw1 });
+      btn.disabled = false;
+      if (error) {
+        el("rc-err").textContent = authErrorMessage(error);
+        el("rc-err").classList.add("on");
+        return;
+      }
+      toast(t("비밀번호가 변경되었습니다. 다시 로그인해 주세요."));
+      await client.auth.signOut();
+      location.href = "account.html";
+    });
+
     el("signup-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = el("su-submit");
@@ -1040,7 +1150,7 @@
         options: { data: { name: el("su-name").value.trim() } },
       });
       if (error) {
-        el("su-err").textContent = error.message;
+        el("su-err").textContent = authErrorMessage(error);
         el("su-err").classList.add("on");
         btn.disabled = false;
         return;

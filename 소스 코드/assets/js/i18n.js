@@ -288,6 +288,7 @@ const I18N = {
   "처리 중…": { en: "Processing…", ja: "処理中…" },
   "삭제": { en: "Remove", ja: "削除", de: "Löschen" },
   "개당 {price}": { en: "{price} each", ja: "1点あたり {price}" },
+  "{name} {size} 사이즈 재고가 소진되었습니다": { en: "{name} — size {size} is now out of stock", ja: "{name} {size}サイズの在庫がなくなりました" },
 
   /* ---------- Order complete ---------- */
   "표시할 주문 내역이 없습니다.": { en: "There's no order to show.", ja: "表示できる注文内容がありません。" },
@@ -316,6 +317,7 @@ const I18N = {
   "홈으로": { en: "Home", ja: "ホームへ" },
   "주문서를 복사했습니다": { en: "Order form copied", ja: "注文書をコピーしました" },
   "주문서를 선택했습니다. 복사해 주세요": { en: "Order text selected — please copy it", ja: "注文書を選択しました。コピーしてください" },
+  "{email}로 주문 접수 확인 메일을 보내드렸습니다.": { en: "We've sent an order confirmation email to {email}.", ja: "{email} 宛に注文確認メールをお送りしました。" },
 
   /* ---------- Customizer ---------- */
   "지퍼 참 만들기": { en: "Build Your Zip Charm", ja: "ジップチャームを作る" },
@@ -500,6 +502,7 @@ const I18N = {
   "@ 없이 아이디만": { en: "Handle only, no @", ja: "@なしのIDのみ" },
   "인스타그램에서 보기": { en: "View on Instagram", ja: "Instagramで見る" },
   "도움돼요": { en: "Helpful", ja: "参考になった" },
+  "리뷰가 등록되었습니다. 검수 후 노출됩니다.": { en: "Your review has been submitted. It will appear after review.", ja: "レビューが投稿されました。確認後に公開されます。" },
 
   /* ---------- 계정 / 로그인 ---------- */
   "지금은 정적 사이트로만 열람 중이라 로그인 기능을 쓸 수 없습니다. server/를 함께 실행하면 회원 로그인을 쓸 수 있습니다.": {
@@ -515,6 +518,33 @@ const I18N = {
   "로그아웃": { en: "Log Out", ja: "ログアウト", de: "Abmelden" },
   "주문내역": { en: "Order History", ja: "注文履歴", de: "Bestellverlauf" },
   "아직 주문 내역이 없습니다.": { en: "No orders yet.", ja: "まだ注文履歴がありません。", de: "Noch keine Bestellungen." },
+  "{name}님, 안녕하세요.": { en: "Hello, {name}", ja: "こんにちは、{name}さん", de: "Hallo, {name}" },
+  "이메일 또는 비밀번호가 올바르지 않습니다.": { en: "Incorrect email or password.", ja: "メールアドレスまたはパスワードが正しくありません。", de: "E-Mail oder Passwort ist falsch." },
+  "가입이 완료되었습니다. 로그인해 주세요.": { en: "Sign-up complete. Please log in.", ja: "登録が完了しました。ログインしてください。", de: "Registrierung abgeschlossen. Bitte melden Sie sich an." },
+  "이미 가입된 이메일입니다.": { en: "This email is already registered.", ja: "すでに登録されているメールアドレスです。", de: "Diese E-Mail-Adresse ist bereits registriert." },
+  "비밀번호는 6자 이상이어야 합니다.": { en: "Password must be at least 6 characters.", ja: "パスワードは6文字以上で入力してください。", de: "Das Passwort muss mindestens 6 Zeichen lang sein." },
+  "이메일 형식이 올바르지 않습니다.": { en: "Please enter a valid email address.", ja: "メールアドレスの形式が正しくありません。", de: "Bitte geben Sie eine gültige E-Mail-Adresse ein." },
+  "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.": { en: "Too many requests. Please try again shortly.", ja: "リクエストが多すぎます。しばらくしてからもう一度お試しください。", de: "Zu viele Anfragen. Bitte versuchen Sie es in Kürze erneut." },
+
+  /* ---------- 비밀번호 재설정 ---------- */
+  "비밀번호를 잊으셨나요?": { en: "Forgot your password?", ja: "パスワードをお忘れですか？", de: "Passwort vergessen?" },
+  "가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.": {
+    en: "We'll send a password reset link to your registered email.",
+    ja: "ご登録のメールアドレスにパスワード再設定リンクをお送りします。",
+    de: "Wir senden einen Link zum Zurücksetzen des Passworts an Ihre registrierte E-Mail-Adresse.",
+  },
+  "재설정 링크 보내기": { en: "Send reset link", ja: "再設定リンクを送信", de: "Link senden" },
+  "재설정 링크를 이메일로 보내드렸습니다.": { en: "We've emailed you a reset link.", ja: "再設定リンクをメールでお送りしました。", de: "Wir haben Ihnen einen Link per E-Mail gesendet." },
+  "새 비밀번호를 입력해 주세요.": { en: "Please enter a new password.", ja: "新しいパスワードを入力してください。", de: "Bitte geben Sie ein neues Passwort ein." },
+  "새 비밀번호": { en: "New password", ja: "新しいパスワード", de: "Neues Passwort" },
+  "새 비밀번호 확인": { en: "Confirm new password", ja: "新しいパスワード（確認）", de: "Neues Passwort bestätigen" },
+  "비밀번호 변경": { en: "Change password", ja: "パスワードを変更", de: "Passwort ändern" },
+  "비밀번호가 일치하지 않습니다.": { en: "Passwords do not match.", ja: "パスワードが一致しません。", de: "Die Passwörter stimmen nicht überein." },
+  "비밀번호가 변경되었습니다. 다시 로그인해 주세요.": {
+    en: "Your password has been changed. Please log in again.",
+    ja: "パスワードが変更されました。もう一度ログインしてください。",
+    de: "Ihr Passwort wurde geändert. Bitte melden Sie sich erneut an.",
+  },
 
   /* ---------- 주문 조회 ---------- */
   "회원가입 없이도 주문번호와 연락처만으로 주문 상태를 확인할 수 있습니다.": {
@@ -528,6 +558,10 @@ const I18N = {
     en: "No matching order found. Please double-check your order number and phone number.",
     ja: "一致する注文が見つかりません。注文番号と連絡先をもう一度ご確認ください。",
   },
+  "배송 조회": { en: "Track shipment", ja: "配送状況を確認", de: "Sendung verfolgen" },
+  "배송 조회하기": { en: "Track my shipment", ja: "配送状況を確認する" },
+  "주문 상태": { en: "Order status", ja: "注文状況" },
+  "조회에 실패했습니다. server/가 실행 중인지 확인해 주세요.": { en: "Lookup failed. Please check that server/ is running.", ja: "照会に失敗しました。server/が起動しているかご確認ください。" },
 
   /* ---------- 상품 Q&A ---------- */
   "궁금한 점을 남겨주시면 판매자가 직접 답변드립니다.": { en: "Leave your question and the seller will answer directly.", ja: "ご質問を残していただければ、販売者が直接回答いたします。" },
@@ -541,6 +575,11 @@ const I18N = {
     ja: "現在は静的サイトとして閲覧中のため、お問い合わせの投稿はできません。server/のバックエンドを一緒に起動すると投稿できます。",
   },
   "판매자 답변": { en: "Seller's Answer", ja: "販売者からの回答" },
+  "답변완료": { en: "Answered", ja: "回答済み" },
+  "답변대기": { en: "Awaiting answer", ja: "回答待ち" },
+  "비밀글입니다.": { en: "This is a private question.", ja: "非公開の質問です。" },
+  "문의가 등록되었습니다": { en: "Your question has been submitted", ja: "お問い合わせを受け付けました" },
+  "문의 등록에 실패했습니다": { en: "Failed to submit your question", ja: "お問い合わせの送信に失敗しました" },
 
   /* ---------- 반품 · 교환 신청 ---------- */
   "주문번호를 확인한 뒤 신청해 주세요. 접수 후 담당자가 순차적으로 연락드립니다.": {
@@ -557,6 +596,10 @@ const I18N = {
   "신청하기": { en: "Submit Request", ja: "申請する" },
   "접수되었습니다.": { en: "Your request has been received.", ja: "受付が完了しました。" },
   "담당자가 확인 후 입력하신 연락처로 안내드립니다.": { en: "Our team will review it and reach out to the contact number you provided.", ja: "担当者が確認の上、ご入力いただいた連絡先にご案内いたします。" },
+  "접수에 실패했습니다. server/가 실행 중인지 확인해 주세요.": { en: "Submission failed. Please check that server/ is running.", ja: "送信に失敗しました。server/が起動しているかご確認ください。" },
+
+  /* ---------- 공용 에러 ---------- */
+  "처리에 실패했습니다": { en: "Failed to process", ja: "処理に失敗しました" },
 
   /* ---------- 주문 · 반품 상태 (고객 주문내역 + 관리자 패널 공용) ---------- */
   "입금대기": { en: "Awaiting Payment", ja: "入金待ち", de: "Zahlung ausstehend" },
@@ -610,6 +653,35 @@ const I18N = {
   "답변 등록": { de: "Antwort veröffentlichen" },
   "수정": { de: "Bearbeiten" },
   "답변을 입력하세요": { de: "Antwort eingeben" },
+  "재고를 저장했습니다": { de: "Lagerbestand gespeichert" },
+  "비밀글": { de: "Nicht öffentlich" },
+  "답변": { de: "Antwort" },
+  "답변 내용을 입력해 주세요.": { de: "Bitte geben Sie eine Antwort ein." },
+  "답변을 등록했습니다": { de: "Antwort veröffentlicht" },
+  "게시중": { de: "Veröffentlicht" },
+  "승인 대기": { de: "Wartet auf Freigabe" },
+  "숨기기": { de: "Ausblenden" },
+  "승인": { de: "Freigeben" },
+  "리뷰를 승인했습니다": { de: "Bewertung freigegeben" },
+  "리뷰를 숨겼습니다": { de: "Bewertung ausgeblendet" },
+  "이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Diese Bewertung löschen? Das kann nicht rückgängig gemacht werden." },
+  "리뷰를 삭제했습니다": { de: "Bewertung gelöscht" },
+  "여분 사진 {n}": { de: "Foto {n}" },
+  "사진 없음": { de: "Kein Foto" },
+  "사진 변경": { de: "Foto ändern" },
+  "제거": { de: "Entfernen" },
+  "사진 업로드에 실패했습니다": { de: "Foto-Upload fehlgeschlagen" },
+  "상품 수정": { de: "Produkt bearbeiten" },
+  "상품 ID는 영문 소문자·숫자·하이픈만 2~60자로 입력해 주세요.": { de: "Produkt-ID: 2–60 Zeichen, nur Kleinbuchstaben, Zahlen und Bindestrich." },
+  "저장에 실패했습니다": { de: "Speichern fehlgeschlagen" },
+  "상품을 저장했습니다": { de: "Produkt gespeichert" },
+  "비공개": { de: "Nicht sichtbar" },
+  "정말 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Wirklich löschen? Das kann nicht rückgängig gemacht werden." },
+  "상품을 삭제했습니다": { de: "Produkt gelöscht" },
+  "룩북 칸 수정": { de: "Lookbook-Kachel bearbeiten" },
+  "저장했습니다": { de: "Gespeichert" },
+  "이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Diese Lookbook-Kachel löschen? Das kann nicht rückgängig gemacht werden." },
+  "삭제했습니다": { de: "Gelöscht" },
 
   /* ---------- 라이더 사이즈 가이드 ---------- */
   "보호대 착용 시 사이즈 가이드": { en: "Sizing With Body Armor", ja: "プロテクター着用時のサイズガイド" },

@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  도메인이 아직 확정 전이라 https://reiten.kr 를 자리표시자로 넣어뒀습니다.
-  실제 도메인을 잡으면(README 13번) 아래 <loc> 전부를 그 도메인으로 바꾸세요.
--->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://reiten.kr/</loc></url>
   <url><loc>https://reiten.kr/shop.html</loc></url>
