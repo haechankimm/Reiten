@@ -4,6 +4,11 @@ expend app/
 # OS
 .DS_Store
 
+# iCloud Drive 동기화 충돌 시 자동 생성되는 중복 사본, 백업용 zip
+*.zip
+소스 코드 2/
+소스 코드 2
+
 # Node
 node_modules/
 
