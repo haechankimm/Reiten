@@ -297,6 +297,7 @@
       productId: state.base.id,
       name: t(state.base.nameKo),
       image: state.base.images.find(Boolean) || null,
+      color: state.color,
       size: state.size,
       charm: state.charm === "none" ? null : { key: state.charm, finish: state.finish },
       extras: state.extras,

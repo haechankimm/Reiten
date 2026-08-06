@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="assets/img/logo-mark.png">
 <link rel="stylesheet" href="assets/css/style.css">
+<script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 </head>
 <body>
 
@@ -57,7 +58,10 @@
               <div class="row-2">
                 <div class="field">
                   <label for="f-zip" data-i18n-html data-i18n='우편번호 <span class="req">*</span>'>우편번호 <span class="req">*</span></label>
-                  <input id="f-zip" name="zip" inputmode="numeric" autocomplete="postal-code" placeholder="00000" required>
+                  <div style="display:flex;gap:8px">
+                    <input id="f-zip" name="zip" inputmode="numeric" autocomplete="postal-code" placeholder="00000" required readonly style="flex:1;min-width:0">
+                    <button type="button" id="zip-search" class="btn btn--sm" style="flex-shrink:0" data-i18n="주소 검색">주소 검색</button>
+                  </div>
                   <p class="err" data-i18n="우편번호를 입력해 주세요.">우편번호를 입력해 주세요.</p>
                 </div>
                 <div class="field">
@@ -69,7 +73,7 @@
 
               <div class="field">
                 <label for="f-addr" data-i18n-html data-i18n='주소 <span class="req">*</span>'>주소 <span class="req">*</span></label>
-                <input id="f-addr" name="addr" autocomplete="street-address" required>
+                <input id="f-addr" name="addr" autocomplete="street-address" placeholder="위 '주소 검색' 버튼을 눌러주세요" data-i18n-attr="placeholder:위 '주소 검색' 버튼을 눌러주세요" required readonly>
                 <p class="err" data-i18n="주소를 입력해 주세요.">주소를 입력해 주세요.</p>
               </div>
 
@@ -79,8 +83,16 @@
               </div>
 
               <div class="field">
-                <label for="f-memo" data-i18n="배송 메모">배송 메모</label>
-                <textarea id="f-memo" name="memo" placeholder="부재 시 문 앞에 놓아주세요 등" data-i18n-attr="placeholder:부재 시 문 앞에 놓아주세요 등"></textarea>
+                <label for="f-memo-select" data-i18n="배송 메모">배송 메모</label>
+                <select id="f-memo-select">
+                  <option value="" data-i18n="없음">없음</option>
+                  <option value="문 앞에 놓아주세요" data-i18n="문 앞에 놓아주세요">문 앞에 놓아주세요</option>
+                  <option value="경비실에 맡겨주세요" data-i18n="경비실에 맡겨주세요">경비실에 맡겨주세요</option>
+                  <option value="택배함에 넣어주세요" data-i18n="택배함에 넣어주세요">택배함에 넣어주세요</option>
+                  <option value="배송 전 연락 부탁드려요" data-i18n="배송 전 연락 부탁드려요">배송 전 연락 부탁드려요</option>
+                  <option value="__custom__" data-i18n="직접 입력">직접 입력</option>
+                </select>
+                <textarea id="f-memo" style="margin-top:8px" hidden placeholder="배송 메모를 입력해 주세요" data-i18n-attr="placeholder:배송 메모를 입력해 주세요"></textarea>
               </div>
 
               <div class="field">
@@ -132,13 +144,50 @@
 
   const el = (id) => document.getElementById(id);
 
+  /* 담을 당시 언어로 번역된 문자열을 그대로 저장해두면, 나중에 언어를 바꿔도 장바구니에서는
+     안 바뀐다. productId/color/size/charm/extras 같은 원본 키만 저장해두고, 화면에 그릴 때마다
+     현재 언어로 다시 번역한다. 상품이 그 사이 삭제됐거나(관리자) 참(charm) 단독 담기처럼
+     구조화된 정보가 없는 옛 데이터는 담을 때 저장해둔 문자열로 대체 표시한다. */
+  function itemDisplay(it) {
+    if (typeof it.productId === "string" && it.productId.startsWith("charm-") && it.charm) {
+      const c = getCharm(it.charm.key);
+      return {
+        name: c ? t("지퍼 참 — {charm}", { charm: t(c.label) }) : it.name,
+        opts: c ? [{ label: t("마감"), value: t(getFinish(it.charm.finish).label) }] : it.opts,
+      };
+    }
+
+    const product = getProduct(it.productId);
+    if (!product || !it.color) return { name: it.name, opts: it.opts };
+
+    const opts = [
+      { label: t("컬러"), value: t(COLORS[it.color].label) },
+      { label: t("사이즈"), value: it.size },
+    ];
+    if (it.charm !== undefined) {
+      opts.push({
+        label: t("지퍼 참"),
+        value: it.charm ? `${t(getCharm(it.charm.key).label)} · ${t(getFinish(it.charm.finish).label)}` : t("선택 안 함"),
+      });
+    }
+    if (it.extras && it.extras.length) {
+      opts.push({
+        label: t("추가 아이템"),
+        value: it.extras.map((k) => t(EXTRAS.find((x) => x.key === k).label)).join(", "),
+      });
+    }
+    return { name: t(product.nameKo), opts };
+  }
+
   function paint() {
     const items = Cart.read();
     el("empty").hidden = items.length > 0;
     el("body").hidden = items.length === 0;
     if (!items.length) return;
 
-    el("items").innerHTML = items.map(it => `
+    el("items").innerHTML = items.map(it => {
+      const disp = itemDisplay(it);
+      return `
       <div class="line-item" data-key="${it.key}">
         <div class="line-item__media">
           ${it.image
@@ -147,8 +196,8 @@
             : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
         </div>
         <div>
-          <div class="line-item__name">${esc(it.name)}</div>
-          <div class="line-item__opts">${it.opts.map(o => `${esc(o.label)} · ${esc(o.value)}`).join("<br>")}</div>
+          <div class="line-item__name">${esc(disp.name)}</div>
+          <div class="line-item__opts">${disp.opts.map(o => `${esc(o.label)} · ${esc(o.value)}`).join("<br>")}</div>
           <div class="line-item__foot">
             <div class="qty">
               <button type="button" data-act="dec" aria-label="${esc(t("수량 줄이기"))}">−</button>
@@ -162,7 +211,8 @@
           ${money(it.unit * it.qty)}
           <div class="small tnum" style="margin-top:4px">${t("개당 {price}", { price: money(it.unit) })}</div>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
 
     el("items").querySelectorAll("[data-act]").forEach(b =>
       b.addEventListener("click", () => {
@@ -229,6 +279,24 @@
       + "-" + String(Math.floor(Math.random() * 9000) + 1000);
   }
 
+  el("zip-search").addEventListener("click", () => {
+    new daum.Postcode({
+      oncomplete: (data) => {
+        el("f-zip").value = data.zonecode;
+        el("f-addr").value = data.roadAddress || data.jibunAddress;
+        setErr(el("f-zip"), false);
+        setErr(el("f-addr"), false);
+        el("f-addr2").focus();
+      },
+    }).open();
+  });
+
+  el("f-memo-select").addEventListener("change", () => {
+    const custom = el("f-memo-select").value === "__custom__";
+    el("f-memo").hidden = !custom;
+    if (custom) el("f-memo").focus();
+  });
+
   el("order-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!validate()) { toast(t("입력값을 확인해 주세요")); return; }
@@ -243,7 +311,7 @@
       zip: el("f-zip").value.trim(),
       addr: el("f-addr").value.trim(),
       addr2: el("f-addr2").value.trim(),
-      memo: el("f-memo").value.trim(),
+      memo: el("f-memo-select").value === "__custom__" ? el("f-memo").value.trim() : el("f-memo-select").value,
       payer: el("f-payer").value.trim(),
     };
 
