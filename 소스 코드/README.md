@@ -17,29 +17,50 @@
 > 이 섹션은 실제 운영 환경(GitHub·Render·Supabase·도메인)이 어디까지 설정됐는지 기록해두는
 > 곳입니다. Claude와의 대화는 세션이 바뀌면 이전 대화 내용을 기억하지 못하므로, "지금 뭐가
 > 되어 있고 뭐가 안 되어 있는지"는 대화가 아니라 **이 섹션을 최신 상태로 유지하는 것**으로
-> 인수인계하세요. 작업할 때마다 이 섹션을 업데이트해 주세요.
+> 인수인계하세요.
+>
+> **⚠️ 운영 규칙: 의미 있는 패치(기능 추가·버그 수정·설정 변경)를 커밋할 때마다, 같은 작업
+> 안에서 반드시 이 0번 섹션의 표와 "최근 작업 이력"을 함께 업데이트한다.** 코드만 고치고
+> README를 안 고치면, 다음 세션(또는 다른 사람)은 지금 상태를 다시 처음부터 추측해야 합니다.
 
 | 항목 | 상태 |
 |---|---|
 | **GitHub** | `https://github.com/haechankimm/Reiten`, `main` 브랜치. 로컬에서 push하려면 **GitHub Desktop**으로 해야 함(터미널 `git push`는 이 컴퓨터에 인증정보가 없어서 항상 실패함 — GitHub Desktop 열어서 Push origin 클릭) |
-| **Render** | Web Service 이름 `Reiten`, Root Directory `server`, `main` 브랜치에 연결되어 **push할 때마다 자동 재배포**. 기본 주소 `https://reiten.onrender.com`. 무료 플랜이라 무활동 시 슬립됨(첫 방문자 30~50초 지연) |
-| **도메인** | `reiten.kr` (후이즈도메인에서 구매). Render Custom Domain 연결 및 DNS 설정 **진행 중** — 완료 여부는 실제로 `https://reiten.kr` 접속해서 확인 필요 |
-| **Supabase** | 프로젝트 URL `https://oyzqsdcstliknqlmfejr.supabase.co`. 키 값은 로컬 `server/.env`와 Render 환경변수에 있음(레포에는 안 올라감) |
+| **Render** | Web Service 이름 `Reiten` (Service ID `srv-d9q5bndbedkc73b4c3q0`), Root Directory `server`, `main` 브랜치 연결, Auto-Deploy `On Commit`. 기본 주소 `https://reiten.onrender.com`. **주의**: GitHub 웹훅이 한 번 끊겨서 push해도 자동 배포가 며칠간 안 걸린 적이 있음 — push 후 Render **Events** 탭에서 최신 커밋 해시로 "Deploy live"가 떴는지 꼭 확인할 것. 안 걸렸으면 우측 상단 **Manual Deploy → Deploy latest commit**으로 강제 배포(Settings → Deploy에 있는 Deploy Hook으로 API 트리거도 가능, 키는 레포에 올리지 말 것). 무료 플랜이라 무활동 시 슬립됨(첫 방문자 30~50초 지연) |
+| **도메인** | `reiten.kr` · `www.reiten.kr` (후이즈도메인 구매) → Render 연결 **완료**. A레코드(`reiten.kr` → `216.24.57.1`) + CNAME(`www.reiten.kr` → `reiten.onrender.com`)를 후이즈 "네임서버 고급설정 → A 레코드 관리 / CNAME 레코드 관리"에 등록. Render Custom Domains에서 둘 다 Verified·Certificate Issued 확인됨(SSL은 Render가 자동 발급·자동 갱신 — 사용자가 인증서를 따로 저장·관리할 필요 없음) |
+| **Supabase** | 프로젝트 URL `https://oyzqsdcstliknqlmfejr.supabase.co`. 키 값은 로컬 `server/.env`와 Render 환경변수에 있음(레포에는 안 올라감). Authentication → URL Configuration → Redirect URLs에 `https://reiten.kr/account.html`, `https://reiten.kr/**`, `https://reiten.onrender.com/account.html` 등록 완료 |
 | **관리자 계정** | `haechankimm@gmail.com` → `profiles.role = 'admin'`으로 승격 완료. 새 관리자를 추가하려면: ① 해당 사람이 `account.html`에서 회원가입 → ② Supabase 대시보드 SQL Editor에서 `update profiles set role = 'admin' where id = '해당 UUID';` |
-| **사업자 정보** | `assets/js/data.js`의 `SITE.biz` 전부 채움(상호 Reiten · 대표 김해찬 · 사업자등록번호 154-44-01222 · 통신판매업신고 제-2026-용인기흥-00638 호 · 주소 · 전화번호 010-9399-6861). **`privacy.html`(개인정보처리방침)·`terms.html`(이용약관) 페이지는 아직 없음** — 전자상거래법상 공개 판매 전 반드시 작성 필요 |
+| **사업자 정보** | `assets/js/data.js`의 `SITE.biz` 전부 채움(상호 Reiten · 대표 김해찬 · 사업자등록번호 154-44-01222 · 통신판매업신고 제-2026-용인기흥-00638 호 · 주소 · 전화번호 010-9399-6861). `SITE.order.kakao`(카카오톡 채널) · `SITE.order.instagram`(인스타그램 계정)은 아직 자리표시자 |
+| **법적 필수 페이지** | `privacy.html`(개인정보처리방침) · `terms.html`(이용약관) 작성 및 배포 완료. Claude가 초안 작성한 것이라 법률 자문은 아님 — 실제 운영 방식이 바뀌면(카드결제 도입 등) 같이 갱신 필요 |
 | **참(charm)** | 가격 0원(무료)으로 변경됨. "이미 집업이 있으면 참만 구매" 기능은 무료 상품 무제한 주문 악용 우려로 숨김 처리(코드는 남아있어 필요시 재활성화 가능) |
-| **다국어** | 고객 화면: 한국어/English/日本語(헤더에서 전환). 관리자 패널: 한국어/Deutsch(계정 페이지의 관리자 패널 안쪽에서만 전환 — 독일인 동업자용, 헤더 언어 메뉴에는 안 나옴) |
-| **비밀번호 재설정** | 계정 페이지에 이메일 링크 방식으로 구현됨(Supabase Auth 내장 기능 사용). 동작하려면 Supabase 대시보드 **Authentication → URL Configuration → Redirect URLs**에 실제 도메인이 등록돼 있어야 함 — **진행 중, 아직 미완료** |
+| **다국어** | 고객 화면: 한국어/English/日本語(헤더에서 전환). 관리자 패널: 한국어/Deutsch(계정 페이지의 관리자 패널 안쪽에서만 전환 — 독일인 동업자용, 헤더 언어 메뉴에는 안 나옴). 장바구니는 담을 때 언어가 아니라 볼 때마다 현재 언어로 다시 번역되도록 수정됨 |
+| **비밀번호 재설정** | 계정 페이지에 이메일 링크 방식으로 구현 완료(Supabase Auth 내장 기능). Redirect URL 등록 완료로 정상 동작 |
+| **주문서** | 우편번호는 다음(카카오) 우편번호 API로 검색해서 채우는 방식(직접 입력 불가). 배송 메모는 프리셋 선택 + 없음 + 직접입력 드롭다운 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
-1. Supabase Redirect URLs에 `https://reiten.kr/account.html`, `https://reiten.kr/**` 등록 (형식은 반드시 `https://`부터, 도메인만 넣으면 에러남)
-2. Render Custom Domain에 `reiten.kr` 연결 + 후이즈도메인 DNS 레코드 설정
-3. `privacy.html` / `terms.html` 작성
-4. (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
+1. `SITE.order.kakao` · `SITE.order.instagram` 자리표시자 교체 (카카오톡 채널·인스타그램 계정 개설 후)
+2. 상품 사진 미등록분(리플렉트 하트/레이튼/스타/플레임핸드 후디 등) 관리자 패널에서 업로드
+3. 상품 가격 · 재고(`inventory`) 초기값 최종 확인 — 비어있는 사이즈는 주문이 막힘
+4. 실제 기기(아이폰/안드로이드)로 주문 흐름 1회 테스트
+5. (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
 
 ### 관리자 패널 변경 vs 코드 변경 — 반영되는 방식이 다릅니다
 - **관리자 패널(상품·재고·룩북·리뷰 승인 등)에서 하는 수정**은 Supabase 데이터베이스 변경입니다. 사이트가 켜져 있는 한 새로고침만 해도 바로 반영되고, 이건 어떤 대화 세션에서 하든 항상 동일하게 즉시 반영됩니다.
-- **코드 자체를 고치는 작업**(디자인·기능·문구 등)은 파일 수정 → git commit → GitHub push(GitHub Desktop) → Render 자동 재배포 순서를 거쳐야 실제 사이트에 반영됩니다. 이 절차는 대화 세션이 바뀌어도 동일하지만, 새 세션의 Claude는 이 대화를 기억하지 못하므로 무엇이 되어 있고 안 되어 있는지는 이 README(특히 이 0번 섹션)를 통해서만 전달됩니다.
+- **코드 자체를 고치는 작업**(디자인·기능·문구 등)은 파일 수정 → git commit → GitHub push(GitHub Desktop) → Render 자동 재배포 순서를 거쳐야 실제 사이트에 반영됩니다. 이 절차는 대화 세션이 바뀌어도 동일하지만, 새 세션의 Claude는 이 대화를 기억하지 못하므로 무엇이 되어 있고 안 되어 있는지는 이 README(특히 이 0번 섹션)를 통해서만 전달됩니다. **push 후에는 Render Events에서 실제로 최신 커밋이 배포됐는지 항상 확인할 것** (위 "Render" 항목 참고 — 자동배포가 조용히 안 걸릴 수 있음).
+
+### 최근 작업 이력 (최신이 위)
+> 전체 변경 내역은 `git log`가 정확하지만, 매번 명령어를 돌리기보다 여기서 최근 흐름만
+> 빠르게 훑을 수 있게 요약해둡니다. 오래된 항목은 가끔 정리(요약/삭제)해도 됩니다.
+
+- **2026-08-07** — `reiten.kr` 도메인을 Render에 최종 연결(A/CNAME 등록, SSL 발급 확인). Render 자동배포가 며칠간 안 걸리던 문제 발견 → Manual Deploy로 해결, Deploy Hook을 백업 수단으로 확보
+- **2026-08-07** — 우편번호 검색(다음 API), 배송 메모 프리셋 드롭다운 추가. 장바구니가 담을 때 언어로 고정되던 버그 수정. 룩북 페이지의 개발자용 안내문 제거
+- **2026-08-06** — `privacy.html`(개인정보처리방침) · `terms.html`(이용약관) 작성 및 배포
+- **2026-08-06** — 관리자 패널 저장 실패 시 원인(세션 만료 등)을 구체적으로 표시하도록 개선
+- **2026-08-06** — 비밀번호 재설정 기능(이메일 링크) 추가, 번역 누락 다수 보완, `sitemap.xml` 도메인 확정 반영
+- **2026-08-06** — 아이클라우드 동기화 충돌로 생긴 중복 폴더·백업 zip을 저장소에서 정리
+- **2026-08-06** — TM 마크(REITEN™) 표기, 대표자 연락처 반영
+- **2026-08-06** — GitHub 저장소(`haechankimm/Reiten`) 연결, Render Web Service 최초 배포
+- **2026-08-06** — 번역 누락 전면 보완(상품 4종 + 페이지 다수), 참(charm) 무료화, 사업자정보·주문/CS 이메일 분리 반영, 관리자 패널 독일어 지원 추가
 
 ---
 
