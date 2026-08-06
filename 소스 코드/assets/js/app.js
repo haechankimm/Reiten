@@ -197,7 +197,7 @@ function renderHeader(active = "") {
 <header class="hdr">
   <div class="hdr__in">
     <a class="brand" href="index.html" aria-label="${esc(t("REITEN 홈"))}">
-      <img src="assets/img/logo-wordmark.png" alt="REITEN" width="948" height="195">
+      <img src="assets/img/logo-wordmark.png" alt="REITEN™" width="948" height="195">
     </a>
     <nav class="nav" aria-label="${esc(t("주요 메뉴"))}">${links}</nav>
     <div class="hdr__spacer"></div>
@@ -274,7 +274,7 @@ function renderFooter() {
   <div class="wrap">
     <div class="ftr__top">
       <div class="ftr__logo">
-        <img src="assets/img/logo-lockup.png" alt="REITEN" width="956" height="429" style="height:52px;width:auto">
+        <img src="assets/img/logo-lockup.png" alt="REITEN™" width="956" height="429" style="height:52px;width:auto">
         <p class="small" style="max-width:32ch;margin:0">
           ${t("Reiten — 독일어로 '타다'.<br>말에서 기계로 옮겨 탄 사람들을 위한 옷.")}
         </p>
@@ -318,7 +318,7 @@ function renderFooter() {
         ${t("사업자등록번호")} ${esc(b.regNo)} · ${t("통신판매업신고")} ${esc(b.mailOrderNo)}<br>
         ${esc(b.address)} · ${esc(b.tel)} · ${t("개인정보관리책임자")} ${esc(b.privacyOfficer)}
       </div>
-      <div>© ${new Date().getFullYear()} REITEN. All rights reserved.</div>
+      <div>© ${new Date().getFullYear()} REITEN™. All rights reserved.</div>
     </div>
   </div>
 </footer>`

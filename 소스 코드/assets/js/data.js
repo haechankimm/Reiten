@@ -31,7 +31,7 @@ const SITE = {
     regNo: "154-44-01222",
     mailOrderNo: "제-2026-용인기흥-00638 호",
     address: "용인시 기흥구 죽현로 80번길 38",
-    tel: "[전화번호 입력]",
+    tel: "010-9399-6861",
     privacyOfficer: "김해찬",
   },
 
