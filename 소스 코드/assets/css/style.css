@@ -1030,7 +1030,7 @@ html[data-admin-theme="grass"][data-theme="night"] {
 .admin-badge::before { content: "●"; font-size: 7px; line-height: 1; color: #9ee6ab; }
 .admin-badge[hidden] { display: none; }
 
-/* ---------- 로밍 말 애니메이션 ---------- */
+/* ---------- 로밍 말 애니메이션(숲길) ---------- */
 #admin-horse-scene {
   position: fixed;
   inset: auto 0 0 0;
@@ -1041,34 +1041,54 @@ html[data-admin-theme="grass"][data-theme="night"] {
 .horse-ground {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  height: 12px;
-  background: linear-gradient(180deg, #4a8a44, #2f6b3c);
-  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12) inset;
+  height: 16px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.10) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #4a8a44, #275a2e);
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.15) inset;
 }
 .horse-tuft {
   position: fixed;
-  bottom: 10px;
-  width: 22px; height: 22px;
+  bottom: 13px;
+  width: 18px; height: 18px;
   color: #cdeec0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
 }
-.horse-tuft--1 { left: 19vw; }
-.horse-tuft--2 { left: 54vw; }
+.horse-tuft--1 { left: 6vw; width: 14px; height: 14px; opacity: .8; }
+.horse-tuft--2 { left: 19vw; }
+.horse-tuft--3 { left: 27vw; width: 15px; height: 15px; opacity: .85; }
+.horse-tuft--4 { left: 38vw; width: 13px; height: 13px; opacity: .75; }
+.horse-tuft--5 { left: 54vw; }
+.horse-tuft--6 { left: 63vw; width: 16px; height: 16px; opacity: .8; }
+.horse-tuft--7 { left: 81vw; width: 14px; height: 14px; opacity: .8; }
+.horse-tuft--8 { left: 92vw; width: 15px; height: 15px; opacity: .85; }
+
+.horse-tree {
+  position: fixed;
+  bottom: 14px;
+  color: #24451f;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.18));
+}
+.horse-tree--1 { left: 9vw; width: 46px; height: 68px; }
+.horse-tree--2 { left: 44vw; width: 38px; height: 56px; color: #2c5027; }
+.horse-tree--3 { left: 71vw; width: 52px; height: 74px; }
+.horse-tree--4 { left: 97vw; width: 40px; height: 58px; color: #2c5027; }
 
 .horse-rig {
   position: fixed;
-  bottom: 8px;
+  bottom: 16px;
   left: 0;
-  width: 96px;
-  height: 58px;
+  width: 108px;
+  height: 70px;
   animation: horseWalk 28s linear infinite;
   will-change: transform;
 }
 .horse-rig svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.horse-tail { transform-origin: 62px 58px; animation: horseTailSway 1.1s ease-in-out infinite; }
-.horse-legs-back { transform-origin: 68px 88px; animation: horseLegSwing 0.62s ease-in-out infinite; }
-.horse-legs-front { transform-origin: 128px 88px; animation: horseLegSwing 0.62s ease-in-out infinite reverse; }
-.horse-neck { transform-origin: 138px 56px; animation: horseGraze 28s linear infinite; }
+.horse-fig { animation: horseBob 0.31s ease-in-out infinite; }
+.horse-tail { transform-origin: 23px 32px; animation: horseTailSway 1.3s ease-in-out infinite; }
+.horse-legs-back { transform-origin: 45px 58px; animation: horseLegSwing 0.62s linear infinite; }
+.horse-legs-front { transform-origin: 128px 58px; animation: horseLegSwing 0.62s linear infinite; animation-delay: -0.31s; }
+.horse-body-rotate { transform-origin: 95px 14px; animation: horseGraze 28s linear infinite; }
 
 @keyframes horseWalk {
   0%     { transform: translateX(-15vw); }
@@ -1079,19 +1099,27 @@ html[data-admin-theme="grass"][data-theme="night"] {
   100%   { transform: translateX(118vw); }
 }
 @keyframes horseGraze {
-  0%, 12%   { transform: rotate(0deg); }
-  18%, 28%  { transform: rotate(72deg); }
-  34%, 42%  { transform: rotate(0deg); }
-  52%, 58%  { transform: rotate(72deg); }
-  64%, 100% { transform: rotate(0deg); }
+  0%, 12%   { transform: rotate(0deg) translateY(0); }
+  18%, 28%  { transform: rotate(15deg) translateY(5px); }
+  34%, 42%  { transform: rotate(0deg) translateY(0); }
+  52%, 58%  { transform: rotate(15deg) translateY(5px); }
+  64%, 100% { transform: rotate(0deg) translateY(0); }
 }
+/* 발을 땅에 디딘 채로 몸이 앞으로 나가는 동안(정지 구간, 0~60%)은 천천히 뒤로 끌리듯 회전만 하고,
+   회복 구간(60~100%)에서만 살짝 들어올리며 앞으로 빠르게 휘둘러 "달랑거리는" 느낌을 없앤다. */
 @keyframes horseLegSwing {
-  0%, 100% { transform: rotate(-9deg); }
-  50%      { transform: rotate(9deg); }
+  0%   { transform: rotate(10deg) translateY(0); }
+  60%  { transform: rotate(-15deg) translateY(0); }
+  78%  { transform: rotate(-6deg) translateY(-4px); }
+  100% { transform: rotate(10deg) translateY(0); }
 }
 @keyframes horseTailSway {
-  0%, 100% { transform: rotate(-6deg); }
-  50%      { transform: rotate(10deg); }
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(8deg); }
+}
+@keyframes horseBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
