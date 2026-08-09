@@ -988,29 +988,30 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
    html[data-admin-theme="grass"]를 붙인다(계정 페이지 한정, 다른 페이지는 영향 없음).
    ========================================================= */
 html[data-admin-theme="grass"] {
-  --paper: #eef4e5;
-  --paper-2: #f5f9ee;
-  --paper-3: #e1ecd4;
-  --ink: #16311b;
-  --ink-soft: #2c4a30;
-  --muted: #5c7654;
-  --line: #c6dab3;
-  --line-soft: #d8e8c8;
-  --field: #ffffff;
-  --shade: #dbe9cb;
-  --ok: #2f6b3c;
+  --paper: #dde3d3;
+  --paper-2: #e4e9da;
+  --paper-3: #ced6c0;
+  --ink: #1c2b1a;
+  --ink-soft: #33422f;
+  --muted: #5f6b57;
+  --line: #b7c2a8;
+  --line-soft: #c7d0ba;
+  --field: #f2f4ec;
+  --shade: #c4cdb6;
+  --ok: #3d5c39;
 }
 html[data-admin-theme="grass"][data-theme="night"] {
-  --paper: #081409;
-  --paper-2: #0d1b0e;
-  --paper-3: #142615;
-  --ink: #e9f3e1;
-  --ink-soft: #c6dbbd;
-  --muted: #8aab7e;
-  --line: #1f3a20;
-  --line-soft: #17280f;
-  --field: #10200f;
-  --shade: #182c19;
+  --paper: #0a0f09;
+  --paper-2: #0e140c;
+  --paper-3: #141b11;
+  --ink: #b9c2ae;
+  --ink-soft: #98a28c;
+  --muted: #626b58;
+  --line: #232b1f;
+  --line-soft: #171d14;
+  --field: #131a10;
+  --shade: #1a2216;
+  --ok: #4a6b46;
 }
 
 .admin-badge {
@@ -1023,11 +1024,11 @@ html[data-admin-theme="grass"][data-theme="night"] {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  background: #2f6b3c;
-  color: #eef4e5;
+  background: #2a3a26;
+  color: #b9c2ae;
   vertical-align: middle;
 }
-.admin-badge::before { content: "●"; font-size: 7px; line-height: 1; color: #9ee6ab; }
+.admin-badge::before { content: "●"; font-size: 7px; line-height: 1; color: #7c9470; }
 .admin-badge[hidden] { display: none; }
 
 /* ---------- 로밍 말 애니메이션(숲길) ---------- */
@@ -1043,15 +1044,15 @@ html[data-admin-theme="grass"][data-theme="night"] {
   left: 0; right: 0; bottom: 0;
   height: 16px;
   background:
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.10) 0 2px, transparent 2px 9px),
-    linear-gradient(180deg, #4a8a44, #275a2e);
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #33502f, #182b18);
   box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.15) inset;
 }
 .horse-tuft {
   position: fixed;
   bottom: 13px;
   width: 18px; height: 18px;
-  color: #cdeec0;
+  color: #7f9271;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
 }
 .horse-tuft--1 { left: 6vw; width: 14px; height: 14px; opacity: .8; }
@@ -1066,13 +1067,13 @@ html[data-admin-theme="grass"][data-theme="night"] {
 .horse-tree {
   position: fixed;
   bottom: 14px;
-  color: #24451f;
+  color: #162413;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.18));
 }
 .horse-tree--1 { left: 9vw; width: 46px; height: 68px; }
-.horse-tree--2 { left: 44vw; width: 38px; height: 56px; color: #2c5027; }
+.horse-tree--2 { left: 44vw; width: 38px; height: 56px; color: #1b2e18; }
 .horse-tree--3 { left: 71vw; width: 52px; height: 74px; }
-.horse-tree--4 { left: 97vw; width: 40px; height: 58px; color: #2c5027; }
+.horse-tree--4 { left: 97vw; width: 40px; height: 58px; color: #1b2e18; }
 
 .horse-rig {
   position: fixed;
