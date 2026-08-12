@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko" data-theme="light">
+<html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,92 +7,328 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/assets/img/logo-mark.png">
 <link rel="stylesheet" href="/assets/css/style.css">
+<style>
+  /* =========================================================
+     Works 전용 대시보드 스킨. style.css는 계속 불러와서 .panel/.field/.btn/
+     .chip/.checkbox/.upload-btn 같은 컴포넌트는 그대로 재사용하되, 그 컴포넌트가
+     참조하는 토큰(--paper/--ink/--line 등)을 여기서 재정의해서 색만 새로 입힌다
+     (컴포넌트 CSS 자체는 안 건드림 — 상품/룩북 폼을 다시 짤 필요가 없어짐).
+     ========================================================= */
+  :root {
+    --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
+    --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
+    --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
+    --danger: #b3261e; --ok: #1f8a4c;
+    --radius: 6px;
+    color-scheme: light;
+
+    --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
+    --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
+    --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
+    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark;
+      --paper: #313338; --paper-2: #2b2d31; --paper-3: #26282c;
+      --ink: #dbdee1; --ink-soft: #c3c7cc; --muted: #84898f;
+      --line: #3f4147; --line-soft: #35373c; --field: #26282c; --shade: #3a3c42;
+      --danger: #f3897e; --ok: #79e0a0;
+
+      --bg-canvas: #313338; --bg-surface: #2b2d31; --bg-surface-2: #3a3c42;
+      --text-primary: #dbdee1; --text-secondary: #b5bac1; --text-muted: #84898f;
+      --border: #3f4147; --accent: #8398ee; --accent-soft: rgba(131,152,238,0.14); --accent-contrast: #10142a;
+      --status-pending-ink: #e3b25c;   --status-pending-bg: rgba(227,178,92,0.14);
+      --status-confirmed-ink: #55d6cb; --status-confirmed-bg: rgba(85,214,203,0.14);
+      --status-shipping-ink: #bba8f7;  --status-shipping-bg: rgba(187,168,247,0.14);
+      --status-done-ink: #79e0a0;      --status-done-bg: rgba(121,224,160,0.14);
+      --status-neutral-ink: #adb3bc;   --status-neutral-bg: rgba(173,179,188,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #313338; --paper-2: #2b2d31; --paper-3: #26282c;
+    --ink: #dbdee1; --ink-soft: #c3c7cc; --muted: #84898f;
+    --line: #3f4147; --line-soft: #35373c; --field: #26282c; --shade: #3a3c42;
+    --danger: #f3897e; --ok: #79e0a0;
+
+    --bg-canvas: #313338; --bg-surface: #2b2d31; --bg-surface-2: #3a3c42;
+    --text-primary: #dbdee1; --text-secondary: #b5bac1; --text-muted: #84898f;
+    --border: #3f4147; --accent: #8398ee; --accent-soft: rgba(131,152,238,0.14); --accent-contrast: #10142a;
+    --status-pending-ink: #e3b25c;   --status-pending-bg: rgba(227,178,92,0.14);
+    --status-confirmed-ink: #55d6cb; --status-confirmed-bg: rgba(85,214,203,0.14);
+    --status-shipping-ink: #bba8f7;  --status-shipping-bg: rgba(187,168,247,0.14);
+    --status-done-ink: #79e0a0;      --status-done-bg: rgba(121,224,160,0.14);
+    --status-neutral-ink: #adb3bc;   --status-neutral-bg: rgba(173,179,188,0.12);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
+    --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
+    --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
+    --danger: #b3261e; --ok: #1f8a4c;
+
+    --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
+    --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
+    --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
+    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
+  }
+
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg-canvas); color: var(--text-primary); font-size: 13px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* .sidebar/.admin-chip/.btn 등 여기저기서 display:flex를 지정하는 클래스와 hidden 속성이
+     같이 붙으면, 브라우저 기본 스타일시트([hidden]{display:none})보다 이 파일의 클래스 규칙이
+     우선 적용돼(둘 다 저작자 스타일시트가 아니라 오리진이 달라서) 오히려 보여버린다.
+     hidden이 항상 이기도록 한 줄로 강제한다. */
+  [hidden] { display: none !important; }
+
+  .shell { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 208px; flex-shrink: 0;
+    background: var(--bg-surface); border-right: 1px solid var(--border);
+    padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-heading { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); padding: 6px 10px 8px; }
+  .nav-item {
+    appearance: none; border: none; background: transparent; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    text-align: left; width: 100%; font-size: 12.5px; font-weight: 500; border-left: 2px solid transparent;
+    transition: background-color .12s ease, color .12s ease;
+  }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: .85; }
+  .nav-item:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .nav-item.is-active { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item.is-active svg { opacity: 1; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px;
+    background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand-mark-img { height: 20px; width: auto; display: block; }
+  :root[data-theme="dark"] .brand-mark-img { filter: invert(1); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand-mark-img { filter: invert(1); } }
+  .brand-word { font-weight: 800; font-size: 14.5px; letter-spacing: -.01em; color: var(--text-primary); }
+  .brand-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .admin-chip { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border-radius: 999px; background: var(--bg-surface-2); }
+  .admin-avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast);
+    display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; flex-shrink: 0; }
+  .admin-name { font-size: 12px; font-weight: 600; }
+  .admin-role { font-size: 10.5px; color: var(--text-muted); }
+
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { appearance: none; border: none; background: var(--bg-canvas); color: var(--text-secondary);
+    padding: 5px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+
+  .icon-btn { appearance: none; border: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-secondary);
+    width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: background-color .12s ease, color .12s ease; }
+  .icon-btn:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .icon-btn .i-moon { display: none; }
+  :root[data-theme="dark"] .icon-btn .i-sun { display: none; }
+  :root[data-theme="dark"] .icon-btn .i-moon { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .icon-btn .i-sun { display: none; }
+    :root:not([data-theme="light"]) .icon-btn .i-moon { display: block; }
+  }
+
+  .content { flex: 1; overflow: auto; padding: 18px 20px 40px; }
+  .content-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .content-title { font-size: 15px; font-weight: 700; }
+  .content-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+
+  .status-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .status-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .st-pending { color: var(--status-pending-ink); background: var(--status-pending-bg); }
+  .st-confirmed { color: var(--status-confirmed-ink); background: var(--status-confirmed-bg); }
+  .st-shipping { color: var(--status-shipping-ink); background: var(--status-shipping-bg); }
+  .st-done { color: var(--status-done-ink); background: var(--status-done-bg); }
+  .st-neutral { color: var(--status-neutral-ink); background: var(--status-neutral-bg); }
+
+  .split { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
+  .plist { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%;
+    appearance: none; border: none; border-bottom: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
+    padding: 10px 12px; cursor: pointer; text-align: left; border-left: 2px solid transparent; }
+  .plist > .prow:last-of-type { border-bottom: none; }
+  .prow:hover { background: var(--bg-surface); }
+  .prow.is-selected { background: var(--accent-soft); border-left-color: var(--accent); }
+  .prow-id { font-weight: 700; font-size: 12px; }
+  .prow-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .prow-amount { font-size: 12px; font-weight: 700; }
+
+  .detail { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--bg-canvas); }
+  .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .detail-title { font-size: 14px; font-weight: 800; }
+  .detail-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .detail-field label { display: block; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .detail-field div { font-size: 12.5px; }
+  .detail-items { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .detail-item { display: flex; justify-content: space-between; font-size: 12px; gap: 12px; }
+  .detail-total { display: flex; justify-content: space-between; font-size: 13px; font-weight: 800; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .detail-ship { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .detail-ship select, .detail-ship input, .mini-select { border: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
+    border-radius: 6px; padding: 6px 9px; font-size: 12px; }
+  .detail-ship select { min-width: 120px; }
+  .detail-ship input { flex: 1; min-width: 140px; }
+  .primary-btn { appearance: none; border: none; background: var(--accent); color: var(--accent-contrast); border-radius: 6px;
+    padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+  .auth-wrap { display: flex; justify-content: center; padding-top: 8vh; }
+  .auth-card { width: 100%; max-width: 360px; border: 1px solid var(--border); border-radius: 10px; padding: 24px; background: var(--bg-canvas); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
 </head>
 <body>
 
-<main id="main">
-  <section class="sec sec--tight">
-    <div class="wrap">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
-        <h1 class="h-xl">REITEN WORKS</h1>
-        <div id="works-topbar" hidden style="align-items:center;gap:12px;flex-wrap:wrap">
-          <div class="chips" id="admin-lang-switch">
-            <button class="chip" type="button" data-admin-lang="ko" aria-pressed="true">한국어</button>
-            <button class="chip" type="button" data-admin-lang="de" aria-pressed="false">Deutsch</button>
-          </div>
-          <button class="btn" type="button" id="logout" data-i18n="로그아웃">로그아웃</button>
-        </div>
-      </div>
-      <p class="lede" id="works-greeting" style="margin-top:10px"></p>
-      <hr class="rule" style="margin:26px 0 34px">
+<div class="shell">
+  <aside class="sidebar" id="sidebar" hidden>
+    <div class="sidebar-heading" data-i18n="업무">업무</div>
+    <button type="button" class="nav-item is-active" data-tab="orders">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M8 9h8M8 13h5"/></svg>
+      <span data-i18n="전체 주문">전체 주문</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="returns">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h11a4 4 0 0 1 0 8h-3"/><path d="M9 4 4 8l5 4"/></svg>
+      <span data-i18n="반품·교환 신청">반품·교환 신청</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="inventory">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7 12 3l8 4-8 4-8-4Z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
+      <span data-i18n="재고">재고</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="qna">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h16v11H8l-4 4V5Z"/><path d="M11 10.2c0-1.2 1-1.7 1.9-1.7 1 0 1.8.6 1.8 1.5 0 1.4-1.8 1.3-1.8 2.7"/><circle cx="12" cy="14.6" r=".2"/></svg>
+      <span>Q&amp;A</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="products">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/></svg>
+      <span data-i18n="상품">상품</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="reviews">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8Z"/></svg>
+      <span data-i18n="리뷰">리뷰</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="lookbook">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.4"/><rect x="13" y="3.5" width="7.5" height="17" rx="1.4"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.4"/></svg>
+      <span data-i18n="룩북">룩북</span>
+    </button>
+  </aside>
 
+  <div class="main">
+    <header class="topbar">
+      <div class="brand">
+        <img src="/assets/img/logo-mark.png" class="brand-mark-img" alt="Reiten">
+        <span class="brand-word">REITEN</span>
+        <span class="brand-badge">WORKS</span>
+      </div>
+      <div class="topbar-right">
+        <span class="admin-chip" id="admin-chip" hidden>
+          <span class="admin-avatar" id="admin-avatar"></span>
+          <span><span class="admin-name" id="admin-name"></span><span class="admin-role" data-i18n=" · 관리자"> · 관리자</span></span>
+        </span>
+        <div class="seg" id="admin-lang-switch">
+          <button type="button" data-admin-lang="ko" aria-pressed="true">KO</button>
+          <button type="button" data-admin-lang="de" aria-pressed="false">DE</button>
+        </div>
+        <button type="button" class="icon-btn" id="theme-toggle" aria-label="테마 전환">
+          <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"/></svg>
+        </button>
+        <button type="button" class="btn btn--sm" id="logout" hidden data-i18n="로그아웃">로그아웃</button>
+      </div>
+    </header>
+
+    <div class="content">
       <div class="notice" id="no-server-notice" hidden>
         <span data-i18n="서버(server/)가 꺼져 있어 로그인할 수 없습니다.">서버(server/)가 꺼져 있어 로그인할 수 없습니다.</span>
       </div>
 
       <!-- ============ 로그인 ============ -->
-      <div id="auth-view" hidden>
-        <form id="login-form" novalidate style="max-width:44ch">
-          <div class="field">
-            <label for="li-email" data-i18n="이메일">이메일</label>
-            <input id="li-email" type="email" autocomplete="email" required>
-          </div>
-          <div class="field">
-            <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
-            <input id="li-pw" type="password" autocomplete="current-password" required>
-            <p class="err" id="li-err"></p>
-          </div>
-          <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
-          <p class="small" style="margin-top:10px">
-            <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
-          </p>
-        </form>
+      <div id="auth-view" hidden class="auth-wrap">
+        <div class="auth-card">
+          <form id="login-form" novalidate>
+            <div class="field">
+              <label for="li-email" data-i18n="이메일">이메일</label>
+              <input id="li-email" type="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
+              <input id="li-pw" type="password" autocomplete="current-password" required>
+              <p class="err" id="li-err"></p>
+            </div>
+            <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+            <p class="small" style="margin-top:10px">
+              <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
+            </p>
+          </form>
 
-        <form id="reset-request-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
-          <p class="small" data-i18n="가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.">가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.</p>
-          <div class="field">
-            <label for="rq-email" data-i18n="이메일">이메일</label>
-            <input id="rq-email" type="email" autocomplete="email" required>
-            <p class="err" id="rq-err"></p>
-          </div>
-          <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
-          <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="취소">취소</button>
-        </form>
+          <form id="reset-request-form" novalidate style="margin-top:24px" hidden>
+            <p class="small" data-i18n="가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.">가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.</p>
+            <div class="field">
+              <label for="rq-email" data-i18n="이메일">이메일</label>
+              <input id="rq-email" type="email" autocomplete="email" required>
+              <p class="err" id="rq-err"></p>
+            </div>
+            <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
+            <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="취소">취소</button>
+          </form>
 
-        <form id="reset-confirm-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
-          <p class="small" data-i18n="새 비밀번호를 입력해 주세요.">새 비밀번호를 입력해 주세요.</p>
-          <div class="field">
-            <label for="rc-pw" data-i18n="새 비밀번호">새 비밀번호</label>
-            <input id="rc-pw" type="password" autocomplete="new-password" minlength="6" required>
-          </div>
-          <div class="field">
-            <label for="rc-pw2" data-i18n="새 비밀번호 확인">새 비밀번호 확인</label>
-            <input id="rc-pw2" type="password" autocomplete="new-password" minlength="6" required>
-            <p class="err" id="rc-err"></p>
-          </div>
-          <button class="btn btn--full" type="submit" id="rc-submit" data-i18n="비밀번호 변경">비밀번호 변경</button>
-        </form>
+          <form id="reset-confirm-form" novalidate style="margin-top:24px" hidden>
+            <p class="small" data-i18n="새 비밀번호를 입력해 주세요.">새 비밀번호를 입력해 주세요.</p>
+            <div class="field">
+              <label for="rc-pw" data-i18n="새 비밀번호">새 비밀번호</label>
+              <input id="rc-pw" type="password" autocomplete="new-password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="rc-pw2" data-i18n="새 비밀번호 확인">새 비밀번호 확인</label>
+              <input id="rc-pw2" type="password" autocomplete="new-password" minlength="6" required>
+              <p class="err" id="rc-err"></p>
+            </div>
+            <button class="btn btn--full" type="submit" id="rc-submit" data-i18n="비밀번호 변경">비밀번호 변경</button>
+          </form>
+        </div>
       </div>
 
       <!-- ============ 관리자 패널 ============ -->
       <section id="admin-panel" hidden>
-        <div class="chips" id="admin-tabs">
-          <button class="chip" type="button" data-tab="orders" aria-pressed="true" data-i18n="전체 주문">전체 주문</button>
-          <button class="chip" type="button" data-tab="returns" aria-pressed="false" data-i18n="반품·교환 신청">반품·교환 신청</button>
-          <button class="chip" type="button" data-tab="inventory" aria-pressed="false" data-i18n="재고">재고</button>
-          <button class="chip" type="button" data-tab="qna" aria-pressed="false" data-i18n="Q&A">Q&amp;A</button>
-          <button class="chip" type="button" data-tab="products" aria-pressed="false" data-i18n="상품">상품</button>
-          <button class="chip" type="button" data-tab="reviews" aria-pressed="false" data-i18n="리뷰">리뷰</button>
-          <button class="chip" type="button" data-tab="lookbook" aria-pressed="false" data-i18n="룩북">룩북</button>
+        <div id="admin-orders">
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="전체 주문">전체 주문</div>
+              <div class="content-sub" id="orders-summary"></div>
+            </div>
+          </div>
+          <div class="split">
+            <div class="plist" id="orders-plist"></div>
+            <div class="detail" id="orders-detail"></div>
+          </div>
         </div>
 
-        <div id="admin-orders" style="display:grid;gap:12px;max-width:80ch;margin-top:22px"></div>
-        <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
-        <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch;margin-top:22px" hidden></div>
-        <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
-        <div id="admin-reviews" style="display:grid;gap:12px;max-width:80ch;margin-top:22px" hidden></div>
+        <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch" hidden></div>
+        <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch" hidden></div>
+        <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch" hidden></div>
+        <div id="admin-reviews" style="display:grid;gap:12px;max-width:80ch" hidden></div>
 
-        <div id="admin-products" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
+        <div id="admin-products" style="display:grid;gap:24px;max-width:70ch" hidden>
           <div class="panel">
             <b id="product-form-title" data-i18n="새 상품 추가">새 상품 추가</b>
             <form id="product-form" novalidate style="margin-top:14px;display:grid;gap:12px">
@@ -184,7 +420,7 @@
           <div id="products-list" style="display:grid;gap:12px"></div>
         </div>
 
-        <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch;margin-top:22px" hidden>
+        <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch" hidden>
           <div class="panel">
             <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
             <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;gap:12px">
@@ -245,8 +481,8 @@
         </div>
       </section>
     </div>
-  </section>
-</main>
+  </div>
+</div>
 
 <script src="/assets/js/data.js"></script>
 <script src="/assets/js/i18n.js"></script>
@@ -276,6 +512,18 @@
     toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
   }
 
+  /* 라이트/다크는 기본적으로 OS 설정을 따르고, 한 번 수동으로 바꾸면 그 이후로는
+     기기와 무관하게 그 선택을 기억한다(로컬에만 저장, 서버에는 안 감). */
+  const savedTheme = localStorage.getItem("works_theme");
+  if (savedTheme === "dark" || savedTheme === "light") document.documentElement.setAttribute("data-theme", savedTheme);
+  el("theme-toggle").addEventListener("click", () => {
+    const root = document.documentElement;
+    const current = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = current === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    localStorage.setItem("works_theme", next);
+  });
+
   applyI18n();
 
   function authErrorMessage(error) {
@@ -288,22 +536,22 @@
 
   const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
   const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
+  const ORDER_STATUS_CLASS = { "입금대기": "st-pending", "입금확인": "st-confirmed", "배송중": "st-shipping", "완료": "st-done", "취소": "st-neutral" };
 
   function fmtDate(iso) {
     return new Date(iso).toLocaleDateString(getLang() === "de" ? "de-DE" : "ko-KR");
   }
 
-  /* ---------- 관리자 패널 ---------- */
-  function switchTabs(tabsId, panelIds) {
-    const tabs = el(tabsId);
-    tabs.querySelectorAll(".chip").forEach((b) =>
+  /* ---------- 사이드바 탭 전환 ---------- */
+  function switchTabs(navSelector, panelIds) {
+    document.querySelectorAll(navSelector).forEach((b) =>
       b.addEventListener("click", () => {
-        tabs.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        document.querySelectorAll(navSelector).forEach((x) => x.classList.toggle("is-active", x === b));
         Object.keys(panelIds).forEach((key) => (el(panelIds[key]).hidden = key !== b.dataset.tab));
       })
     );
   }
-  switchTabs("admin-tabs", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
+  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
 
   el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
@@ -340,62 +588,93 @@
     </div>`;
   }
 
+  /* ---------- 전체 주문 (리스트 + 디테일 패널) ---------- */
   const ordersState = { page: 0, pageSize: 20, total: 0, items: [] };
+  let selectedOrderNo = null;
 
-  function orderCardHTML(o) {
+  function orderStatusChip(status) {
+    return `<span class="status-chip ${ORDER_STATUS_CLASS[status] || "st-neutral"}">${esc(t(status))}</span>`;
+  }
+
+  function orderListRowHTML(o) {
     return `
-      <div class="panel" data-no="${esc(o.no)}">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
-          <b class="tnum">${esc(o.no)}</b>
-          <span class="small tnum">${fmtDate(o.at)}</span>
+      <button type="button" class="prow ${o.no === selectedOrderNo ? "is-selected" : ""}" data-no="${esc(o.no)}">
+        <span>
+          <span class="prow-id">${esc(o.no)}</span>
+          <div class="prow-sub">${esc(o.customer.name)} · ${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</div>
+        </span>
+        <span style="text-align:right">
+          <div class="prow-amount tnum">${money(o.total)}</div>
+          <div style="margin-top:3px">${orderStatusChip(o.status)}</div>
+        </span>
+      </button>`;
+  }
+
+  function orderDetailHTML(o) {
+    return `
+      <div class="detail-head">
+        <div>
+          <div class="detail-title tnum">${esc(o.no)}</div>
+          <div class="detail-sub tnum">${fmtDate(o.at)}</div>
         </div>
-        <p class="small" style="margin-top:6px">${esc(o.customer.name)} · ${esc(o.customer.tel)}</p>
-        <p class="small" style="margin-top:4px">${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</p>
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px">
-          <select class="admin-order-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
-          <b class="tnum">${money(o.total)}</b>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
-          <select class="admin-order-courier" style="flex:1;min-width:110px">
-            <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
-            ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
-          </select>
-          <input class="admin-order-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}" style="flex:1;min-width:130px">
-          <button type="button" class="btn btn--sm admin-order-tracking-save" data-i18n="저장">저장</button>
-        </div>
+        ${orderStatusChip(o.status)}
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field"><label>${esc(t("주문자"))}</label><div>${esc(o.customer.name)} · ${esc(o.customer.tel)}</div></div>
+        <div class="detail-field"><label>${esc(t("배송지"))}</label><div>[${esc(o.customer.zip)}] ${esc(o.customer.addr)} ${esc(o.customer.addr2 || "")}</div></div>
+        <div class="detail-field"><label>${esc(t("입금자명"))}</label><div>${esc(o.customer.payer)}</div></div>
+        <div class="detail-field"><label>${esc(t("메모"))}</label><div>${esc(o.customer.memo || "-")}</div></div>
+      </div>
+      <div class="detail-items">
+        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)} (${esc(it.options)}) × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
+        <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
+      </div>
+      <div class="detail-field" style="margin-top:16px">
+        <label>${esc(t("상태"))}</label>
+        <select class="mini-select" id="od-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+      </div>
+      <div class="detail-ship">
+        <select id="od-courier">
+          <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
+          ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
+        </select>
+        <input type="text" id="od-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}">
+        <button type="button" class="primary-btn" id="od-save">${esc(t("저장"))}</button>
       </div>`;
   }
 
-  function renderAdminOrders() {
+  function renderOrdersSplit() {
     const hasMore = ordersState.items.length < ordersState.total;
-    el("admin-orders").innerHTML = ordersState.items.map(orderCardHTML).join("") + loadMoreHTML(hasMore, "admin-orders-more");
+    el("orders-plist").innerHTML = ordersState.items.map(orderListRowHTML).join("") + loadMoreHTML(hasMore, "admin-orders-more");
+    el("orders-summary").textContent = t("총 {n}건", { n: ordersState.total });
 
-    el("admin-orders").querySelectorAll(".admin-order-status").forEach((sel) =>
-      sel.addEventListener("change", async () => {
-        const no = sel.closest("[data-no]").dataset.no;
-        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: sel.value }),
-        });
-        toast(t("상태를 저장했습니다"));
-      })
+    el("orders-plist").querySelectorAll(".prow").forEach((btn) =>
+      btn.addEventListener("click", () => { selectedOrderNo = btn.dataset.no; renderOrdersSplit(); })
     );
-
-    el("admin-orders").querySelectorAll(".admin-order-tracking-save").forEach((btn) =>
-      btn.addEventListener("click", async () => {
-        const card = btn.closest("[data-no]");
-        const no = card.dataset.no;
-        const courier = card.querySelector(".admin-order-courier").value;
-        const trackingNo = card.querySelector(".admin-order-tracking").value.trim();
-        await adminFetch(`/api/admin/orders/${encodeURIComponent(no)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ courier, trackingNo }),
-        });
-        toast(t("배송정보를 저장했습니다"));
-      })
-    );
-
     el("admin-orders-more")?.addEventListener("click", () => paintAdminOrders(true));
+
+    if (!selectedOrderNo && ordersState.items.length) selectedOrderNo = ordersState.items[0].no;
+    const o = ordersState.items.find((x) => x.no === selectedOrderNo);
+    el("orders-detail").innerHTML = o ? orderDetailHTML(o) : `<p class="small" style="padding:4px">${esc(t("주문이 없습니다"))}</p>`;
+
+    if (o) {
+      el("od-status").addEventListener("change", async () => {
+        const status = el("od-status").value;
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+        o.status = status;
+        toast(t("상태를 저장했습니다"));
+        renderOrdersSplit();
+      });
+      el("od-save").addEventListener("click", async () => {
+        const courier = el("od-courier").value;
+        const trackingNo = el("od-tracking").value.trim();
+        await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, { method: "PATCH", body: JSON.stringify({ courier, trackingNo }) });
+        o.courier = courier;
+        o.trackingNo = trackingNo;
+        toast(t("배송정보를 저장했습니다"));
+        renderOrdersSplit();
+      });
+    }
   }
 
   async function paintAdminOrders(loadMore = false) {
@@ -404,7 +683,7 @@
     if (!result) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
-    renderAdminOrders();
+    renderOrdersSplit();
   }
 
   const returnsState = { page: 0, pageSize: 20, total: 0, items: [] };
@@ -1043,10 +1322,12 @@
     const orders = await adminFetch("/api/admin/orders");
     if (!orders) return false;
     el("admin-panel").hidden = false;
-    el("works-topbar").hidden = false;
-    el("works-topbar").style.display = "flex";
-    el("works-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
-    el("admin-orders").innerHTML = "";
+    el("sidebar").hidden = false;
+    el("admin-chip").hidden = false;
+    el("logout").hidden = false;
+    const name = profile.name || profile.email;
+    el("admin-name").textContent = name;
+    el("admin-avatar").textContent = name.slice(0, 1).toUpperCase();
     paintAdminOrders();
     paintAdminReturns();
     paintAdminInventory();
