@@ -50,7 +50,7 @@
 4. 실제 기기(아이폰/안드로이드)로 주문 흐름 1회 테스트
 5. (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
 6. 티셔츠: 실제 상품(상품명·설명·가격·사진) 관리자 패널에서 등록 + `SIZE_TABLES.tshirt` 실측값 채우기(코드에는 카테고리/타입만 준비해뒀고 실제 상품은 아직 없음)
-7. **Reiten Works 배포 마무리** — 코드(`works/index.html`, `server.js`의 호스트 분기)는 완료됐지만 아직 아무도 접속할 수 없는 상태. 아래 3개는 계정 접근이 필요해 Claude가 대신 못 함:
+7. **Reiten Works 배포 마무리** — 코드(`works/index.html`, `server.js`의 호스트 분기)는 완료됐지만 `works.reiten.kr`는 아직 아무도 접속할 수 없는 상태. **DNS 연결 전까지는 `https://reiten.onrender.com/__works-preview/`로 미리 써볼 수 있음**(임시 경로, `works.reiten.kr` 연결되면 지워도 됨 — 단, 이 경로에서는 "비밀번호 재설정" 메일의 redirect가 Supabase 허용 목록에 없어서 실패할 수 있음, 로그인은 정상). 아래 3개는 계정 접근이 필요해 Claude가 대신 못 함:
    - DNS에 `works.reiten.kr` CNAME 추가(후이즈, `www`와 같은 방식으로 → `reiten.onrender.com`)
    - Render **Custom Domains**에 `works.reiten.kr` 추가(기존 서비스에 그대로)
    - Supabase Authentication → Redirect URLs에 `https://works.reiten.kr/**` 추가
