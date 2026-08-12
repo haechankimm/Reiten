@@ -267,6 +267,17 @@
   .best-bar-track { grid-column: 1/-1; height: 5px; border-radius: 3px; background: var(--bg-surface-2); overflow: hidden; margin-top: 2px; }
   .best-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
+  /* ---------- 사진 편집(자르기/회전/확대) ---------- */
+  .pe-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+  .pe-panel { background: var(--bg-canvas); border-radius: 10px; padding: 20px; width: min(92vw, 480px); }
+  .pe-stage-wrap { display: flex; justify-content: center; margin: 14px 0; }
+  .pe-stage { position: relative; overflow: hidden; background: #111; border-radius: 6px; touch-action: none; cursor: grab; max-width: 100%; }
+  .pe-stage.is-dragging { cursor: grabbing; }
+  .pe-stage canvas { display: block; }
+  .pe-controls { display: flex; flex-direction: column; gap: 10px; }
+  .pe-row { display: flex; gap: 8px; align-items: center; }
+  .pe-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -626,6 +637,33 @@
           <div id="auditlog-more-wrap"></div>
         </div>
       </section>
+    </div>
+  </div>
+</div>
+
+<div id="photo-editor" class="pe-overlay" hidden>
+  <div class="pe-panel">
+    <b data-i18n="사진 편집">사진 편집</b>
+    <p class="small" style="margin-top:4px;color:var(--text-muted)" data-i18n="드래그해서 위치를 옮기고, 슬라이더로 확대·축소하세요">드래그해서 위치를 옮기고, 슬라이더로 확대·축소하세요</p>
+    <div class="pe-stage-wrap">
+      <div class="pe-stage" id="pe-stage">
+        <canvas id="pe-canvas"></canvas>
+      </div>
+    </div>
+    <div class="pe-controls">
+      <div class="pe-row">
+        <button type="button" class="icon-btn" id="pe-rotate-left" aria-label="Rotate left" data-i18n-attr="aria-label:왼쪽으로 회전">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 1 1-6.5 9.7"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="pe-rotate-right" aria-label="Rotate right" data-i18n-attr="aria-label:오른쪽으로 회전">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 1 0 6.5 9.7"/></svg>
+        </button>
+        <input type="range" id="pe-zoom" min="100" max="300" value="100" step="1" aria-label="Zoom" data-i18n-attr="aria-label:확대">
+      </div>
+      <div class="pe-row" style="justify-content:flex-end">
+        <button type="button" class="btn btn--ghost" id="pe-cancel" data-i18n="닫기">닫기</button>
+        <button type="button" class="btn" id="pe-apply" data-i18n="적용">적용</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1096,13 +1134,164 @@
     );
   }
 
-  async function onPfPhotoChange(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const i = Number(input.dataset.i);
+  /* ---------- 사진 편집(자르기/회전/확대) ----------
+     상품 사진은 정사각(1:1), 룩북 사진은 그 칸에 고른 가로세로 비율로 미리 잘라서 올린다 —
+     Cloudinary가 업로드 후 리사이즈는 해주지만 "어디를 잘라낼지"는 모르기 때문에, 실제로
+     보일 영역을 여기서 캔버스로 직접 그려 잘라낸 이미지를 만든 뒤 그걸 업로드한다.
+     자유 드래그로 잘라낼 영역을 고르는 대신, 고정된 틀(frame) 안에서 사진을 확대/이동/회전하는
+     방식(인스타그램 업로드 편집과 같은 방식)을 써서 구현을 단순하게 유지한다. */
+  const peState = { img: null, url: null, rotation: 0, zoom: 1, offsetX: 0, offsetY: 0, frameW: 320, frameH: 320, baseScale: 1, onDone: null };
+
+  function peRatioToNumber(ratio) {
+    const [w, h] = String(ratio || "1/1").split("/").map(Number);
+    return w > 0 && h > 0 ? w / h : 1;
+  }
+
+  function peFitImageToFrame() {
+    const rad = (peState.rotation * Math.PI) / 180;
+    const iw = peState.img.naturalWidth, ih = peState.img.naturalHeight;
+    const rw = Math.abs(iw * Math.cos(rad)) + Math.abs(ih * Math.sin(rad));
+    const rh = Math.abs(iw * Math.sin(rad)) + Math.abs(ih * Math.cos(rad));
+    peState.baseScale = Math.max(peState.frameW / rw, peState.frameH / rh);
+  }
+
+  function peDraw(ctx, w, h, outputScale) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w / 2 + peState.offsetX * outputScale, h / 2 + peState.offsetY * outputScale);
+    ctx.rotate((peState.rotation * Math.PI) / 180);
+    const scale = peState.baseScale * peState.zoom * outputScale;
+    const iw = peState.img.naturalWidth * scale, ih = peState.img.naturalHeight * scale;
+    ctx.drawImage(peState.img, -iw / 2, -ih / 2, iw, ih);
+    ctx.restore();
+  }
+
+  function peRedraw() {
+    const canvas = el("pe-canvas");
+    peDraw(canvas.getContext("2d"), canvas.width, canvas.height, 1);
+  }
+
+  /* 확대·이동을 해도 프레임 밖으로 사진이 완전히 빠져나가지 않도록 이동 범위를 제한한다. */
+  function peClampOffset() {
+    const rad = (peState.rotation * Math.PI) / 180;
+    const iw = peState.img.naturalWidth, ih = peState.img.naturalHeight;
+    const scale = peState.baseScale * peState.zoom;
+    const rw = (Math.abs(iw * Math.cos(rad)) + Math.abs(ih * Math.sin(rad))) * scale;
+    const rh = (Math.abs(iw * Math.sin(rad)) + Math.abs(ih * Math.cos(rad))) * scale;
+    const maxX = Math.max(0, (rw - peState.frameW) / 2);
+    const maxY = Math.max(0, (rh - peState.frameH) / 2);
+    peState.offsetX = Math.min(maxX, Math.max(-maxX, peState.offsetX));
+    peState.offsetY = Math.min(maxY, Math.max(-maxY, peState.offsetY));
+  }
+
+  function openPhotoEditor(file, ratio, onDone) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      peState.img = img;
+      peState.url = url;
+      peState.rotation = 0;
+      peState.zoom = 1;
+      peState.offsetX = 0;
+      peState.offsetY = 0;
+      peState.onDone = onDone;
+
+      const r = peRatioToNumber(ratio);
+      let fw = 320, fh = 320 / r;
+      if (fh > 420) { fh = 420; fw = fh * r; }
+      peState.frameW = Math.round(fw);
+      peState.frameH = Math.round(fh);
+
+      const stage = el("pe-stage");
+      stage.style.width = peState.frameW + "px";
+      stage.style.height = peState.frameH + "px";
+      const canvas = el("pe-canvas");
+      canvas.width = peState.frameW;
+      canvas.height = peState.frameH;
+
+      peFitImageToFrame();
+      el("pe-zoom").value = 100;
+      peRedraw();
+      el("photo-editor").hidden = false;
+    };
+    img.onerror = () => {
+      toast(t("이미지를 불러오지 못했습니다"));
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function closePhotoEditor() {
+    el("photo-editor").hidden = true;
+    if (peState.url) URL.revokeObjectURL(peState.url);
+    peState.img = null;
+    peState.url = null;
+    peState.onDone = null;
+  }
+
+  el("pe-cancel").addEventListener("click", () => closePhotoEditor());
+
+  el("pe-rotate-left").addEventListener("click", () => {
+    peState.rotation = (peState.rotation + 270) % 360;
+    peState.offsetX = 0; peState.offsetY = 0;
+    peFitImageToFrame();
+    peRedraw();
+  });
+  el("pe-rotate-right").addEventListener("click", () => {
+    peState.rotation = (peState.rotation + 90) % 360;
+    peState.offsetX = 0; peState.offsetY = 0;
+    peFitImageToFrame();
+    peRedraw();
+  });
+  el("pe-zoom").addEventListener("input", () => {
+    peState.zoom = Number(el("pe-zoom").value) / 100;
+    peClampOffset();
+    peRedraw();
+  });
+
+  (function setupPeDrag() {
+    const stage = el("pe-stage");
+    let dragging = false, startX = 0, startY = 0, startOffX = 0, startOffY = 0;
+    const down = (x, y) => {
+      dragging = true; startX = x; startY = y;
+      startOffX = peState.offsetX; startOffY = peState.offsetY;
+      stage.classList.add("is-dragging");
+    };
+    const move = (x, y) => {
+      if (!dragging) return;
+      peState.offsetX = startOffX + (x - startX);
+      peState.offsetY = startOffY + (y - startY);
+      peClampOffset();
+      peRedraw();
+    };
+    const up = () => { dragging = false; stage.classList.remove("is-dragging"); };
+    stage.addEventListener("mousedown", (e) => down(e.clientX, e.clientY));
+    window.addEventListener("mousemove", (e) => move(e.clientX, e.clientY));
+    window.addEventListener("mouseup", up);
+    stage.addEventListener("touchstart", (e) => { const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: true });
+    stage.addEventListener("touchmove", (e) => { const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: true });
+    stage.addEventListener("touchend", up);
+  })();
+
+  el("pe-apply").addEventListener("click", () => {
+    const outW = 1200;
+    const outH = Math.round((outW * peState.frameH) / peState.frameW);
+    const outputScale = outW / peState.frameW;
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    peDraw(outCanvas.getContext("2d"), outW, outH, outputScale);
+    const onDone = peState.onDone;
+    outCanvas.toBlob((blob) => {
+      closePhotoEditor();
+      if (blob) onDone(blob);
+    }, "image/jpeg", 0.92);
+  });
+
+  async function uploadPfPhoto(input, i, blob) {
     const token = await getAccessToken();
     const fd = new FormData();
-    fd.append("photo", file);
+    fd.append("photo", blob, "photo.jpg");
     input.disabled = true;
     try {
       const res = await fetch("/api/admin/products/photo", {
@@ -1123,6 +1312,14 @@
     } finally {
       input.disabled = false;
     }
+  }
+
+  function onPfPhotoChange(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const i = Number(input.dataset.i);
+    input.value = "";
+    openPhotoEditor(file, "1/1", (blob) => uploadPfPhoto(input, i, blob));
   }
 
   function resetProductForm() {
@@ -1345,13 +1542,11 @@
     renderLfPreview();
   }
 
-  async function onLfPhotoChange(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+  async function uploadLfPhoto(input, blob) {
     const token = await getAccessToken();
     const fd = new FormData();
-    fd.append("photo", file);
-    e.target.disabled = true;
+    fd.append("photo", blob, "photo.jpg");
+    input.disabled = true;
     try {
       const res = await fetch("/api/admin/lookbook/photo", {
         method: "POST",
@@ -1369,8 +1564,16 @@
     } catch (err) {
       toast(t("사진 업로드에 실패했습니다"));
     } finally {
-      e.target.disabled = false;
+      input.disabled = false;
     }
+  }
+
+  function onLfPhotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const input = e.target;
+    input.value = "";
+    openPhotoEditor(file, getLfRatio() || "16/10", (blob) => uploadLfPhoto(input, blob));
   }
 
   function resetLookbookForm() {

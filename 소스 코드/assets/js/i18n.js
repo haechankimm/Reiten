@@ -754,6 +754,16 @@ const I18N = {
   "리뷰 삭제": { de: "Bewertung gelöscht" },
   "문의 답변 등록": { de: "Antwort auf Anfrage veröffentlicht" },
 
+  /* 사진 편집(자르기/회전/확대) 도구 — works/index.html의 photo-editor 모달 */
+  "사진 편집": { de: "Foto bearbeiten" },
+  "드래그해서 위치를 옮기고, 슬라이더로 확대·축소하세요": { de: "Zum Verschieben ziehen, mit dem Regler zoomen" },
+  "왼쪽으로 회전": { de: "Nach links drehen" },
+  "오른쪽으로 회전": { de: "Nach rechts drehen" },
+  "확대": { de: "Zoom" },
+  "적용": { de: "Übernehmen" },
+  "닫기": { de: "Schließen" },
+  "이미지를 불러오지 못했습니다": { de: "Bild konnte nicht geladen werden" },
+
   /* ---------- 라이더 사이즈 가이드 ---------- */
   "보호대 착용 시 사이즈 가이드": { en: "Sizing With Body Armor", ja: "プロテクター着用時のサイズガイド" },
   "이너 프로텍터(보호대)를 착용하고 그 위에 덧입으실 계획이라면 가슴·어깨 여유가 줄어듭니다. 평소 사이즈보다 한 치수 큰 사이즈를 권장합니다.": {
