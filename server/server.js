@@ -105,7 +105,33 @@ async function getActiveProducts() {
     console.error("[products] DB 조회 실패, 정적 목록으로 폴백:", error.message);
     return STATIC_PRODUCTS;
   }
-  return data.map(toProductDto);
+  return withRealSoldOut(data.map(toProductDto));
+}
+
+/* 관리자가 손으로 체크하는 soldOut 배열과 실제 결제 시 차감되는 inventory 테이블이 서로 다른
+   값을 가질 수 있다(주문으로 실재고가 0이 돼도 관리자가 체크박스를 갱신하기 전까지는 반영 안 됨,
+   또는 사이즈 행 자체가 아직 없어 항상 재고 0으로 취급됨 — 001_init.sql 참고). 고객 화면에 내려줄
+   때는 관리자가 체크한 soldOut과 실재고 0(또는 행 없음)인 사이즈를 합쳐서, 실제로는 주문이 막히는
+   사이즈가 "구매 가능"으로 보이는 일이 없게 한다. */
+async function withRealSoldOut(products) {
+  if (!products.length) return products;
+  const ids = products.map((p) => p.id);
+  const { data, error } = await supabaseAdmin.from("inventory").select("product_id, size, qty").in("product_id", ids);
+  if (error) {
+    console.error("[products] 재고 조회 실패, 관리자가 입력한 품절 정보만 사용:", error.message);
+    return products;
+  }
+  const qtyByProduct = new Map();
+  for (const row of data) {
+    if (!qtyByProduct.has(row.product_id)) qtyByProduct.set(row.product_id, new Map());
+    qtyByProduct.get(row.product_id).set(row.size, row.qty);
+  }
+  return products.map((p) => {
+    const qtyBySize = qtyByProduct.get(p.id);
+    const outOfStock = (p.sizes || []).filter((size) => !qtyBySize || (qtyBySize.get(size) ?? 0) <= 0);
+    if (!outOfStock.length) return p;
+    return { ...p, soldOut: [...new Set([...(p.soldOut || []), ...outOfStock])] };
+  });
 }
 
 async function getAllProductIds() {
@@ -379,6 +405,110 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
   });
 });
 
+/* ---------- 관리자 감사 로그 ----------
+   관리자가 2명 이상이 되면 "누가 언제 무엇을 바꿨는지"를 추적할 방법이 필요해진다.
+   메일 발송과 같은 패턴으로 요청을 막지 않고(fire-and-forget) 실패해도 본작업은 성공 처리한다 —
+   로그 적재 실패가 실제 관리 작업을 막아서는 안 되기 때문. 008_admin_audit_log.sql 미실행 시에도
+   본작업에는 지장이 없도록 에러를 조용히 삼킨다. */
+function logAdminAction(req, action, targetType, targetId, detail) {
+  supabaseAdmin
+    .from("admin_audit_log")
+    .insert({
+      admin_id: req.user.id,
+      admin_email: req.user.email || "",
+      action,
+      target_type: targetType,
+      target_id: String(targetId),
+      detail: detail || null,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[audit-log] 적재 실패:", error.message);
+    });
+}
+
+app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
+  const { page, pageSize, from, to } = paginationParams(req.query);
+  const { data, error, count } = await supabaseAdmin
+    .from("admin_audit_log")
+    .select("*", { count: "exact" })
+    .order("at", { ascending: false })
+    .range(from, to);
+
+  if (error) return res.status(500).json({ error: "감사 로그를 불러오지 못했습니다." });
+  res.json({
+    items: data.map((r) => ({
+      id: r.id,
+      adminEmail: r.admin_email,
+      action: r.action,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      detail: r.detail,
+      at: r.at,
+    })),
+    page,
+    pageSize,
+    total: count ?? data.length,
+  });
+});
+
+/* ---------- 관리자 대시보드 ----------
+   orders 테이블만으로 계산 가능해서 새 테이블 없이 집계만 한다. 취소된 주문은 매출에서 뺀다.
+   상품별 판매량은 orders.items(주문 시점 스냅샷, productId 없이 name만 있음)를 이름으로 묶어 집계한다 —
+   상품이 삭제·개명돼도 과거 주문 내역 자체는 그대로 남아있기 때문. */
+app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("items, total, status, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (error) return res.status(500).json({ error: "집계에 실패했습니다." });
+
+  const isCancelled = (o) => o.status === "취소";
+  const now = new Date();
+  const todayKey = now.toISOString().slice(0, 10);
+  const monthKey = now.toISOString().slice(0, 7);
+
+  let todayRevenue = 0;
+  let monthRevenue = 0;
+  let pendingCount = 0;
+  const revenueByDay = new Map();
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    revenueByDay.set(d.toISOString().slice(0, 10), 0);
+  }
+
+  const qtyByName = new Map();
+  for (const o of data) {
+    if (o.status === "입금대기") pendingCount++;
+    if (!isCancelled(o)) {
+      const dayKey = String(o.created_at).slice(0, 10);
+      if (dayKey === todayKey) todayRevenue += o.total;
+      if (dayKey.slice(0, 7) === monthKey) monthRevenue += o.total;
+      if (revenueByDay.has(dayKey)) revenueByDay.set(dayKey, revenueByDay.get(dayKey) + o.total);
+
+      for (const item of o.items || []) {
+        qtyByName.set(item.name, (qtyByName.get(item.name) || 0) + (item.qty || 0));
+      }
+    }
+  }
+
+  const bestsellers = [...qtyByName.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, qty]) => ({ name, qty }));
+
+  res.json({
+    todayRevenue,
+    monthRevenue,
+    totalOrders: data.length,
+    pendingCount,
+    dailyRevenue: [...revenueByDay.entries()].map(([date, total]) => ({ date, total })),
+    bestsellers,
+  });
+});
+
 /* ---------- 관리자 ---------- */
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
@@ -462,6 +592,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
     });
   }
 
+  logAdminAction(req, "order.update", "order", req.params.no, patch);
   res.json({ ok: true });
 });
 
@@ -503,6 +634,7 @@ app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
     .eq("id", req.params.id);
 
   if (error) return res.status(500).json({ error: "상태 변경에 실패했습니다." });
+  logAdminAction(req, "return.update", "return", req.params.id, { status: String(status).trim() });
   res.json({ ok: true });
 });
 
@@ -527,6 +659,7 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
     .upsert({ product_id: productId, size, qty: qtyNum }, { onConflict: "product_id,size" });
 
   if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
+  logAdminAction(req, "inventory.update", "inventory", `${productId}:${size}`, { qty: qtyNum });
   res.json({ ok: true });
 });
 
@@ -566,6 +699,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     console.error("[admin/products] 생성 실패:", error.message);
     return res.status(500).json({ error: "상품 생성에 실패했습니다." });
   }
+  logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
   res.json(toProductDto(data));
 });
 
@@ -587,6 +721,7 @@ app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "상품 수정에 실패했습니다." });
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
+  logAdminAction(req, "product.update", "product", req.params.id, patch);
   res.json(toProductDto(data));
 });
 
@@ -598,6 +733,7 @@ app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
   // 삭제된 상품에 딸린 재고 행도 함께 정리한다(없어도 동작에는 지장 없지만 관리자 재고 탭이 지저분해짐).
   await supabaseAdmin.from("inventory").delete().eq("product_id", req.params.id);
+  logAdminAction(req, "product.delete", "product", req.params.id);
   res.json({ ok: true });
 });
 
@@ -665,6 +801,7 @@ app.post("/api/admin/lookbook", requireAdmin, async (req, res) => {
     console.error("[admin/lookbook] 생성 실패:", error.message);
     return res.status(500).json({ error: "룩북 항목 생성에 실패했습니다." });
   }
+  logAdminAction(req, "lookbook.create", "lookbook", data.id, { label: data.label });
   res.json(toLookbookDto(data));
 });
 
@@ -686,6 +823,7 @@ app.patch("/api/admin/lookbook/:id", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "수정에 실패했습니다." });
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 항목입니다." });
+  logAdminAction(req, "lookbook.update", "lookbook", req.params.id, patch);
   res.json(toLookbookDto(data));
 });
 
@@ -695,6 +833,7 @@ app.delete("/api/admin/lookbook/:id", requireAdmin, async (req, res) => {
     console.error("[admin/lookbook] 삭제 실패:", error.message);
     return res.status(500).json({ error: "삭제에 실패했습니다." });
   }
+  logAdminAction(req, "lookbook.delete", "lookbook", req.params.id);
   res.json({ ok: true });
 });
 
@@ -761,6 +900,7 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
     console.error("[admin/settings] 생성 실패:", error.message);
     return res.status(500).json({ error: "생성에 실패했습니다." });
   }
+  logAdminAction(req, "setting.create", "setting", data.id, { label: data.label });
   res.json(toSettingDto(data));
 });
 
@@ -782,6 +922,7 @@ app.patch("/api/admin/settings/:id", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "수정에 실패했습니다." });
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 항목입니다." });
+  logAdminAction(req, "setting.update", "setting", req.params.id, patch);
   res.json(toSettingDto(data));
 });
 
@@ -791,6 +932,7 @@ app.delete("/api/admin/settings/:id", requireAdmin, async (req, res) => {
     console.error("[admin/settings] 삭제 실패:", error.message);
     return res.status(500).json({ error: "삭제에 실패했습니다." });
   }
+  logAdminAction(req, "setting.delete", "setting", req.params.id);
   res.json({ ok: true });
 });
 
@@ -924,12 +1066,14 @@ app.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   }
   const { error } = await supabaseAdmin.from("reviews").update({ approved }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "승인 처리에 실패했습니다." });
+  logAdminAction(req, "review.update", "review", req.params.id, { approved });
   res.json({ ok: true });
 });
 
 app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   const { error } = await supabaseAdmin.from("reviews").delete().eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "삭제에 실패했습니다." });
+  logAdminAction(req, "review.delete", "review", req.params.id);
   res.json({ ok: true });
 });
 
@@ -1021,6 +1165,7 @@ app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
     .eq("id", req.params.id);
 
   if (error) return res.status(500).json({ error: "답변 저장에 실패했습니다." });
+  logAdminAction(req, "qna.answer", "qna", req.params.id);
   res.json({ ok: true });
 });
 

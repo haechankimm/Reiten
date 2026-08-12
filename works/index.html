@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>REITEN WORKS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" href="/assets/img/logo-mark.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/css/style.css">
 <style>
   /* =========================================================
@@ -148,6 +150,17 @@
     :root:not([data-theme="light"]) .icon-btn .i-moon { display: block; }
   }
 
+  /* style.css의 .btn 기본값은 --ink/--paper를 쓰는데, 다크 테마에서는 --ink가 밝은 색으로
+     뒤집혀서 저장 버튼이 흰색 알약처럼 보인다. 사이드바·세그먼트와 같은 포인트 컬러(--accent)로
+     통일하고, 삭제류 액션만 --danger로 분리해 취소/제거와 구분한다. */
+  .btn { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+  .btn:hover { opacity: .9; }
+  .btn--ghost { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+  .btn--ghost:hover { background: var(--bg-surface-2); color: var(--text-primary); border-color: var(--border); opacity: 1; }
+  .btn--danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+  .btn--danger:hover { background: var(--danger); color: var(--accent-contrast); opacity: 1; }
+  .btn[disabled] { opacity: .35; }
+
   .content { flex: 1; overflow: auto; padding: 18px 20px 40px; }
   .content-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .content-title { font-size: 15px; font-weight: 700; }
@@ -163,6 +176,8 @@
 
   .split { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
   @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
+  .split-rev { display: grid; grid-template-columns: 1.3fr 380px; gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .split-rev { grid-template-columns: 1fr; } }
   .plist { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%;
     appearance: none; border: none; border-bottom: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
@@ -225,6 +240,31 @@
     border-style: dashed; background: transparent; }
   .look-tile-add:hover { color: var(--accent); border-color: var(--accent); }
 
+  /* ---------- 감사 로그 ---------- */
+  .logrow { display: grid; grid-template-columns: 148px 190px 150px 1fr; gap: 10px; padding: 9px 12px;
+    border-bottom: 1px solid var(--border); font-size: 12px; align-items: baseline; }
+  .logrow:last-child { border-bottom: none; }
+  .logrow-head { color: var(--text-muted); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700; }
+  .logrow-action { font-weight: 700; }
+  .logrow-detail { color: var(--text-secondary); font-size: 11px; margin-top: 2px; }
+  @media (max-width: 720px) { .logrow { grid-template-columns: 1fr; gap: 2px; } }
+
+  /* ---------- 대시보드 ---------- */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .stat-tile { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg-canvas); }
+  .stat-tile-label { font-size: 11px; color: var(--text-muted); letter-spacing: .03em; }
+  .stat-tile-value { font-size: 22px; font-weight: 800; margin-top: 6px; }
+  .stat-tile-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; margin-top: 14px; }
+  .chart-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+  .chart-bar { width: 100%; max-width: 28px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .chart-bar-label { font-size: 9.5px; color: var(--text-muted); white-space: nowrap; }
+  .best-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .best-row:last-child { border-bottom: none; }
+  .best-rank { color: var(--text-muted); font-weight: 700; font-size: 11px; }
+  .best-bar-track { grid-column: 1/-1; height: 5px; border-radius: 3px; background: var(--bg-surface-2); overflow: hidden; margin-top: 2px; }
+  .best-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -264,6 +304,16 @@
     <button type="button" class="nav-item" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z"/></svg>
       <span data-i18n="정보">정보</span>
+    </button>
+
+    <div class="sidebar-heading" data-i18n="분석">분석</div>
+    <button type="button" class="nav-item" data-tab="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20V11M11 20V4M18 20v-7"/></svg>
+      <span data-i18n="대시보드">대시보드</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="auditlog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6"/></svg>
+      <span data-i18n="활동 로그">활동 로그</span>
     </button>
   </aside>
 
@@ -360,15 +410,15 @@
           </div>
         </div>
 
-        <div id="admin-returns" style="display:grid;gap:12px;max-width:80ch" hidden></div>
+        <div id="admin-returns" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
         <div id="admin-inventory" style="display:grid;gap:10px;max-width:60ch" hidden></div>
-        <div id="admin-qna" style="display:grid;gap:12px;max-width:80ch" hidden></div>
-        <div id="admin-reviews" style="display:grid;gap:12px;max-width:80ch" hidden></div>
+        <div id="admin-qna" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
+        <div id="admin-reviews" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
 
-        <div id="admin-products" style="display:grid;gap:24px;max-width:70ch" hidden>
+        <div id="admin-products" style="display:grid;gap:24px" hidden>
           <div class="panel">
             <b id="product-form-title" data-i18n="새 상품 추가">새 상품 추가</b>
-            <form id="product-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+            <form id="product-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px">
               <div class="field">
                 <label for="pf-id" data-i18n="상품 ID (영문 소문자·숫자·하이픈)">상품 ID (영문 소문자·숫자·하이픈)</label>
                 <input id="pf-id" required pattern="[a-z0-9-]{2,60}">
@@ -408,28 +458,6 @@
                 <input id="pf-short">
               </div>
               <div class="field">
-                <label for="pf-desc" data-i18n="상세 설명">상세 설명</label>
-                <textarea id="pf-desc"></textarea>
-              </div>
-              <div class="field">
-                <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
-                <textarea id="pf-details"></textarea>
-              </div>
-              <div class="field">
-                <label data-i18n="컬러">컬러</label>
-                <div class="chips" id="pf-colors"></div>
-              </div>
-              <div class="field">
-                <label data-i18n="사이즈 재고 (체크 해제 시 품절로 표시)">사이즈 재고 (체크 해제 시 품절로 표시)</label>
-                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XS" checked><span>XS</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="S" checked><span>S</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="M" checked><span>M</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="L" checked><span>L</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XL" checked><span>XL</span></label>
-                </div>
-              </div>
-              <div class="field">
                 <label for="pf-sizetable" data-i18n="사이즈표">사이즈표</label>
                 <select id="pf-sizetable">
                   <option value="hoodie">hoodie</option>
@@ -443,11 +471,33 @@
               <div class="field">
                 <label class="checkbox"><input type="checkbox" id="pf-active" checked><span data-i18n="공개 (체크 해제 시 매장에서 숨김)">공개 (체크 해제 시 매장에서 숨김)</span></label>
               </div>
-              <div class="field">
-                <label data-i18n="사진 (최대 4장)">사진 (최대 4장)</label>
-                <div id="pf-photos" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
+              <div class="field" style="grid-column:1/-1">
+                <label for="pf-desc" data-i18n="상세 설명">상세 설명</label>
+                <textarea id="pf-desc"></textarea>
               </div>
-              <div style="display:flex;gap:8px">
+              <div class="field" style="grid-column:1/-1">
+                <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
+                <textarea id="pf-details"></textarea>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="컬러">컬러</label>
+                <div class="chips" id="pf-colors"></div>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="사이즈 재고 (체크 해제 시 품절로 표시)">사이즈 재고 (체크 해제 시 품절로 표시)</label>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XS" checked><span>XS</span></label>
+                  <label class="checkbox"><input type="checkbox" class="pf-size" value="S" checked><span>S</span></label>
+                  <label class="checkbox"><input type="checkbox" class="pf-size" value="M" checked><span>M</span></label>
+                  <label class="checkbox"><input type="checkbox" class="pf-size" value="L" checked><span>L</span></label>
+                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XL" checked><span>XL</span></label>
+                </div>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="사진 (최대 4장)">사진 (최대 4장)</label>
+                <div id="pf-photos" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:12px"></div>
+              </div>
+              <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
                 <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="취소">취소</button>
               </div>
@@ -457,7 +507,7 @@
           <div id="products-list" class="grid-list"></div>
         </div>
 
-        <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch" hidden>
+        <div id="admin-lookbook" class="split-rev" hidden>
           <div class="panel">
             <b data-i18n="실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)">실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)</b>
             <div id="lookbook-visual" class="look-grid" style="margin-top:14px"></div>
@@ -465,7 +515,7 @@
 
           <div class="panel">
             <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
-            <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+            <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 14px">
               <div class="field">
                 <label for="lf-label" data-i18n="라벨">라벨</label>
                 <input id="lf-label" required>
@@ -496,14 +546,14 @@
                 </select>
                 <input id="lf-ratio" style="margin-top:8px" hidden placeholder="16/10" required>
               </div>
-              <div class="field">
+              <div class="field" style="grid-column:1/-1">
                 <label class="checkbox"><input type="checkbox" id="lf-active" checked><span data-i18n="공개 (체크 해제 시 숨김)">공개 (체크 해제 시 숨김)</span></label>
               </div>
-              <div class="field">
+              <div class="field" style="grid-column:1/-1">
                 <label data-i18n="사진">사진</label>
                 <div id="lf-photo" style="max-width:220px"></div>
               </div>
-              <div class="field">
+              <div class="field" style="grid-column:1/-1">
                 <label data-i18n="미리보기">미리보기</label>
                 <div class="look" style="max-width:360px;margin-top:4px">
                   <figure id="lf-preview-figure" class="w6">
@@ -512,20 +562,20 @@
                   </figure>
                 </div>
               </div>
-              <div style="display:flex;gap:8px">
+              <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
                 <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
-                <button class="btn btn--ghost" type="button" id="lf-delete" hidden data-i18n="삭제">삭제</button>
+                <button class="btn btn--danger" type="button" id="lf-delete" hidden data-i18n="삭제">삭제</button>
               </div>
             </form>
           </div>
         </div>
 
-        <div id="admin-settings" style="display:grid;gap:24px;max-width:70ch" hidden>
+        <div id="admin-settings" style="display:grid;gap:24px" hidden>
           <div class="panel">
             <b id="settings-form-title" data-i18n="새 정보 추가">새 정보 추가</b>
             <p class="small" style="margin-top:6px" data-i18n="비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.">비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.</p>
-            <form id="settings-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+            <form id="settings-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px">
               <div class="field">
                 <label for="sf-label" data-i18n="이름 (예: Supabase, Render, 사업자등록번호)">이름 (예: Supabase, Render, 사업자등록번호)</label>
                 <input id="sf-label" required>
@@ -538,15 +588,40 @@
                 <label for="sf-note" data-i18n="메모 (선택)">메모 (선택)</label>
                 <input id="sf-note">
               </div>
-              <div style="display:flex;gap:8px">
+              <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="sf-submit" data-i18n="저장">저장</button>
                 <button class="btn btn--ghost" type="button" id="sf-cancel" hidden data-i18n="취소">취소</button>
-                <button class="btn btn--ghost" type="button" id="sf-delete" hidden data-i18n="삭제">삭제</button>
+                <button class="btn btn--danger" type="button" id="sf-delete" hidden data-i18n="삭제">삭제</button>
               </div>
             </form>
           </div>
 
           <div id="settings-list" style="display:grid;gap:10px"></div>
+        </div>
+
+        <div id="admin-dashboard" style="display:grid;gap:20px" hidden>
+          <div id="dashboard-stats" class="stat-row"></div>
+          <div class="panel">
+            <b data-i18n="최근 14일 매출">최근 14일 매출</b>
+            <div id="dashboard-revenue-chart" class="chart-bars"></div>
+          </div>
+          <div class="panel">
+            <b data-i18n="베스트셀러 (수량 기준)">베스트셀러 (수량 기준)</b>
+            <div id="dashboard-bestsellers" style="margin-top:10px"></div>
+          </div>
+        </div>
+
+        <div id="admin-auditlog" style="display:grid;gap:12px" hidden>
+          <div class="plist">
+            <div class="logrow logrow-head">
+              <span data-i18n="시간">시간</span>
+              <span data-i18n="관리자">관리자</span>
+              <span data-i18n="작업">작업</span>
+              <span data-i18n="대상">대상</span>
+            </div>
+            <div id="auditlog-rows"></div>
+          </div>
+          <div id="auditlog-more-wrap"></div>
         </div>
       </section>
     </div>
@@ -620,7 +695,7 @@
       })
     );
   }
-  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings" });
+  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
 
   el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
@@ -902,7 +977,7 @@
         ${r.instagramHandle ? `<p class="small" style="margin-top:8px">Instagram @${esc(r.instagramHandle)}</p>` : ""}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button type="button" class="btn btn--sm admin-review-toggle">${esc(r.approved ? t("숨기기") : t("승인"))}</button>
-          <button type="button" class="btn btn--sm btn--ghost admin-review-delete" data-i18n="삭제">삭제</button>
+          <button type="button" class="btn btn--sm btn--danger admin-review-delete" data-i18n="삭제">삭제</button>
         </div>
       </div>`;
   }
@@ -1158,7 +1233,7 @@
         </div>
         <div class="grid-card-actions">
           <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
-          <button type="button" class="btn btn--sm btn--ghost admin-product-delete" data-i18n="삭제">삭제</button>
+          <button type="button" class="btn btn--sm btn--danger admin-product-delete" data-i18n="삭제">삭제</button>
         </div>
       </div>`;
   }
@@ -1482,6 +1557,124 @@
     renderAdminSettings();
   }
 
+  /* ---------- 감사 로그 (관리자가 2명 이상일 때 "누가 언제 무엇을 바꿨는지" 추적용) ----------
+     008_admin_audit_log.sql을 실행하지 않았으면 서버가 저장을 조용히 건너뛰므로 여기도 빈 목록만 보임. */
+  const AUDIT_ACTION_LABELS = {
+    "order.update": "주문 정보 변경",
+    "return.update": "반품 상태 변경",
+    "inventory.update": "재고 수정",
+    "product.create": "상품 등록",
+    "product.update": "상품 수정",
+    "product.delete": "상품 삭제",
+    "lookbook.create": "룩북 칸 추가",
+    "lookbook.update": "룩북 칸 수정",
+    "lookbook.delete": "룩북 칸 삭제",
+    "setting.create": "정보 추가",
+    "setting.update": "정보 수정",
+    "setting.delete": "정보 삭제",
+    "review.update": "리뷰 승인/숨김",
+    "review.delete": "리뷰 삭제",
+    "qna.answer": "문의 답변 등록",
+  };
+  function fmtDateTime(iso) {
+    return new Date(iso).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR");
+  }
+
+  const auditLogState = { page: 0, pageSize: 30, total: 0, items: [] };
+
+  function auditRowHTML(r) {
+    const label = t(AUDIT_ACTION_LABELS[r.action] || r.action);
+    const detailStr = r.detail && Object.keys(r.detail).length ? JSON.stringify(r.detail) : "";
+    return `
+      <div class="logrow">
+        <span class="tnum small">${esc(fmtDateTime(r.at))}</span>
+        <span class="small">${esc(r.adminEmail)}</span>
+        <span class="logrow-action">${esc(label)}</span>
+        <span>
+          <span class="tnum">${esc(r.targetType)}:${esc(r.targetId)}</span>
+          ${detailStr ? `<div class="logrow-detail">${esc(detailStr)}</div>` : ""}
+        </span>
+      </div>`;
+  }
+
+  function renderAuditLog() {
+    el("auditlog-rows").innerHTML =
+      auditLogState.items.map(auditRowHTML).join("") ||
+      `<div class="logrow small" style="color:var(--text-muted)">${esc(t("아직 기록된 활동이 없습니다"))}</div>`;
+    const hasMore = auditLogState.items.length < auditLogState.total;
+    el("auditlog-more-wrap").innerHTML = loadMoreHTML(hasMore, "auditlog-more");
+    el("auditlog-more")?.addEventListener("click", () => paintAdminAuditLog(true));
+  }
+
+  async function paintAdminAuditLog(loadMore = false) {
+    auditLogState.page = loadMore ? auditLogState.page + 1 : 1;
+    const result = await adminFetch(`/api/admin/audit-log?page=${auditLogState.page}&pageSize=${auditLogState.pageSize}`);
+    if (!result) return;
+    auditLogState.total = result.total;
+    auditLogState.items = loadMore ? auditLogState.items.concat(result.items) : result.items;
+    renderAuditLog();
+  }
+
+  /* ---------- 대시보드 (매출/베스트셀러 요약) ---------- */
+  function dayLabel(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  function renderDashboard(d) {
+    el("dashboard-stats").innerHTML = `
+      <div class="stat-tile">
+        <div class="stat-tile-label">${esc(t("오늘 매출"))}</div>
+        <div class="stat-tile-value tnum">${money(d.todayRevenue)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-label">${esc(t("이번 달 매출"))}</div>
+        <div class="stat-tile-value tnum">${money(d.monthRevenue)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-label">${esc(t("누적 주문"))}</div>
+        <div class="stat-tile-value tnum">${d.totalOrders.toLocaleString("ko-KR")}</div>
+        <div class="stat-tile-sub">${esc(t("건"))}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-label">${esc(t("입금 대기"))}</div>
+        <div class="stat-tile-value tnum">${d.pendingCount.toLocaleString("ko-KR")}</div>
+        <div class="stat-tile-sub">${esc(t("건 — 확인 필요"))}</div>
+      </div>`;
+
+    const max = Math.max(1, ...d.dailyRevenue.map((r) => r.total));
+    el("dashboard-revenue-chart").innerHTML = d.dailyRevenue
+      .map(
+        (r) => `
+        <div class="chart-bar-col" title="${esc(dayLabel(r.date))} · ${esc(money(r.total))}">
+          <div class="chart-bar" style="height:${Math.max(2, Math.round((r.total / max) * 100))}%"></div>
+          <span class="chart-bar-label">${esc(dayLabel(r.date))}</span>
+        </div>`
+      )
+      .join("");
+
+    const bestMax = Math.max(1, ...d.bestsellers.map((b) => b.qty));
+    el("dashboard-bestsellers").innerHTML = d.bestsellers.length
+      ? d.bestsellers
+          .map(
+            (b, i) => `
+          <div class="best-row">
+            <span class="best-rank">${i + 1}</span>
+            <span>${esc(t(b.name))}</span>
+            <span class="tnum">${esc(t("{n}개", { n: b.qty }))}</span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((b.qty / bestMax) * 100)}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
+  }
+
+  async function paintAdminDashboard() {
+    const result = await adminFetch("/api/admin/dashboard");
+    if (!result) return;
+    renderDashboard(result);
+  }
+
   /* /api/admin/orders 호출이 실제로 성공했을 때(=서버가 관리자로 인정했을 때)만 패널을 연다 —
      profile.role만 믿지 않는다(계정 페이지 관리자 판단 로직과 동일한 원칙). */
   async function tryShowAdminPanel(profile) {
@@ -1502,6 +1695,8 @@
     paintAdminReviews();
     paintAdminLookbook();
     paintAdminSettings();
+    paintAdminAuditLog();
+    paintAdminDashboard();
     return true;
   }
 
