@@ -1001,14 +1001,14 @@ app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
 
 const productUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
 }).single("photo");
 
 app.post("/api/admin/products/photo", requireAdmin, (req, res) => {
   productUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(5MB 이하 이미지만 가능)." });
+      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
     }
     if (!req.file) {
       return res.status(400).json({ error: "사진 파일이 없습니다." });
@@ -1101,14 +1101,14 @@ app.delete("/api/admin/lookbook/:id", requireAdmin, async (req, res) => {
 
 const lookbookUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
 }).single("photo");
 
 app.post("/api/admin/lookbook/photo", requireAdmin, (req, res) => {
   lookbookUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(5MB 이하 이미지만 가능)." });
+      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
     }
     if (!req.file) {
       return res.status(400).json({ error: "사진 파일이 없습니다." });
@@ -1201,7 +1201,7 @@ app.delete("/api/admin/settings/:id", requireAdmin, async (req, res) => {
 /* ---------- 상품 리뷰 ---------- */
 const reviewUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
 }).single("photo");
 
@@ -1236,7 +1236,7 @@ app.get("/api/reviews", async (req, res) => {
 app.post("/api/reviews", writeLimiter, (req, res) => {
   reviewUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(5MB 이하 이미지만 가능)." });
+      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
     }
 
     const { productId, name, rating, comment, instagram } = req.body || {};

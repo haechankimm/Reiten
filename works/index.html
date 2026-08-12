@@ -1110,12 +1110,18 @@
         headers: { Authorization: "Bearer " + token },
         body: fd,
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || t("사진 업로드에 실패했습니다"));
+        return;
+      }
       const { url } = await res.json();
       pfImages[i] = url;
       renderPfPhotos();
     } catch (e) {
       toast(t("사진 업로드에 실패했습니다"));
+    } finally {
+      input.disabled = false;
     }
   }
 
@@ -1352,12 +1358,18 @@
         headers: { Authorization: "Bearer " + token },
         body: fd,
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || t("사진 업로드에 실패했습니다"));
+        return;
+      }
       const { url } = await res.json();
       lfSrc = url;
       renderLfPhoto();
     } catch (err) {
       toast(t("사진 업로드에 실패했습니다"));
+    } finally {
+      e.target.disabled = false;
     }
   }
 
