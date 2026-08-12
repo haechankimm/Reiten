@@ -915,9 +915,9 @@
             ? `<div class="notice" style="margin-top:12px"><b>${esc(t("답변"))}</b><p style="margin-top:6px">${esc(q.answer)}</p></div>`
             : `
           <div class="field" style="margin-top:12px">
-            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}" data-i18n-attr="placeholder:답변을 입력하세요"></textarea>
+            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}"></textarea>
           </div>
-          <button type="button" class="btn btn--sm admin-qna-submit" data-i18n="답변 등록">답변 등록</button>`
+          <button type="button" class="btn btn--sm admin-qna-submit">${esc(t("답변 등록"))}</button>`
         }
       </div>`;
   }
@@ -977,7 +977,7 @@
         ${r.instagramHandle ? `<p class="small" style="margin-top:8px">Instagram @${esc(r.instagramHandle)}</p>` : ""}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button type="button" class="btn btn--sm admin-review-toggle">${esc(r.approved ? t("숨기기") : t("승인"))}</button>
-          <button type="button" class="btn btn--sm btn--danger admin-review-delete" data-i18n="삭제">삭제</button>
+          <button type="button" class="btn btn--sm btn--danger admin-review-delete">${esc(t("삭제"))}</button>
         </div>
       </div>`;
   }
@@ -1232,8 +1232,8 @@
           <div class="small tnum">${money(p.price)}</div>
         </div>
         <div class="grid-card-actions">
-          <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
-          <button type="button" class="btn btn--sm btn--danger admin-product-delete" data-i18n="삭제">삭제</button>
+          <button type="button" class="btn btn--sm admin-product-edit">${esc(t("수정"))}</button>
+          <button type="button" class="btn btn--sm btn--danger admin-product-delete">${esc(t("삭제"))}</button>
         </div>
       </div>`;
   }
@@ -1535,7 +1535,7 @@
           ${item.value ? `<div class="small tnum" style="word-break:break-all">${isUrl(item.value) ? `<a href="${esc(item.value)}" target="_blank" rel="noopener">${esc(item.value)}</a>` : esc(item.value)}</div>` : ""}
           ${item.note ? `<div class="small" style="color:var(--muted);margin-top:2px">${esc(item.note)}</div>` : ""}
         </div>
-        <button type="button" class="btn btn--sm admin-setting-edit" data-i18n="수정">수정</button>
+        <button type="button" class="btn btn--sm admin-setting-edit">${esc(t("수정"))}</button>
       </div>`;
   }
 
