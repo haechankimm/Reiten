@@ -52,6 +52,7 @@ async function sendCustomerOrderReceived(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
+    replyTo: SITE.email,
     subject: `[REITEN] 주문이 접수되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 접수되었습니다</h2>
@@ -75,6 +76,7 @@ async function sendCustomerPaymentConfirmed(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
+    replyTo: SITE.email,
     subject: `[REITEN] 입금이 확인되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 입금이 확인되었습니다</h2>
@@ -100,6 +102,7 @@ async function sendCustomerShipped(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
+    replyTo: SITE.email,
     subject: `[REITEN] 배송이 시작되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 배송이 시작되었습니다</h2>

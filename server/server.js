@@ -37,6 +37,7 @@ process.on("uncaughtException", (err) => {
 
 const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
+const WORKS_DIR = path.join(__dirname, "..", "works");
 
 const app = express();
 
@@ -62,6 +63,18 @@ const writeLimiter = rateLimit({
 });
 
 app.use(express.json());
+
+/* works.reiten.kr로 들어온 요청은 관리자 전용 정적 사이트(works/)를 먼저 찾는다.
+   express.static은 파일을 못 찾으면 그냥 next()로 넘어가므로, works/에 없는 assets/*
+   요청은 아래의 SITE_DIR static으로 자연스럽게 이어져 이미지·CSS·공용 JS를 공유한다
+   (사이트별로 중복 보관하지 않음). API·인증·DB는 완전히 동일한 이 서버 인스턴스를 쓴다. */
+app.use((req, res, next) => {
+  if (req.hostname === "works.reiten.kr") {
+    return express.static(WORKS_DIR)(req, res, next);
+  }
+  next();
+});
+
 app.use(
   express.static(SITE_DIR, {
     setHeaders: (res, filePath) => {

@@ -40,7 +40,8 @@
 | **관리자 로그인 표시** | `account.html`에서 role=admin으로 로그인하면(특정 계정이 아니라 admin 전원 공통) ①"내 계정" 옆 초록 배지 ②인사말 앞 "(Admin)" 접두어 ③페이지 전체가 초록(grass) 테마로 전환 ④화면 하단 숲길(나무·풀 다수)을 로밍하는 말 애니메이션(가끔 멈춰서 풀을 뜯음)이 함께 뜸. 말 모양은 `logo-mark.png`(로고의 말 실루엣) 좌표를 옮겨 그린 것 — 몸통/꼬리는 한 덩어리, 다리 4개만 따로 움직여 걷는 동작을 냄(다리가 축 늘어지지 않도록 디딤·회복 구간을 다르게 타이밍). `account.html` 한 페이지에만 적용되고 다른 페이지는 영향 없음(의도적 범위 제한 — 다른 페이지까지 넓히려면 지금은 5개 페이지에서만 불러오는 Supabase 로그인 확인을 전체 16페이지로 확장해야 해서 보류) |
 | **비밀번호 재설정** | 계정 페이지에 이메일 링크 방식으로 구현 완료(Supabase Auth 내장 기능). Redirect URL 등록 완료로 정상 동작 |
 | **주문서** | 우편번호는 다음(카카오) 우편번호 API로 검색해서 채우는 방식(직접 입력 불가). 배송 메모는 프리셋 선택 + 없음 + 직접입력 드롭다운 |
-| **운영 자동화** | ① 관리자가 운송장번호를 처음 입력하면 고객에게 배송 시작 메일 자동 발송 ② 주문으로 재고가 0이 되는 조합이 생기면 관리자에게 알림 메일 ③ push/PR마다 `server/test`의 기존 테스트를 자동 실행하는 GitHub Actions 워크플로(`.github/workflows/test.yml`) 추가 — 실패해도 Render 배포를 막지는 않고 GitHub에 초록/빨강 표시만 남김 ④ Sentry(`@sentry/node`) 연동 코드 추가 — `SENTRY_DSN` 환경변수가 없으면 완전히 비활성(현재 상태), 발급받아 채우면 `unhandledRejection`/`uncaughtException`까지 잡아 알림 |
+| **운영 자동화** | ① 관리자가 운송장번호를 처음 입력하면 고객에게 배송 시작 메일 자동 발송 ② 주문으로 재고가 0이 되는 조합이 생기면 관리자에게 알림 메일 ③ push/PR마다 `server/test`의 기존 테스트를 자동 실행하는 GitHub Actions 워크플로(`.github/workflows/test.yml`) 추가 — 실패해도 Render 배포를 막지는 않고 GitHub에 초록/빨강 표시만 남김 ④ Sentry(`@sentry/node`) 연동 완료 — `SENTRY_DSN`을 로컬 `.env`·Render 환경변수에 설정, 테스트 이벤트 전송까지 확인됨 ⑤ UptimeRobot 연결 완료(테스트 알림 수신 확인) ⑥ Resend `reiten.kr` 도메인 인증 완료(대시보드 Verified 배지 확인) → `RESEND_FROM`을 `order@reiten.kr`로 변경, 고객이 답장하면 실제 CS 메일(`Reiten.customersupport@gmail.com`)로 가도록 `replyTo` 추가 |
+| **Reiten Works (관리자 전용 사이트)** | 소비자 사이트(`reiten.kr`)와 도메인을 분리한 관리자 전용 사이트를 새로 만듦 — 별도 서버·별도 배포가 아니라 **같은 Express 서버가 호스트네임으로 분기**하는 구조(`server.js`의 `WORKS_DIR` 분기, `works/index.html`). API(`/api/admin/*`)는 그대로 재사용해 CORS·추가 인증 로직이 필요 없음. `account.html`에 있던 관리자 패널(로밍 말 애니메이션 등 소비자용 장식 없이) 이관 완료. **코드는 완료됐지만 아직 배포 전 상태** — 아래 "지금 막혀 있는 것" 참고 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 1. `SITE.order.kakao` · `SITE.order.instagram` 자리표시자 교체 (카카오톡 채널·인스타그램 계정 개설 후)
@@ -49,9 +50,12 @@
 4. 실제 기기(아이폰/안드로이드)로 주문 흐름 1회 테스트
 5. (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
 6. 티셔츠: 실제 상품(상품명·설명·가격·사진) 관리자 패널에서 등록 + `SIZE_TABLES.tshirt` 실측값 채우기(코드에는 카테고리/타입만 준비해뒀고 실제 상품은 아직 없음)
-7. 외부 업타임 모니터링(UptimeRobot 등) 연결 — 계정 가입이 필요해 Claude가 대신 못 함, `/api/products`를 헬스체크 URL로 등록하면 됨
-8. Resend 발신 도메인(`reiten.kr`) 인증 — Resend 대시보드에서 도메인 추가 → 발급되는 SPF/DKIM을 도메인 등록업체에 등록 → `.env`의 `RESEND_FROM` 교체(지금은 `onboarding@resend.dev`라 스팸함으로 분류될 확률이 더 높음)
-9. Sentry 가입 후 DSN 발급 → `.env`의 `SENTRY_DSN`에 입력(코드는 이미 있음, 값만 채우면 즉시 켜짐)
+7. **Reiten Works 배포 마무리** — 코드(`works/index.html`, `server.js`의 호스트 분기)는 완료됐지만 아직 아무도 접속할 수 없는 상태. 아래 3개는 계정 접근이 필요해 Claude가 대신 못 함:
+   - DNS에 `works.reiten.kr` CNAME 추가(후이즈, `www`와 같은 방식으로 → `reiten.onrender.com`)
+   - Render **Custom Domains**에 `works.reiten.kr` 추가(기존 서비스에 그대로)
+   - Supabase Authentication → Redirect URLs에 `https://works.reiten.kr/**` 추가
+   - 위 3개가 확인되면(`https://works.reiten.kr` 접속 + 로그인까지 정상 동작) **`account.html`에서 관리자 패널 섹션(`#admin-panel`)을 제거** — 지금은 works가 뜨기 전에 관리자가 접근할 방법이 없어지는 걸 막기 위해 일부러 남겨둔 안전장치이며, works 접속이 확인된 뒤에 지우는 게 맞음
+8. (선택, 다음 단계로 권장) 관리자 감사 로그(`admin_id`·`action`·`target`·`at`) — Works로 옮기는 김에 추가하면 좋은데 이번 작업 범위에서는 뺌(새 마이그레이션 + Supabase 실행이 필요해서 별도로 진행하는 게 나음)
 
 ### 관리자 패널 변경 vs 코드 변경 — 반영되는 방식이 다릅니다
 - **관리자 패널(상품·재고·룩북·리뷰 승인 등)에서 하는 수정**은 Supabase 데이터베이스 변경입니다. 사이트가 켜져 있는 한 새로고침만 해도 바로 반영되고, 이건 어떤 대화 세션에서 하든 항상 동일하게 즉시 반영됩니다.
@@ -61,6 +65,7 @@
 > 전체 변경 내역은 `git log`가 정확하지만, 매번 명령어를 돌리기보다 여기서 최근 흐름만
 > 빠르게 훑을 수 있게 요약해둡니다. 오래된 항목은 가끔 정리(요약/삭제)해도 됩니다.
 
+- **2026-08-12** — Reiten Works(관리자 전용 사이트) 1차 구현: 같은 서버가 호스트네임(`works.reiten.kr`)으로 분기해 관리자 전용 정적 사이트를 서빙하도록 `server.js` 수정, `account.html`의 관리자 패널을 `works/index.html`로 이관(소비자용 장식 요소는 뺌). 아직 DNS/Render Custom Domain/Supabase Redirect URL 미설정이라 실제 접속은 안 됨(위 "지금 막혀 있는 것" 참고). Resend `RESEND_FROM`을 인증된 `order@reiten.kr`로 변경 + `replyTo`로 실제 CS 메일 연결. Sentry DSN·UptimeRobot 설정 완료 확인
 - **2026-08-12** — 운영 자동화 1차: 배송 시작 자동 메일, 재고 소진 시 관리자 알림 메일, GitHub Actions로 push마다 테스트 자동 실행, Sentry 에러 모니터링 연동(DSN 없으면 비활성) 추가. `.env.example`에 실수로 남아있던 개인 이메일 제거
 - **2026-08-09** — 관리자 상품/룩북 등록 폼 개선: 타입·카테고리를 자유 텍스트에서 선택란으로(카테고리는 "직접 입력"으로 새 값 추가 가능, 한 번 저장되면 다음부터 목록에 뜸), 룩북 "가로세로 비율"도 프리셋+직접입력 선택란으로, 룩북 실시간 미리보기 추가. 상품 타입에 `tshirt`(티셔츠) 추가. 관리자 초록 테마가 너무 밝다는 피드백으로 훨씬 어두운 다크 그린 톤으로 전면 톤다운
 - **2026-08-09** — 상품 색상 팔레트를 6종(블랙·화이트·핑크·딥블루·스카이블루·클레이)으로 단순화, 사이즈를 전 상품 XS~XL 고정 + 관리자 패널 체크박스 방식으로 변경(자유 텍스트 입력 폐지). 관리자 상품 사진 업로드 칸이 컬러 선택 순서에 맞춰 라벨이 바뀌던 걸 없애고 "상품사진 1~4"로 고정해 순서 안 맞춰도 되게 함(컬러↔사진 인덱스 연결도 함께 제거, 고객 페이지에서 컬러 클릭 시 사진이 자동으로 안 바뀜). 새 팔레트에 없는 색상으로 촬영해뒀던 사진은 전부 내림
