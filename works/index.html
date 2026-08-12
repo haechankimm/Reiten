@@ -194,6 +194,36 @@
 
   .auth-wrap { display: flex; justify-content: center; padding-top: 8vh; }
   .auth-card { width: 100%; max-width: 360px; border: 1px solid var(--border); border-radius: 10px; padding: 24px; background: var(--bg-canvas); }
+  .remember-row { display: flex; align-items: center; margin: 10px 0 16px; }
+  .remember-row .checkbox { font-size: 12px; }
+
+  /* ---------- 상품: 한눈에 보이는 카드 그리드 ---------- */
+  .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .grid-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-canvas); display: flex; flex-direction: column; }
+  .grid-card-thumb { position: relative; aspect-ratio: 1; background: var(--bg-surface-2); }
+  .grid-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .grid-card-badge { position: absolute; top: 6px; left: 6px; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--bg-canvas); color: var(--text-muted); border: 1px solid var(--border); }
+  .grid-card-body { padding: 8px 10px 2px; }
+  .grid-card-body b { font-size: 12px; display: block; line-height: 1.35; }
+  .grid-card-actions { display: flex; gap: 6px; padding: 8px 10px 10px; margin-top: auto; }
+  .grid-card-actions .btn { flex: 1; }
+
+  /* ---------- 룩북: 실제 배치를 그대로 흉내 낸 클릭형 미리보기 ---------- */
+  .look-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
+  .look-tile { position: relative; grid-column: span 4; border: 2px solid var(--border); border-radius: 6px; overflow: hidden;
+    padding: 0; cursor: pointer; background: var(--bg-surface-2); min-height: 64px; }
+  .look-tile.w6 { grid-column: span 6; }
+  .look-tile.w8 { grid-column: span 8; }
+  .look-tile.w12 { grid-column: span 12; }
+  .look-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .look-tile-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--text-muted); text-align: center; padding: 4px; }
+  .look-tile-label { position: absolute; left: 7px; bottom: 6px; font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+  .look-tile-hidden { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; }
+  .look-tile:hover { border-color: var(--accent); }
+  .look-tile.is-editing { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .look-tile-add { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted);
+    border-style: dashed; background: transparent; }
+  .look-tile-add:hover { color: var(--accent); border-color: var(--accent); }
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -230,6 +260,10 @@
     <button type="button" class="nav-item" data-tab="lookbook">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.4"/><rect x="13" y="3.5" width="7.5" height="17" rx="1.4"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.4"/></svg>
       <span data-i18n="룩북">룩북</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z"/></svg>
+      <span data-i18n="정보">정보</span>
     </button>
   </aside>
 
@@ -274,6 +308,9 @@
               <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
               <input id="li-pw" type="password" autocomplete="current-password" required>
               <p class="err" id="li-err"></p>
+            </div>
+            <div class="remember-row">
+              <label class="checkbox"><input type="checkbox" id="li-remember"><span data-i18n="이메일 저장">이메일 저장</span></label>
             </div>
             <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
             <p class="small" style="margin-top:10px">
@@ -417,10 +454,15 @@
             </form>
           </div>
 
-          <div id="products-list" style="display:grid;gap:12px"></div>
+          <div id="products-list" class="grid-list"></div>
         </div>
 
         <div id="admin-lookbook" style="display:grid;gap:24px;max-width:70ch" hidden>
+          <div class="panel">
+            <b data-i18n="실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)">실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)</b>
+            <div id="lookbook-visual" class="look-grid" style="margin-top:14px"></div>
+          </div>
+
           <div class="panel">
             <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
             <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;gap:12px">
@@ -473,11 +515,38 @@
               <div style="display:flex;gap:8px">
                 <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
                 <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
+                <button class="btn btn--ghost" type="button" id="lf-delete" hidden data-i18n="삭제">삭제</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="admin-settings" style="display:grid;gap:24px;max-width:70ch" hidden>
+          <div class="panel">
+            <b id="settings-form-title" data-i18n="새 정보 추가">새 정보 추가</b>
+            <p class="small" style="margin-top:6px" data-i18n="비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.">비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.</p>
+            <form id="settings-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+              <div class="field">
+                <label for="sf-label" data-i18n="이름 (예: Supabase, Render, 사업자등록번호)">이름 (예: Supabase, Render, 사업자등록번호)</label>
+                <input id="sf-label" required>
+              </div>
+              <div class="field">
+                <label for="sf-value" data-i18n="내용 (링크 또는 값)">내용 (링크 또는 값)</label>
+                <input id="sf-value">
+              </div>
+              <div class="field">
+                <label for="sf-note" data-i18n="메모 (선택)">메모 (선택)</label>
+                <input id="sf-note">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn" type="submit" id="sf-submit" data-i18n="저장">저장</button>
+                <button class="btn btn--ghost" type="button" id="sf-cancel" hidden data-i18n="취소">취소</button>
+                <button class="btn btn--ghost" type="button" id="sf-delete" hidden data-i18n="삭제">삭제</button>
               </div>
             </form>
           </div>
 
-          <div id="lookbook-list" style="display:grid;gap:12px"></div>
+          <div id="settings-list" style="display:grid;gap:10px"></div>
         </div>
       </section>
     </div>
@@ -551,7 +620,7 @@
       })
     );
   }
-  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook" });
+  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings" });
 
   el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
@@ -583,7 +652,7 @@
 
   function loadMoreHTML(hasMore, id) {
     if (!hasMore) return "";
-    return `<div style="text-align:center;margin-top:8px">
+    return `<div style="grid-column:1/-1;text-align:center;margin-top:8px">
       <button type="button" id="${id}" class="btn btn--sm btn--ghost">${esc(t("더 보기"))}</button>
     </div>`;
   }
@@ -1078,16 +1147,19 @@
   function productRowHTML(p) {
     const img = p.images.find(Boolean);
     return `
-      <div class="panel" data-id="${esc(p.id)}" style="display:flex;gap:12px;align-items:center">
-        ${img
-          ? `<img src="${esc(img)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
-          : `<div style="width:56px;height:56px;border-radius:8px;border:1px dashed var(--line);flex-shrink:0"></div>`}
-        <div style="flex:1;min-width:0">
-          <b>${esc(t(p.nameKo))}</b> ${p.active ? "" : `<span class="small" style="color:var(--muted)">(${esc(t("비공개"))})</span>`}
-          <div class="small tnum">${money(p.price)} · ${esc(p.id)}</div>
+      <div class="grid-card" data-id="${esc(p.id)}">
+        <div class="grid-card-thumb">
+          ${img ? `<img src="${esc(img)}" alt="">` : ""}
+          ${p.active ? "" : `<span class="grid-card-badge">${esc(t("비공개"))}</span>`}
         </div>
-        <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
-        <button type="button" class="btn btn--sm btn--ghost admin-product-delete" data-i18n="삭제">삭제</button>
+        <div class="grid-card-body">
+          <b>${esc(t(p.nameKo))}</b>
+          <div class="small tnum">${money(p.price)}</div>
+        </div>
+        <div class="grid-card-actions">
+          <button type="button" class="btn btn--sm admin-product-edit" data-i18n="수정">수정</button>
+          <button type="button" class="btn btn--sm btn--ghost admin-product-delete" data-i18n="삭제">삭제</button>
+        </div>
       </div>`;
   }
 
@@ -1131,6 +1203,7 @@
   /* ---------- 룩북 관리 ---------- */
   let lfEditingId = null;
   let lfSrc = null;
+  const lookbookState = { page: 0, pageSize: 50, total: 0, items: [] };
   const LF_RATIO_PRESETS = ["1/1", "4/5", "3/4", "2/3", "16/10", "16/9"];
 
   function renderLfRatio(value) {
@@ -1218,7 +1291,9 @@
     renderLfRatio("16/10");
     el("lf-active").checked = true;
     el("lf-cancel").hidden = true;
+    el("lf-delete").hidden = true;
     renderLfPhoto();
+    renderLookbookVisual();
   }
 
   function fillLookbookForm(item) {
@@ -1231,7 +1306,9 @@
     renderLfRatio(item.ratio || "16/10");
     el("lf-active").checked = item.active !== false;
     el("lf-cancel").hidden = false;
+    el("lf-delete").hidden = false;
     renderLfPhoto();
+    renderLookbookVisual();
     el("lookbook-form").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -1263,48 +1340,43 @@
   });
 
   el("lf-cancel").addEventListener("click", () => resetLookbookForm());
+  el("lf-delete").addEventListener("click", async () => {
+    if (!lfEditingId) return;
+    if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+    await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "DELETE" });
+    toast(t("삭제했습니다"));
+    resetLookbookForm();
+    paintAdminLookbook();
+  });
   resetLookbookForm();
 
-  const lookbookState = { page: 0, pageSize: 50, total: 0, items: [] };
+  /* 실제 lookbook.html의 12칸 그리드(.look figure.w4/w6/w8/w12)와 동일한 배치를 그대로 재현해서,
+     "몇 번째 칸을 고칠지"를 글로 고르지 않고 화면에서 직접 클릭해 고르게 한다. */
+  function renderLookbookVisual() {
+    const tiles = lookbookState.items
+      .map(
+        (item) => `
+      <button type="button" class="look-tile ${esc(item.span)} ${item.id === lfEditingId ? "is-editing" : ""}" data-id="${esc(item.id)}">
+        ${item.src ? `<img src="${esc(item.src)}" alt="">` : `<span class="look-tile-empty">${esc(item.ratio)}</span>`}
+        <span class="look-tile-label">${esc(item.label)}</span>
+        ${item.active === false ? `<span class="look-tile-hidden">${esc(t("비공개"))}</span>` : ""}
+      </button>`
+      )
+      .join("");
 
-  function lookbookRowHTML(item) {
-    return `
-      <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
-        ${item.src
-          ? `<img src="${esc(item.src)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">`
-          : `<div style="width:56px;height:56px;border-radius:8px;border:1px dashed var(--line);flex-shrink:0"></div>`}
-        <div style="flex:1;min-width:0">
-          <b>${esc(item.label)}</b> ${item.active ? "" : `<span class="small" style="color:var(--muted)">(${esc(t("비공개"))})</span>`}
-          <div class="small">${esc(item.span)} · ${esc(item.ratio)}</div>
-        </div>
-        <button type="button" class="btn btn--sm admin-lookbook-edit" data-i18n="수정">수정</button>
-        <button type="button" class="btn btn--sm btn--ghost admin-lookbook-delete" data-i18n="삭제">삭제</button>
-      </div>`;
-  }
+    el("lookbook-visual").innerHTML =
+      tiles + `<button type="button" class="look-tile look-tile-add w4" id="lf-add-tile">+ ${esc(t("새 칸 추가"))}</button>`;
 
-  function renderAdminLookbook() {
-    const hasMore = lookbookState.items.length < lookbookState.total;
-    el("lookbook-list").innerHTML = lookbookState.items.map(lookbookRowHTML).join("") + loadMoreHTML(hasMore, "lookbook-list-more");
-
-    el("lookbook-list").querySelectorAll(".admin-lookbook-edit").forEach((btn) =>
+    el("lookbook-visual").querySelectorAll(".look-tile:not(.look-tile-add)").forEach((btn) =>
       btn.addEventListener("click", () => {
-        const id = btn.closest("[data-id]").dataset.id;
-        const item = lookbookState.items.find((x) => x.id === id);
+        const item = lookbookState.items.find((x) => x.id === btn.dataset.id);
         if (item) fillLookbookForm(item);
       })
     );
-    el("lookbook-list").querySelectorAll(".admin-lookbook-delete").forEach((btn) =>
-      btn.addEventListener("click", async () => {
-        const id = btn.closest("[data-id]").dataset.id;
-        if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
-        await adminFetch(`/api/admin/lookbook/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (lfEditingId === id) resetLookbookForm();
-        toast(t("삭제했습니다"));
-        paintAdminLookbook();
-      })
-    );
-
-    el("lookbook-list-more")?.addEventListener("click", () => paintAdminLookbook(true));
+    el("lf-add-tile").addEventListener("click", () => {
+      resetLookbookForm();
+      el("lookbook-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function paintAdminLookbook(loadMore = false) {
@@ -1313,7 +1385,101 @@
     if (!result) return;
     lookbookState.total = result.total;
     lookbookState.items = loadMore ? lookbookState.items.concat(result.items) : result.items;
-    renderAdminLookbook();
+    renderLookbookVisual();
+  }
+
+  /* ---------- 정보(설정) — 사업자 정보 요약, Supabase·Render 같은 운영 링크를 관리자가 직접 적어두는 곳 ---------- */
+  let sfEditingId = null;
+  const settingsState = { items: [] };
+
+  function resetSettingsForm() {
+    sfEditingId = null;
+    el("settings-form-title").textContent = t("새 정보 추가");
+    el("sf-label").value = "";
+    el("sf-value").value = "";
+    el("sf-note").value = "";
+    el("sf-cancel").hidden = true;
+    el("sf-delete").hidden = true;
+  }
+
+  function fillSettingsForm(item) {
+    sfEditingId = item.id;
+    el("settings-form-title").textContent = t("정보 수정");
+    el("sf-label").value = item.label || "";
+    el("sf-value").value = item.value || "";
+    el("sf-note").value = item.note || "";
+    el("sf-cancel").hidden = false;
+    el("sf-delete").hidden = false;
+    el("settings-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  el("settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      label: el("sf-label").value.trim(),
+      value: el("sf-value").value.trim(),
+      note: el("sf-note").value.trim(),
+    };
+    if (!body.label) { toast(t("이름을 입력해 주세요.")); return; }
+
+    const btn = el("sf-submit");
+    btn.disabled = true;
+    try {
+      const result = sfEditingId
+        ? await adminFetch(`/api/admin/settings/${encodeURIComponent(sfEditingId)}`, { method: "PATCH", body: JSON.stringify(body) })
+        : await adminFetch("/api/admin/settings", { method: "POST", body: JSON.stringify(body) });
+      if (!result) return;
+      toast(t("저장했습니다"));
+      resetSettingsForm();
+      paintAdminSettings();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  el("sf-cancel").addEventListener("click", () => resetSettingsForm());
+  el("sf-delete").addEventListener("click", async () => {
+    if (!sfEditingId) return;
+    if (!confirm(t("이 정보를 삭제하시겠습니까?"))) return;
+    await adminFetch(`/api/admin/settings/${encodeURIComponent(sfEditingId)}`, { method: "DELETE" });
+    toast(t("삭제했습니다"));
+    resetSettingsForm();
+    paintAdminSettings();
+  });
+  resetSettingsForm();
+
+  function isUrl(v) {
+    return /^https?:\/\//i.test(v);
+  }
+
+  function settingRowHTML(item) {
+    return `
+      <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
+        <div style="flex:1;min-width:0">
+          <b>${esc(item.label)}</b>
+          ${item.value ? `<div class="small tnum" style="word-break:break-all">${isUrl(item.value) ? `<a href="${esc(item.value)}" target="_blank" rel="noopener">${esc(item.value)}</a>` : esc(item.value)}</div>` : ""}
+          ${item.note ? `<div class="small" style="color:var(--muted);margin-top:2px">${esc(item.note)}</div>` : ""}
+        </div>
+        <button type="button" class="btn btn--sm admin-setting-edit" data-i18n="수정">수정</button>
+      </div>`;
+  }
+
+  function renderAdminSettings() {
+    el("settings-list").innerHTML = settingsState.items.map(settingRowHTML).join("");
+    el("settings-list").querySelectorAll(".admin-setting-edit").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = settingsState.items.find((x) => x.id === id);
+        if (item) fillSettingsForm(item);
+      })
+    );
+  }
+
+  async function paintAdminSettings() {
+    const result = await adminFetch("/api/admin/settings");
+    if (!result) return;
+    settingsState.items = result;
+    renderAdminSettings();
   }
 
   /* /api/admin/orders 호출이 실제로 성공했을 때(=서버가 관리자로 인정했을 때)만 패널을 연다 —
@@ -1335,6 +1501,7 @@
     paintAdminProducts();
     paintAdminReviews();
     paintAdminLookbook();
+    paintAdminSettings();
     return true;
   }
 
@@ -1348,6 +1515,12 @@
 
     const isRecovery = /type=recovery/.test(location.hash);
     const profile = isRecovery ? null : await getCurrentProfile();
+
+    const savedEmail = localStorage.getItem("works_saved_email");
+    if (savedEmail) {
+      el("li-email").value = savedEmail;
+      el("li-remember").checked = true;
+    }
 
     if (isRecovery) {
       el("auth-view").hidden = false;
@@ -1379,6 +1552,8 @@
         btn.disabled = false;
         return;
       }
+      if (el("li-remember").checked) localStorage.setItem("works_saved_email", el("li-email").value.trim());
+      else localStorage.removeItem("works_saved_email");
       location.reload();
     });
 

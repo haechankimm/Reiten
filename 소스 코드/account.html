@@ -43,6 +43,9 @@
             <input id="li-pw" type="password" autocomplete="current-password" required>
             <p class="err" id="li-err"></p>
           </div>
+          <div class="field" style="display:flex;align-items:center">
+            <label class="checkbox"><input type="checkbox" id="li-remember"><span data-i18n="이메일 저장">이메일 저장</span></label>
+          </div>
           <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
           <p class="small" style="margin-top:10px">
             <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
@@ -1203,6 +1206,12 @@
     const isRecovery = /type=recovery/.test(location.hash);
     const profile = isRecovery ? null : await getCurrentProfile();
 
+    const savedEmail = localStorage.getItem("reiten_saved_email");
+    if (savedEmail) {
+      el("li-email").value = savedEmail;
+      el("li-remember").checked = true;
+    }
+
     if (isRecovery) {
       el("auth-view").hidden = false;
       el("auth-tabs").hidden = true;
@@ -1240,6 +1249,8 @@
         btn.disabled = false;
         return;
       }
+      if (el("li-remember").checked) localStorage.setItem("reiten_saved_email", el("li-email").value.trim());
+      else localStorage.removeItem("reiten_saved_email");
       location.reload();
     });
 
