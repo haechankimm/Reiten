@@ -75,6 +75,11 @@ app.use((req, res, next) => {
   next();
 });
 
+/* works.reiten.kr DNS/Custom Domain 연결 전에도 먼저 써볼 수 있도록 임시로 열어둔 경로.
+   works/index.html이 절대경로(/assets/...)로 자산을 불러오므로 이 프리픽스 아래에서도 정상 동작한다.
+   works.reiten.kr가 실제로 연결되면 이 라우트는 지워도 된다. */
+app.use("/__works-preview", express.static(WORKS_DIR));
+
 app.use(
   express.static(SITE_DIR, {
     setHeaders: (res, filePath) => {
