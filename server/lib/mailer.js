@@ -1,5 +1,5 @@
 const { Resend } = require("resend");
-const { SITE } = require("../../소스 코드/assets/js/data.js");
+const { SITE, COURIERS } = require("../../소스 코드/assets/js/data.js");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -86,4 +86,51 @@ async function sendCustomerPaymentConfirmed(order) {
   });
 }
 
-module.exports = { sendOrderNotification, sendCustomerOrderReceived, sendCustomerPaymentConfirmed };
+/* 배송 시작 안내 메일(고객용) — 관리자가 운송장번호를 처음 입력하는 순간 1회 발송. */
+async function sendCustomerShipped(order) {
+  if (!resend || !order.customer.email) return;
+
+  const courierInfo = COURIERS.find((c) => c.key === order.courier);
+  const courierLabel = courierInfo ? courierInfo.label : order.courier || "";
+  const trackingUrl =
+    courierInfo && order.tracking_no
+      ? courierInfo.urlTemplate.replace("{tracking}", encodeURIComponent(order.tracking_no))
+      : null;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    subject: `[REITEN] 배송이 시작되었습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 배송이 시작되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <p><b>택배사</b> ${escHtml(courierLabel)}</p>
+      <p><b>운송장번호</b> ${escHtml(order.tracking_no || "")}</p>
+      ${trackingUrl ? `<p><a href="${escHtml(trackingUrl)}">배송조회 바로가기</a></p>` : ""}
+      <ul>${itemsHtml(order)}</ul>
+    `,
+  });
+}
+
+/* 재고 소진 알림 메일(관리자용) — 주문 처리로 특정 상품·사이즈 재고가 0이 된 순간 발송. */
+async function sendAdminLowStock(items) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL || !items.length) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] 재고 소진 — ${items.map((it) => `${it.name} ${it.size}`).join(", ")}`,
+    html: `
+      <h2>재고가 0이 된 상품이 있습니다</h2>
+      <ul>${items.map((it) => `<li>${escHtml(it.name)} — ${escHtml(it.size)}</li>`).join("")}</ul>
+    `,
+  });
+}
+
+module.exports = {
+  sendOrderNotification,
+  sendCustomerOrderReceived,
+  sendCustomerPaymentConfirmed,
+  sendCustomerShipped,
+  sendAdminLowStock,
+};

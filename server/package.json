@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@sentry/node": "^10.70.0",
     "@supabase/supabase-js": "^2.111.0",
     "cloudinary": "^2.10.0",
     "dotenv": "^16.6.1",

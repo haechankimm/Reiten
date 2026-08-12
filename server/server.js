@@ -1,4 +1,5 @@
 require("dotenv").config();
+const Sentry = require("@sentry/node");
 const path = require("path");
 const express = require("express");
 const helmet = require("helmet");
@@ -7,12 +8,32 @@ const multer = require("multer");
 const { SITE, PRODUCTS: STATIC_PRODUCTS, LOOKBOOK: STATIC_LOOKBOOK, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
-const { sendOrderNotification, sendCustomerOrderReceived, sendCustomerPaymentConfirmed } = require("./lib/mailer");
+const {
+  sendOrderNotification,
+  sendCustomerOrderReceived,
+  sendCustomerPaymentConfirmed,
+  sendCustomerShipped,
+  sendAdminLowStock,
+} = require("./lib/mailer");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
+
+/* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
+   README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0 });
+}
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err);
+  Sentry.captureException(err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+  Sentry.captureException(err);
+});
 
 const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
@@ -135,6 +156,33 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       }
       console.error("[order] 재고 차감 실패:", invError.message);
       return res.status(500).json({ error: "재고 확인 중 오류가 발생했습니다." });
+    }
+
+    /* 방금 차감한 조합 중 재고가 0이 된 게 있으면 관리자에게 알린다.
+       inventoryItems에 없는 다른 사이즈까지 걸리지 않도록 정확히 같은 (productId, size) 쌍만 추린다. */
+    const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
+    const sizes = [...new Set(inventoryItems.map((it) => it.size))];
+    const { data: stockRows } = await supabaseAdmin
+      .from("inventory")
+      .select("product_id, size, qty")
+      .in("product_id", productIds)
+      .in("size", sizes);
+
+    const zeroed = (stockRows || [])
+      .filter(
+        (row) =>
+          row.qty <= 0 &&
+          inventoryItems.some((it) => it.productId === row.product_id && it.size === row.size)
+      )
+      .map((row) => ({
+        name: products.find((p) => p.id === row.product_id)?.nameKo || row.product_id,
+        size: row.size,
+      }));
+
+    if (zeroed.length) {
+      sendAdminLowStock(zeroed).catch((err) => {
+        console.error("[mailer] 재고 소진 알림 메일 발송 실패:", err.message);
+      });
     }
   }
 
@@ -368,6 +416,14 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "변경할 값이 없습니다." });
   }
 
+  /* 이번 변경으로 운송장번호가 "처음" 채워지는 건지 알아야 배송 시작 메일을 중복 없이 보낼 수 있어
+     update 직전에 이전 값을 한 번 조회해둔다. */
+  const { data: prev } = await supabaseAdmin
+    .from("orders")
+    .select("tracking_no")
+    .eq("order_no", req.params.no)
+    .single();
+
   const { data: saved, error } = await supabaseAdmin
     .from("orders")
     .update(patch)
@@ -380,6 +436,11 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   if (patch.status === "입금확인") {
     sendCustomerPaymentConfirmed(saved).catch((err) => {
       console.error("[mailer] 입금 확인 메일 발송 실패:", err.message);
+    });
+  }
+  if (!prev?.tracking_no && saved.tracking_no) {
+    sendCustomerShipped(saved).catch((err) => {
+      console.error("[mailer] 배송 시작 메일 발송 실패:", err.message);
     });
   }
 
@@ -872,6 +933,10 @@ app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: "답변 저장에 실패했습니다." });
   res.json({ ok: true });
 });
+
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.listen(PORT, () => {
   console.log(`REITEN server running at http://localhost:${PORT}`);
