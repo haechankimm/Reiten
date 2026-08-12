@@ -130,10 +130,58 @@ async function sendAdminLowStock(items) {
   });
 }
 
+/* 카드결제 완료 알림(관리자용) — sendOrderNotification과 거의 같지만 무통장입금 전용인
+   "입금자명" 줄 대신 결제수단을 보여준다. 카드결제는 접수 시점에 이미 결제가 끝난 상태라
+   sendOrderNotification(접수만 알림)이 아니라 이 함수를 쓴다. */
+async function sendAdminCardPaid(order) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 카드결제 알림 메일을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] 카드결제 완료 — ${order.order_no}`,
+    html: `
+      <h2>카드결제가 완료된 새 주문이 접수되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <p><b>주문자</b> ${escHtml(order.customer.name)} (${escHtml(order.customer.tel)})</p>
+      <p><b>결제수단</b> 카드결제 (포트원)</p>
+      <p><b>배송지</b> [${escHtml(order.customer.zip)}] ${escHtml(order.customer.addr)} ${escHtml(order.customer.addr2 || "")}</p>
+      <p><b>메모</b> ${escHtml(order.customer.memo || "-")}</p>
+      <ul>${itemsHtml(order)}</ul>
+      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)} + 배송비 ${won(order.shipping)})</p>
+    `,
+  });
+}
+
+/* 카드결제 완료 확인 메일(고객용) — /api/order가 포트원 결제를 검증한 직후 1회 발송.
+   sendCustomerOrderReceived(입금 대기 안내)와 달리 이미 결제가 끝났다고 안내한다. */
+async function sendCustomerCardPaid(order) {
+  if (!resend || !order.customer.email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.email,
+    subject: `[REITEN] 결제가 완료되었습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 결제가 완료되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <ul>${itemsHtml(order)}</ul>
+      <p><b>총 결제금액</b> ${won(order.total)}</p>
+      <p style="margin-top:16px;color:#666">${escHtml(SITE.shipping.leadTime)}. 발송이 시작되면 운송장번호를 안내드립니다.</p>
+    `,
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
   sendCustomerPaymentConfirmed,
   sendCustomerShipped,
   sendAdminLowStock,
+  sendAdminCardPaid,
+  sendCustomerCardPaid,
 };

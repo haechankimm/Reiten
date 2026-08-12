@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/css/style.css">
 <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+<script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 </head>
 <body>
 
@@ -66,10 +67,18 @@
                   </div>
                   <p class="err" data-i18n="우편번호를 입력해 주세요.">우편번호를 입력해 주세요.</p>
                 </div>
-                <div class="field">
+                <div class="field" id="payer-field">
                   <label for="f-payer" data-i18n-html data-i18n='입금자명 <span class="req">*</span>'>입금자명 <span class="req">*</span></label>
                   <input id="f-payer" name="payer" required>
                   <p class="err" data-i18n="입금자명을 입력해 주세요.">입금자명을 입력해 주세요.</p>
+                </div>
+              </div>
+
+              <div class="field" id="pay-method-field" hidden>
+                <label data-i18n="결제 수단">결제 수단</label>
+                <div style="display:flex;gap:16px;margin-top:8px">
+                  <label class="checkbox"><input type="radio" name="pay-method" value="bank" checked><span data-i18n="무통장입금">무통장입금</span></label>
+                  <label class="checkbox"><input type="radio" name="pay-method" value="card"><span data-i18n="카드결제">카드결제</span></label>
                 </div>
               </div>
 
@@ -121,10 +130,15 @@
               <div class="summary__row"><span data-i18n="배송비">배송비</span><span class="tnum" id="sum-ship"></span></div>
               <div class="summary__row total"><span data-i18n="총 결제금액">총 결제금액</span><span class="tnum" id="sum-total"></span></div>
 
-              <div class="notice" style="margin-top:20px">
+              <div class="notice" style="margin-top:20px" id="bank-notice">
                 <b data-i18n="무통장 입금">무통장 입금</b><br>
                 <span id="bank"></span><br>
                 <span class="small" data-i18n="주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.">주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.</span>
+              </div>
+
+              <div class="notice" style="margin-top:20px" id="card-notice" hidden>
+                <b data-i18n="카드결제">카드결제</b><br>
+                <span class="small" data-i18n="결제 버튼을 누르면 결제창이 열립니다. 결제가 끝나면 바로 주문이 접수됩니다.">결제 버튼을 누르면 결제창이 열립니다. 결제가 끝나면 바로 주문이 접수됩니다.</span>
               </div>
 
               <p class="small" style="margin-top:14px" id="ship-hint"></p>
@@ -250,6 +264,11 @@
     if (err) err.classList.toggle("on", on);
   }
 
+  function payMethod() {
+    const checked = document.querySelector('input[name="pay-method"]:checked');
+    return checked ? checked.value : "bank";
+  }
+
   function validate() {
     let ok = true, first = null;
     const checks = [
@@ -257,9 +276,9 @@
       ["f-tel", v => /^[0-9\-+ ]{9,20}$/.test(v.trim())],
       ["f-email", v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim())],
       ["f-zip", v => /^[0-9]{5}$/.test(v.trim())],
-      ["f-payer", v => v.trim().length >= 2],
       ["f-addr", v => v.trim().length >= 5],
     ];
+    if (payMethod() === "bank") checks.push(["f-payer", v => v.trim().length >= 2]);
     checks.forEach(([id, fn]) => {
       const input = el(id);
       const bad = !fn(input.value);
@@ -299,6 +318,31 @@
     if (custom) el("f-memo").focus();
   });
 
+  /* 카드결제(포트원)는 server/가 설정을 마쳤을 때만 켠다 — /api/config가 없거나
+     cardPaymentEnabled가 false면 결제 수단 선택란 자체를 안 보여주고 무통장입금만 남긴다
+     (server/ 없는 정적 배포와 완전히 동일하게 동작). */
+  let cardPaymentEnabled = false;
+  (async () => {
+    try {
+      const res = await fetch("/api/config");
+      if (!res.ok) return;
+      const cfg = await res.json();
+      if (cfg.cardPaymentEnabled) {
+        cardPaymentEnabled = true;
+        el("pay-method-field").hidden = false;
+      }
+    } catch (e) {}
+  })();
+
+  function syncPayMethodUI() {
+    const isCard = cardPaymentEnabled && payMethod() === "card";
+    el("payer-field").hidden = isCard;
+    el("bank-notice").hidden = isCard;
+    el("card-notice").hidden = !isCard;
+    el("submit").textContent = t(isCard ? "결제하기" : "주문서 제출");
+  }
+  document.querySelectorAll('input[name="pay-method"]').forEach((r) => r.addEventListener("change", syncPayMethodUI));
+
   el("order-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!validate()) { toast(t("입력값을 확인해 주세요")); return; }
@@ -306,6 +350,7 @@
     const items = Cart.read();
     if (!items.length) { toast(t("장바구니가 비어 있습니다")); return; }
 
+    const isCard = cardPaymentEnabled && payMethod() === "card";
     const customer = {
       name: el("f-name").value.trim(),
       tel: el("f-tel").value.trim(),
@@ -314,8 +359,79 @@
       addr: el("f-addr").value.trim(),
       addr2: el("f-addr2").value.trim(),
       memo: el("f-memo-select").value === "__custom__" ? el("f-memo").value.trim() : el("f-memo-select").value,
-      payer: el("f-payer").value.trim(),
+      payer: isCard ? el("f-name").value.trim() : el("f-payer").value.trim(),
     };
+
+    const btn = el("submit");
+    btn.disabled = true;
+    btn.textContent = t("처리 중…");
+
+    if (isCard) {
+      try {
+        const headers = { "Content-Type": "application/json" };
+        const token = await getAccessToken();
+        if (token) headers.Authorization = "Bearer " + token;
+
+        const prepRes = await fetch("/api/payments/prepare", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ customer, items }),
+        });
+        if (!prepRes.ok) {
+          const body = await prepRes.json().catch(() => ({}));
+          toast(body.error || t("결제 준비에 실패했습니다"));
+          btn.disabled = false;
+          syncPayMethodUI();
+          return;
+        }
+        const prep = await prepRes.json();
+
+        const payResult = await PortOne.requestPayment({
+          storeId: prep.storeId,
+          channelKey: prep.channelKey,
+          paymentId: prep.paymentId,
+          orderName: prep.orderName,
+          totalAmount: prep.totalAmount,
+          currency: "CURRENCY_KRW",
+          payMethod: "CARD",
+          customer: prep.customer,
+        });
+
+        if (!payResult || payResult.code !== undefined) {
+          toast((payResult && payResult.message) || t("결제가 취소되었습니다"));
+          btn.disabled = false;
+          syncPayMethodUI();
+          return;
+        }
+
+        const confirmRes = await fetch("/api/order", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ paymentId: prep.paymentId }),
+        });
+        if (!confirmRes.ok) {
+          const body = await confirmRes.json().catch(() => ({}));
+          toast(
+            body.error === "OUT_OF_STOCK"
+              ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
+              : (body.error || t("결제 확인에 실패했습니다"))
+          );
+          btn.disabled = false;
+          syncPayMethodUI();
+          return;
+        }
+
+        const order = await confirmRes.json();
+        try { localStorage.setItem("reiten_last_order", JSON.stringify(order)); } catch (e) {}
+        Cart.clear();
+        location.href = "order-complete.html";
+      } catch (err) {
+        toast(t("결제 중 오류가 발생했습니다"));
+        btn.disabled = false;
+        syncPayMethodUI();
+      }
+      return;
+    }
 
     let order = {
       no: orderNo(),
@@ -332,10 +448,6 @@
       shipping: Cart.shipping(),
       total: Cart.total(),
     };
-
-    const btn = el("submit");
-    btn.disabled = true;
-    btn.textContent = t("처리 중…");
 
     /* Node 백엔드(server/)가 같은 사이트를 서빙 중이면 /api/order가 응답한다.
        거기서 서버측 가격 재검증(+ 재고 차감)을 거친 주문을 그대로 신뢰하고 사용한다. */

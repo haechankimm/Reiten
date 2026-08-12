@@ -24,11 +24,12 @@
 > README를 안 고치면, 다음 세션(또는 다른 사람)은 지금 상태를 다시 처음부터 추측해야 합니다.
 
 ### 🔜 다음 세션이 가장 먼저 할 일 (우선순위 순)
-1. **`server/migrations/007_admin_settings.sql`과 `008_admin_audit_log.sql`을 Supabase SQL Editor에서 실행** — 007을 안 하면 Works "정보" 탭이 계속 저장 실패하고, 008을 안 해도 사이트는 정상 동작하지만(로그 적재만 조용히 실패) 관리자 감사 로그("활동 로그" 탭)가 계속 빈 목록으로 남음
-2. **⚠️ 상품 재고(`inventory`) 초기값을 최소 1개 상품이라도 채우고 배포할 것** — 이번 세션에서 고객 화면의 품절 표시가 관리자가 체크한 값과 실제 `inventory` 수량을 합쳐서 보여주도록 고쳤는데(아래 "Works 추가 기능(2026-08-12, 2차)" 참고), 지금 Supabase `inventory` 테이블이 사실상 비어 있어서 **이 상태로 배포하면 전 상품·전 사이즈가 품절로 보임**. 관리자 패널 "재고" 탭에서 실제 수량을 입력하기 전까지는 이 패치를 배포하지 말 것(또는 배포와 동시에 재고 입력)
-3. **`https://works.reiten.kr`에서 실제 로그인 → 새 UI(사이드바 대시보드)로 주문/재고/상품까지 정상 노출되는지 재확인** — 로컬 검증은 끝났지만 실배포 확인은 아직
-4. 위 항목들이 확인되면 → `account.html`의 옛 관리자 패널(`#admin-panel`)과 `server.js`의 `/__works-preview` 임시 라우트 제거(정리 커밋)
-5. GitHub 푸시 상태는 이 커밋(`b17cf29`)까지 이미 origin과 동기화됨 — 새 세션 시작 시 `git status`로 로컬 미커밋 변경만 확인하면 됨(이번 세션 변경분은 아직 커밋 전)
+1. ~~`007_admin_settings.sql`, `008_admin_audit_log.sql` 실행~~ — 2026-08-13에 Supabase에서 실행 완료
+2. **⚠️ 상품 재고(`inventory`) 초기값을 최소 1개 상품이라도 채우고 배포할 것** — 고객 화면의 품절 표시가 관리자가 체크한 값과 실제 `inventory` 수량을 합쳐서 보여주도록 고쳤는데(아래 "Works 추가 기능(2026-08-12, 2차)" 참고), 지금 Supabase `inventory` 테이블이 사실상 비어 있어서 **이 상태로 배포하면 전 상품·전 사이즈가 품절로 보임**. 관리자 패널 "재고" 탭에서 실제 수량을 입력하기 전까지는 이 패치를 배포하지 말 것(또는 배포와 동시에 재고 입력)
+3. **(카드결제를 켤 계획이면) `server/migrations/009_card_payments.sql` 실행 + 포트원 가입 + `.env`/Render 환경변수에 `PORTONE_*` 4종 입력** — 안 하면 카드결제 옵션이 그냥 안 보일 뿐 사이트엔 지장 없음. 켜기 전에 [11번](#11-카드결제pg--포트원portone-v2) "켜는 방법" 4번(테스트 결제로 전 구간 확인)을 반드시 먼저 할 것
+4. **`https://works.reiten.kr`에서 실제 로그인 → 새 UI(사이드바 대시보드)로 주문/재고/상품까지 정상 노출되는지 재확인** — 로컬 검증은 끝났지만 실배포 확인은 아직
+5. 위 항목들이 확인되면 → `account.html`의 옛 관리자 패널(`#admin-panel`)과 `server.js`의 `/__works-preview` 임시 라우트 제거(정리 커밋)
+6. GitHub 푸시 상태는 이 커밋(`b17cf29`)까지 이미 origin과 동기화됨 — 새 세션 시작 시 `git status`로 로컬 미커밋 변경만 확인하면 됨
 
 그 아래는 전부 위 항목들이 끝난 뒤에 순서 상관없이 골라서 진행하면 되는 항목들입니다.
 
@@ -60,8 +61,9 @@
 **Works 마무리**
 - (선택) 반품·QnA·리뷰 탭을 카드 그리드에서 한 단계 더 나아가 "전체 주문"과 같은 목록+상세패널 구조로 통일 — 2026-08-12에 일단 여러 열로 흐르는 카드 그리드로 바꿔 세로 낭비 공백은 해소했지만, 클릭해서 상세를 옆에 띄우는 구조까지는 아직
 - (검토 완료, 보류) **실시간/주기적 상태 모니터링 위젯**(Render·Supabase·Resend 등 연동 서비스 상태를 Works 안에서 보여주는 것) — 2026-08-12에 검토했고 지금은 안 만들기로 함. 이유: ① Works 자체가 Render 위에서 도는데 Render가 다운되면 이 위젯도 같이 안 뜨는 구조적 맹점이 있어 UptimeRobot(외부 감시)을 대체할 수 없음 ② 이 시점에 기능을 더 얹기보다 이미 쌓인 미확인 항목(마이그레이션 007, 새 UI 재확인)부터 정리하는 게 우선이라고 판단함. 사용자가 다시 원하면 "Supabase·Resend 등 다른 서비스 상태만" 제한된 범위로 재검토
-- (신규) 입금/카드결제 시 "진짜 실시간" 알림 — 지금도 주문 접수·입금확인 시 이메일은 가지만, "통장에 실제로 입금됐다"는 자동 감지는 안 됨(관리자가 통장 확인 후 수동으로 "입금확인" 버튼을 눌러야 함). 진짜 자동 알림을 원하면 가상계좌(PG사 제공) 전환이 필요 — 아래 "카드결제(PG)" 작업과 함께 검토할 것
-- (신규) 카드결제(PG) 연동 — 11번 섹션에 절차 정리됨. 사업자등록·통신판매업 신고는 이미 완료된 상태라 전제조건은 충족. 규모가 있는 작업이라 별도 세션으로 진행 권장
+- ~~카드결제(PG) 연동~~ — 2026-08-13에 포트원 V2로 구현 완료([11번](#11-카드결제pg--포트원portone-v2) 참고). **다만 실제 포트원 계정 없이 코드 리뷰만으로 짠 것이라, 켜기 전에 테스트 채널로 결제 1건을 전 구간(결제창 → 서버 검증 → 웹훅) 끝까지 통과시켜 확인 필요**
+- ~~카드결제 완료 시 알림~~ — 위 카드결제 구현에 포함되어 완료(관리자 알림 메일 + 고객 결제완료 메일, 기존 Resend 재사용)
+- 무통장입금은 여전히 "진짜 실시간" 자동 알림이 아님 — 관리자가 통장을 직접 확인하고 수동으로 "입금확인" 버튼을 눌러야 고객에게 메일이 감. 자동 감지를 원하면 가상계좌(PG사 제공)로 전환해야 하는데, 이건 카드결제와 다른 별도 계약·구조라 필요해지면 그때 다시 검토
 
 **상품 데이터 정리 (색상/사이즈 팔레트 변경 후속)**
 - 상품 8종 전부 관리자 패널에서 재저장 필요 — 색상 팔레트를 6종(블랙·화이트·핑크·딥블루·스카이블루·클레이)으로 줄이고 사이즈를 XS~XL 고정으로 바꾸면서 `data.js`(정적 폴백)는 이미 새 값이지만, Supabase `products` 테이블은 옛날 색상·사진 그대로 남아있음 → 관리자 패널 "상품" 탭에서 8개 상품을 하나씩 열어 저장 버튼만 눌러야 실제 반영됨(사진은 새로 촬영 전까지 "사진 준비중")
@@ -84,7 +86,8 @@
 > 전체 변경 내역은 `git log`가 정확하지만, 매번 명령어를 돌리기보다 여기서 최근 흐름만
 > 빠르게 훑을 수 있게 요약해둡니다. 오래된 항목은 가끔 정리(요약/삭제)해도 됩니다.
 
-- **2026-08-12** — 사용자 피드백 10건 검토 후 난이도 낮은 순으로 7건 구현(아직 커밋 전): 정사각 파비콘·OG 이미지 신설, Works 버튼 색상을 포인트 컬러(`--accent`)로 통일(다크 테마에서 흰 버튼으로 보이던 버그 수정), 상품/룩북/정보 등록 폼을 여러 열 그리드로 재배치, 반품·QnA·리뷰 탭도 카드 그리드로, **고객 화면 품절 표시를 실제 `inventory` 재고와 동기화**(`withRealSoldOut()` — 배포 전 재고 초기값부터 채울 것, 위 "다음 세션이 가장 먼저 할 일" 참고), 관리자 감사 로그(`008_admin_audit_log.sql` + "활동 로그" 탭), 매출/베스트셀러 대시보드("대시보드" 탭) 신설. 보류된 3건(카드결제 시 알림, 정보 탭 저장 버그의 마이그레이션 실행 자체, 카드결제 기능 본체)은 각각 이유가 달라 위 표와 "지금 막혀 있는 것"에 개별 기록
+- **2026-08-13** — 보류했던 카드결제(8번)와 그 알림(1번)까지 구현: 포트원(PortOne) V2로 사전검증(`/api/payments/prepare`) → 결제창 → 사후검증(`/api/order`) → 웹훅(`/api/payments/webhook`) 전 구간을 갖춤(`009_card_payments.sql`, `server/lib/portone.js`). 재고가 없어 주문을 못 만드는 경우 이미 받은 결제를 자동 취소하는 안전장치 포함. 카드결제 완료 시 관리자·고객 모두에게 기존 Resend로 알림 메일 발송(`sendAdminCardPaid`/`sendCustomerCardPaid`). `cart.html`에 결제 수단 선택 UI 추가(포트원 미설정 시 자동으로 숨겨져 무통장입금만 남음 — 기존 배포에 영향 없음). **실제 포트원 계정으로 테스트 결제를 해본 적은 없음 — 켜기 전에 반드시 테스트 채널로 확인 필요**(11번 참고). 이 세션에서 007·008 마이그레이션도 Supabase에 실행 완료
+- **2026-08-12** — 사용자 피드백 10건 검토 후 난이도 낮은 순으로 7건 구현: 정사각 파비콘·OG 이미지 신설, Works 버튼 색상을 포인트 컬러(`--accent`)로 통일(다크 테마에서 흰 버튼으로 보이던 버그 수정), 상품/룩북/정보 등록 폼을 여러 열 그리드로 재배치, 반품·QnA·리뷰 탭도 카드 그리드로, **고객 화면 품절 표시를 실제 `inventory` 재고와 동기화**(`withRealSoldOut()` — 배포 전 재고 초기값부터 채울 것, 위 "다음 세션이 가장 먼저 할 일" 참고), 관리자 감사 로그(`008_admin_audit_log.sql` + "활동 로그" 탭), 매출/베스트셀러 대시보드("대시보드" 탭) 신설. 보류된 3건(카드결제 시 알림, 정보 탭 저장 버그의 마이그레이션 실행 자체, 카드결제 기능 본체)은 각각 이유가 달라 위 표와 "지금 막혀 있는 것"에 개별 기록
 - **2026-08-12** — Works 사용성 개선 4종: 로그인 "이메일 저장" 체크박스(Works+계정 페이지), 상품 목록을 그리드 카드로, 룩북을 실제 배치 클릭형 미리보기로, 사업자 정보·운영 링크를 관리자가 직접 적어두는 "정보" 탭 신설(`admin_settings` 테이블, `007_admin_settings.sql` — Supabase에서 실행 필요). 작업 중 `resetLookbookForm()`이 아직 선언되기 전인 `lookbookState`를 참조해서 페이지 전체가 죽던 순서 버그를 발견·수정(선언을 위로 이동)
 
 - **2026-08-12** — Works UI를 사이드바 대시보드로 전면 재설계: 좌측 사이드바 내비게이션 + 상단바(로고·라이트/다크·KO/DE·로그인 관리자 표시), 라이트=흰색/다크=디스코드 톤 회색/포인트=스페이스블루 팔레트, "전체 주문" 탭은 목록+상세패널 구조로 새로 짬. `style.css`의 기존 컴포넌트(.btn/.panel/.field 등)는 그대로 재사용하되 참조하는 토큰만 새 팔레트로 덮어써서 반품·재고·QnA·상품·리뷰·룩북 탭도 자동으로 같은 톤이 되게 함. `<html lang="ko" data-theme="light">`처럼 요소에 `hidden`과 `display`를 같이 주면(인라인이든 클래스든) 브라우저 기본 규칙보다 이 파일의 CSS가 이겨서 오히려 보여버리는 문제를 `[hidden]{display:none!important}` 한 줄로 전부 해결. 로고는 기존 `logo-mark.png`(말+오토바이 실루엣, 이미 투명 배경)를 그대로 사용, 다크모드에서는 `filter:invert`로 흰색으로 반전. 사이드바 항목에 실수로 남겨뒀던 빈 `data-i18n-attr=""`가 독일어 전환 시 `applyI18n()`을 죽이던 버그도 발견해서 제거
@@ -119,7 +122,7 @@
 8. [알려진 제약과 주의사항](#8-알려진-제약과-주의사항)
 9. [커스터마이징 가이드](#9-커스터마이징-가이드)
 10. [주문 자동 수신 연결](#10-주문-자동-수신-연결)
-11. [카드결제(PG) 붙이기](#11-카드결제pg-붙이기)
+11. [카드결제(PG) — 포트원(PortOne) V2](#11-카드결제pg--포트원portone-v2)
 12. [Node.js 백엔드 서버 (선택)](#12-nodejs-백엔드-서버-선택)
 13. [배포](#13-배포)
 
@@ -204,7 +207,8 @@ npm start
 │   │   ├── pricing.js            가격 재계산(priceItem) · 배송비(shippingFor) · 주문번호(orderNo) — 순수 함수, 단위 테스트 대상
 │   │   ├── products.js           상품 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
 │   │   ├── lookbook.js           룩북 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
-│   │   └── pagination.js         관리자 목록 API 공용 페이지네이션 헬퍼
+│   │   ├── pagination.js         관리자 목록 API 공용 페이지네이션 헬퍼
+│   │   └── portone.js            카드결제(포트원 V2) 결제 조회·취소·웹훅 검증 (PORTONE_API_SECRET 없으면 전부 비활성)
 │   ├── test/                     서버 핵심 로직 단위 테스트 (`npm test`, Node 내장 테스트러너 사용 — 별도 패키지 불필요)
 │   └── migrations/
 │       ├── 001_init.sql          Supabase 초기 스키마 (SQL Editor에 붙여넣어 실행)
@@ -212,7 +216,10 @@ npm start
 │       ├── 003_tracking.sql      주문에 택배사·운송장번호 컬럼 추가 (001 다음에 실행)
 │       ├── 004_products.sql      상품 테이블 + data.js 상품 8종 시드 (001 다음에 실행, 관리자 상품 관리에 필요)
 │       ├── 005_reviews_approval.sql   리뷰에 approved 컬럼 추가 (001 다음에 실행, 리뷰 승인제에 필요)
-│       └── 006_lookbook.sql      룩북 테이블 + data.js 룩북 8칸 시드 (001 다음에 실행, 관리자 룩북 관리에 필요)
+│       ├── 006_lookbook.sql      룩북 테이블 + data.js 룩북 8칸 시드 (001 다음에 실행, 관리자 룩북 관리에 필요)
+│       ├── 007_admin_settings.sql   Works "정보" 탭용 admin_settings 테이블 (001 다음에 실행)
+│       ├── 008_admin_audit_log.sql  Works "활동 로그" 탭용 admin_audit_log 테이블 (001 다음에 실행, 선택)
+│       └── 009_card_payments.sql    카드결제용 orders 컬럼 추가 + pending_payments 테이블 (001 다음에 실행, 카드결제 쓸 때만 필요)
 │
 └── 레퍼런스/                     원본 참고 이미지 (건드리지 않음, 후디/후드집업/크롭 후디/로고 폴더)
 ```
@@ -417,8 +424,10 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 |---|---|---|
 | `GET /api/products` | 없음 | 공개 상품 목록(`active=true`만). `products` 테이블 조회가 실패하면(예: 004 마이그레이션 미실행) `data.js`의 정적 `PRODUCTS`로 자동 폴백 |
 | `GET /api/lookbook` | 없음 | 공개 룩북 목록(`active=true`만). `lookbook` 테이블 조회가 실패하면(예: 006 마이그레이션 미실행) `data.js`의 정적 `LOOKBOOK`으로 자동 폴백 |
-| `POST /api/order` | 선택(로그인 시 주문에 연결) | `{ customer, items }`을 받아 `productId`/`charm`/`extras`만으로 서버에서 가격을 재계산(상품 가격은 `products` 테이블 기준), `decrement_inventory` RPC로 재고를 원자적으로 차감(부족하면 `409 OUT_OF_STOCK`), `orders` 테이블에 저장, Resend로 **관리자 알림 메일 + 고객 주문접수 확인 메일**을 각각 발송(둘 다 실패해도 주문은 성공 처리) |
-| `GET /api/config` | 없음 | 브라우저가 Supabase 클라이언트를 초기화할 `supabaseUrl`/`supabaseAnonKey` 반환 |
+| `POST /api/order` | 선택(로그인 시 주문에 연결) | 무통장입금: `{ customer, items }`을 받아 `productId`/`charm`/`extras`만으로 서버에서 가격을 재계산(상품 가격은 `products` 테이블 기준), `decrement_inventory` RPC로 재고를 원자적으로 차감(부족하면 `409 OUT_OF_STOCK`), `orders` 테이블에 저장, Resend로 **관리자 알림 메일 + 고객 주문접수 확인 메일**을 각각 발송(둘 다 실패해도 주문은 성공 처리). 카드결제: `{ paymentId }`만 받아 `/api/payments/prepare`가 미리 계산해둔 금액과 실제 결제 금액이 일치하는지 포트원에 재확인한 뒤 같은 방식으로 주문을 만듦(11번 참고) |
+| `POST /api/payments/prepare` | 선택 | 카드결제 시작 전 서버가 먼저 `{ customer, items }`로 금액을 재계산해 `pending_payments`에 저장하고, 결제창에 넘길 `paymentId`/`totalAmount`/`orderName`/`storeId`/`channelKey`를 반환(사전검증, 11번 참고). `PORTONE_*` 환경변수가 없으면 `503` |
+| `POST /api/payments/webhook` | 포트원 서명 검증 | 포트원이 결제 완료를 알려주는 웹훅. `/api/order`가 이미 처리했으면 조용히 넘어가는 멱등 처리 — 고객이 결제 직후 브라우저를 닫아 `/api/order` 호출 자체가 안 갔을 때의 보조 경로 |
+| `GET /api/config` | 없음 | 브라우저가 Supabase 클라이언트를 초기화할 `supabaseUrl`/`supabaseAnonKey`, 카드결제 가능 여부(`cardPaymentEnabled`)와 결제창에 필요한 공개 식별자(`portoneStoreId`/`portoneChannelKey`) 반환 |
 | `POST /api/orders/lookup` | 없음 | 비회원 주문 조회. `{ orderNo, tel }`이 저장된 주문과 일치할 때만 상태·배송정보·내역을 반환(연락처는 숫자만 비교). 불일치 시 어느 쪽이 틀렸는지 알려주지 않고 `404` |
 | `GET /api/my/orders` | 로그인 필요 | 로그인한 회원 본인의 주문내역(배송정보 포함) |
 | `POST /api/returns` | 선택 | 반품·교환 신청 접수(비회원도 가능) |
@@ -433,6 +442,9 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `POST /api/admin/products/photo` | **관리자만**(role=admin) | 상품 사진 한 장을 Cloudinary에 업로드(업로드 시 최대 1800px로 자동 리사이즈 + 포맷/화질 최적화)하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 상품의 `images` 배열에 채워 넣은 뒤 `POST`/`PATCH /api/admin/products`로 저장 |
 | `GET/POST /api/admin/lookbook`, `PATCH/DELETE /api/admin/lookbook/:id` | **관리자만**(role=admin) | 룩북 칸 등록·수정·삭제(**목록은 페이지네이션**). `GET`은 비공개(`active=false`) 칸도 포함해 전부 반환 |
 | `POST /api/admin/lookbook/photo` | **관리자만**(role=admin) | 룩북 사진 한 장을 Cloudinary에 업로드(최대 2000px로 자동 리사이즈 + 포맷/화질 최적화)하고 `{ url }` 반환(5MB 이하 이미지만). 관리자 패널이 이 URL을 해당 칸의 `src`에 채워 넣은 뒤 `POST`/`PATCH /api/admin/lookbook`으로 저장 |
+| `GET/POST/PATCH/DELETE /api/admin/settings` | **관리자만**(role=admin) | Works "정보" 탭의 참고용 메모(사업자 정보 요약, 운영 사이트 링크 등) CRUD |
+| `GET /api/admin/audit-log` | **관리자만**(role=admin) | 관리자 활동 로그 조회(**목록은 페이지네이션**, 최신순). 주문·반품·재고·상품·룩북·리뷰·QnA·정보 탭에서 저장 작업이 일어날 때마다 `logAdminAction()`이 여기에 한 줄씩 남김 |
+| `GET /api/admin/dashboard` | **관리자만**(role=admin) | `orders` 테이블을 그때그때 집계해 오늘/이달 매출, 누적 주문 수, 입금 대기 건수, 최근 14일 매출 추이, 베스트셀러 Top 5를 반환(새 테이블 없음, 취소된 주문은 매출 집계에서 제외) |
 
 > **관리자 목록 페이지네이션**: `/api/admin/orders`, `/api/admin/returns`, `/api/admin/qna`, `/api/admin/products`, `/api/admin/reviews`, `/api/admin/lookbook`은
 > `?page=`(1부터)와 `?pageSize=`(기본 20, 상품·룩북은 50, 최대 100) 쿼리를 받고 `{ items, page, pageSize, total }` 형태로 응답합니다.
@@ -927,18 +939,47 @@ node convert.js
 
 ---
 
-## 11. 카드결제(PG) 붙이기
+## 11. 카드결제(PG) — 포트원(PortOne) V2
 
-1. 사업자등록 · 통신판매업 신고 완료
-2. PG사 심사 통과 — **포트원(아임포트)** 을 쓰면 여러 PG를 한 번에 붙일 수 있습니다
-3. `cart.html`의 `order-form` submit 핸들러에서 **주문 객체를 만든 직후**에 결제 SDK를 호출하고,
-   성공 콜백에서 `order-complete.html`로 이동시킵니다
-4. **서버에서 금액을 재검증하세요** (→ [8번 경고](#️-pg-결제를-붙일-때-반드시-지킬-것)) —
-   `server/server.js`의 `priceItem()`이 이미 이 역할을 하므로, PG 웹훅에서도 같은 함수를
-   재사용해 결제 승인 금액과 대조하면 됩니다
+2026-08-13에 구현 완료. **포트원 계정을 만들고 키를 채우기 전까지는 카드결제 옵션 자체가 고객
+화면에 안 뜨고 무통장입금만 보입니다** — 안 켜도 사이트는 그대로 동작하는, 이 문서 전체를 관통하는
+"선택적 외부 서비스" 패턴을 그대로 따릅니다.
 
-금액 계산은 `Cart.subtotal()` / `Cart.shipping()` / `Cart.total()`(클라이언트)과
-`priceItem()` / `shippingFor()`(서버)로 이미 분리돼 있어서 그 값을 그대로 결제 요청에 넘기면 됩니다.
+### 어떻게 동작하나
+
+1. `cart.html`에서 "카드결제"를 고르면 서버(`POST /api/payments/prepare`)가 `priceItem()`/
+   `shippingFor()`로 금액을 **먼저** 재계산해서 `pending_payments` 테이블에 저장하고, 그 금액을
+   그대로 돌려줍니다(사전검증 — 브라우저에서 금액을 조작해도 결제창엔 서버가 계산한 금액만 뜸).
+2. 브라우저가 포트원 결제창(`PortOne.requestPayment()`)을 열고 고객이 결제를 마칩니다.
+3. `POST /api/order`가 `paymentId`로 포트원 서버에 다시 물어봐서(`server/lib/portone.js`의
+   `getVerifiedPayment()`) 실제로 그 금액만큼 결제됐는지 확인한 뒤에만 주문을 만듭니다(사후검증).
+4. 그 사이 재고가 소진돼 주문을 못 만드는 경우, 이미 받은 결제를 자동으로 취소합니다
+   (`portone.cancelPayment()`) — "결제는 됐는데 주문은 없는" 상태를 만들지 않기 위함입니다.
+5. 고객이 결제 직후 브라우저를 닫아 3번 요청이 서버에 닿지 못하는 경우를 대비해, 포트원 웹훅
+   (`POST /api/payments/webhook`)이 같은 검증·주문생성 로직(`finalizeCardOrder()`)을 한 번 더
+   시도합니다 — 이미 주문이 만들어져 있으면 조용히 넘어가는 멱등 처리라 중복 생성되지 않습니다.
+6. 카드결제 주문은 접수 즉시 `status: "입금확인"`으로 저장되고(이미 결제가 끝났으므로), 관리자·
+   고객 모두에게 무통장입금과는 다른 문구의 확인 메일이 갑니다(`sendAdminCardPaid`/
+   `sendCustomerCardPaid`, [12번 준비](#준비) 참고).
+
+### 켜는 방법
+
+1. [portone.io](https://portone.io) 가입 → 관리자 콘솔에서 연동할 PG사(토스페이먼츠 등) 채널 등록
+   → **연동 정보** 메뉴에서 `상점 아이디(Store ID)`, `채널 키(Channel Key)`, `API Secret` 확인
+2. **웹훅** 메뉴에서 `https://reiten.kr/api/payments/webhook` 엔드포인트를 등록하고 발급되는
+   `웹훅 시크릿`을 확인
+3. `server/.env`에 아래 네 값을 채우고(Render라면 환경변수로 등록) 서버를 재시작 — 넷 다 채워야
+   `GET /api/config`의 `cardPaymentEnabled`가 `true`가 되고 고객 화면에 결제 수단 선택란이 뜹니다
+   ```
+   PORTONE_STORE_ID=...
+   PORTONE_CHANNEL_KEY=...
+   PORTONE_API_SECRET=...
+   PORTONE_WEBHOOK_SECRET=...
+   ```
+4. **실제 결제로 열기 전에 반드시 포트원 콘솔의 테스트 채널로 먼저 결제 1건을 끝까지 진행해서
+   확인하세요.** 이 기능은 코드 리뷰만 거쳤을 뿐, 실제 포트원 계정 없이는 개발 과정에서 결제창이
+   열리는 것 자체를 확인할 방법이 없었습니다 — 사전검증(prepare) → 결제창 → 사후검증(order) →
+   웹훅까지 전 구간을 실제 테스트 결제로 한 번 통과시켜야 안심하고 켤 수 있습니다.
 
 ---
 
@@ -951,7 +992,8 @@ node convert.js
 자동화하는 용도로도 쓸 수 있습니다.
 
 이 서버는 파일이 아니라 **Supabase(Postgres + Auth)**, **Resend**(이메일), **Cloudinary**(이미지)라는
-세 무료 외부 서비스에 의존합니다. 계정 생성은 자동화할 수 없는 부분이라 아래 순서대로
+세 무료 외부 서비스에 의존합니다(카드결제까지 쓰려면 **포트원**이 네 번째로 추가됩니다 — 이건 나머지
+셋과 달리 완전히 선택 사항입니다). 계정 생성은 자동화할 수 없는 부분이라 아래 순서대로
 직접 준비가 필요합니다.
 
 ### 준비
@@ -968,12 +1010,19 @@ node convert.js
    (리뷰에 승인 여부 컬럼을 추가합니다 — 실행하지 않으면 새로 등록된 리뷰도 승인 없이 바로 공개됩니다)
    → 이어서 [`server/migrations/006_lookbook.sql`](server/migrations/006_lookbook.sql)도 같은 방식으로 실행
    (룩북 테이블을 만들고 `data.js`의 룩북 8칸을 그대로 시드합니다 — 실행하지 않으면 관리자 패널의 "룩북" 탭이 에러를 반환하고, 룩북 목록은 `data.js`의 정적 폴백으로만 동작합니다)
+   → 이어서 [`server/migrations/007_admin_settings.sql`](server/migrations/007_admin_settings.sql)도 같은 방식으로 실행
+   (Works "정보" 탭이 쓰는 `admin_settings` 테이블을 만듭니다 — 실행하지 않으면 그 탭이 저장 실패 토스트만 반복해서 띄웁니다)
+   → 이어서 [`server/migrations/008_admin_audit_log.sql`](server/migrations/008_admin_audit_log.sql)도 같은 방식으로 실행
+   (Works "활동 로그" 탭이 쓰는 `admin_audit_log` 테이블을 만듭니다 — 실행하지 않아도 사이트·Works는 정상 동작하고, 로그 적재만 조용히 건너뜁니다)
+   → 카드결제를 쓸 계획이면 [`server/migrations/009_card_payments.sql`](server/migrations/009_card_payments.sql)도 같은 방식으로 실행
+   (`orders`에 결제수단·결제 아이디 컬럼을 추가하고 `pending_payments` 테이블을 만듭니다 — 실행하지 않으면 [11번](#11-카드결제pg--포트원portone-v2)의 카드결제 관련 API가 전부 에러를 반환합니다. 무통장입금만 쓸 거라면 실행하지 않아도 됩니다)
    → **Project Settings → API**에서 `Project URL`, `anon public` 키, `service_role` 키를 확인
 2. **Resend** — [resend.com](https://resend.com) 가입 → API Keys에서 키 발급. 도메인 인증 전에는
    발신 주소를 `onboarding@resend.dev`로 두면 바로 테스트 발송이 됩니다
 3. **Cloudinary** — [cloudinary.com](https://cloudinary.com) 가입 → Dashboard에서 `Cloud name` /
    `API Key` / `API Secret` 확인
-4. `server/.env.example`을 복사해 `server/.env`를 만들고 위에서 확인한 값을 채웁니다
+4. **(선택) 포트원** — 카드결제를 쓸 계획이면 [11번](#11-카드결제pg--포트원portone-v2)의 "켜는 방법"을 따라 준비합니다. 무통장입금만 쓸 거라면 건너뛰어도 됩니다
+5. `server/.env.example`을 복사해 `server/.env`를 만들고 위에서 확인한 값을 채웁니다
    (`.env`는 `.gitignore`에 있어 커밋되지 않습니다). 주문 알림을 받을 이메일 주소는
    `ADMIN_NOTIFY_EMAIL`에 넣습니다 — `data.js`의 `SITE.order.email`(사이트 하단에 공개 노출)과는
    별개의, 비공개 내부용 주소입니다

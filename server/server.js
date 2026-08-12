@@ -1,4 +1,5 @@
 require("dotenv").config();
+const crypto = require("crypto");
 const Sentry = require("@sentry/node");
 const path = require("path");
 const express = require("express");
@@ -14,12 +15,15 @@ const {
   sendCustomerPaymentConfirmed,
   sendCustomerShipped,
   sendAdminLowStock,
+  sendAdminCardPaid,
+  sendCustomerCardPaid,
 } = require("./lib/mailer");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
+const portone = require("./lib/portone");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -60,6 +64,52 @@ const writeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." },
+});
+
+/* 포트원 웹훅은 서명 검증에 "파싱 전 원본 문자열"이 필요해서, 이 라우트만 아래
+   express.json()보다 먼저 등록해 그 미들웨어를 타지 않게 한다(등록 순서대로 매칭되는 Express 특성 이용).
+   finalizeCardOrder는 파일 아래쪽에 있지만 function 선언이라 호이스팅되어 여기서도 바로 쓸 수 있다.
+   결제 완료를 알려주는 이 웹훅은 /api/order(카드 분기)가 이미 검증→주문 생성을 처리하는 것과 별개로,
+   고객이 결제 직후 브라우저를 닫아버려 그 확인 요청이 서버에 닿지 못하는 경우를 위한 보조 경로다.
+   orders.payment_id로 이미 처리된 건인지 먼저 확인해서 멱등하게 동작한다(포트원이 같은 웹훅을
+   여러 번 재전송해도 주문이 중복 생성되지 않음). */
+app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res) => {
+  if (!portone.isConfigured()) return res.status(503).end();
+
+  let webhook;
+  try {
+    webhook = await portone.verifyWebhook(req.body, req.headers);
+  } catch (e) {
+    console.error("[payments/webhook] 서명 검증 실패:", e.message);
+    return res.status(400).end();
+  }
+
+  if (webhook.type !== "Transaction.Paid") {
+    return res.status(200).end();
+  }
+
+  const { paymentId } = webhook.data;
+
+  const { data: existingOrder } = await supabaseAdmin.from("orders").select("order_no").eq("payment_id", paymentId).maybeSingle();
+  if (existingOrder) return res.status(200).end(); // /api/order 쪽에서 이미 처리됨
+
+  const { data: pending } = await supabaseAdmin.from("pending_payments").select("*").eq("payment_id", paymentId).maybeSingle();
+  if (!pending) return res.status(200).end(); // 알 수 없는 결제 건이거나 이미 소비됨
+
+  let verified;
+  try {
+    verified = await portone.getVerifiedPayment(paymentId);
+  } catch (e) {
+    console.error("[payments/webhook] 결제 조회 실패:", e.message);
+    return res.status(500).end(); // 포트원이 재시도하도록 5xx로 응답
+  }
+  if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
+    console.error("[payments/webhook] 금액/상태 불일치:", paymentId);
+    return res.status(200).end(); // 재시도해도 결과가 같으므로 200으로 끝내 재전송을 막는다
+  }
+
+  const result = await finalizeCardOrder({ pending, paymentId, userId: null });
+  res.status(result.ok ? 200 : result.status).end();
 });
 
 app.use(express.json());
@@ -147,7 +197,213 @@ app.get("/api/products", async (req, res) => {
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
 const PRICE_OPTS = { extras: EXTRAS, charmPrice: CHARM_PRICE, extraPrice: EXTRA_PRICE };
 
+/* ---------- 카드결제(포트원) ----------
+   결제창을 열기 전에 서버가 먼저 금액을 계산해서 pending_payments에 저장해두고, 그 값 그대로
+   결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
+   서버 계산값이라 소용없다. 결제가 끝나면 /api/order가 paymentId로 다시 포트원에 물어봐서
+   실제로 그 금액만큼 결제됐는지 확인한 뒤에만 주문을 만든다(사후검증, 009_card_payments.sql 참고). */
+app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
+  if (!portone.isConfigured()) {
+    return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
+  }
+
+  const { customer, items: rawItems } = req.body || {};
+  if (!customer || typeof customer !== "object") {
+    return res.status(400).json({ error: "customer 정보가 없습니다." });
+  }
+  const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
+  if (missing.length) {
+    return res.status(400).json({ error: `필수 항목이 비었습니다: ${missing.join(", ")}` });
+  }
+  if (!Array.isArray(rawItems) || !rawItems.length) {
+    return res.status(400).json({ error: "장바구니 항목이 없습니다." });
+  }
+
+  const products = await getActiveProducts();
+  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
+  if (items.some((it) => it === null)) {
+    return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
+  }
+
+  const subtotal = items.reduce((s, it) => s + it.sum, 0);
+  const shipping = shippingFor(subtotal, SITE.shipping);
+  const total = subtotal + shipping;
+  const paymentId = "reiten-" + crypto.randomUUID();
+  const normalizedCustomer = {
+    name: String(customer.name).trim(),
+    tel: String(customer.tel).trim(),
+    email: String(customer.email).trim(),
+    zip: String(customer.zip).trim(),
+    addr: String(customer.addr).trim(),
+    addr2: String(customer.addr2 || "").trim(),
+    memo: String(customer.memo || "").trim(),
+    payer: String(customer.payer).trim(),
+  };
+
+  const { error } = await supabaseAdmin.from("pending_payments").insert({
+    payment_id: paymentId,
+    customer: normalizedCustomer,
+    raw_items: rawItems,
+    items,
+    subtotal,
+    shipping,
+    total,
+  });
+  if (error) {
+    console.error("[payments/prepare] 저장 실패:", error.message);
+    return res.status(500).json({ error: "결제 준비에 실패했습니다." });
+  }
+
+  // 결제창을 열어놓고 이탈한 오래된(24시간 지난) 시도는 다음 요청 때 조용히 정리한다(별도 크론 불필요).
+  supabaseAdmin
+    .from("pending_payments")
+    .delete()
+    .lt("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+    .then(() => {});
+
+  const orderName = items.length > 1 ? `${items[0].name} 외 ${items.length - 1}건` : items[0].name;
+  res.json({
+    paymentId,
+    totalAmount: total,
+    orderName,
+    storeId: process.env.PORTONE_STORE_ID,
+    channelKey: process.env.PORTONE_CHANNEL_KEY,
+    customer: { fullName: normalizedCustomer.name, phoneNumber: normalizedCustomer.tel, email: normalizedCustomer.email },
+  });
+});
+
+/* /api/order(카드결제 분기)와 웹훅(/api/payments/webhook) 양쪽에서 똑같이 필요한 "결제 확인 후
+   주문 확정" 로직 — 재고 차감, 주문 저장, 알림 메일까지 한 번에 처리한다. 두 곳에 각각 복붙하면
+   나중에 한쪽만 고치고 다른 쪽을 놓치기 쉬운, 돈이 걸린 로직이라 함수로 묶어 하나만 유지한다.
+   실패해도 예외를 던지지 않고 { ok:false, status, body }로 반환한다(호출부가 그대로 res에 흘려보냄). */
+async function finalizeCardOrder({ pending, paymentId, userId }) {
+  const products = await getActiveProducts();
+  const { customer, items, raw_items: rawItems, subtotal, shipping, total } = pending;
+
+  const inventoryItems = [];
+  rawItems.forEach((raw, i) => {
+    if (
+      typeof raw.productId === "string" &&
+      !raw.productId.startsWith("charm-") &&
+      typeof raw.size === "string" &&
+      raw.size
+    ) {
+      inventoryItems.push({ productId: raw.productId, size: raw.size, qty: items[i].qty });
+    }
+  });
+
+  if (inventoryItems.length) {
+    const { error: invError } = await supabaseAdmin.rpc("decrement_inventory", {
+      p_items: inventoryItems,
+    });
+    if (invError) {
+      const m = /OUT_OF_STOCK:([^:]+):(.+)/.exec(invError.message || "");
+      if (m) {
+        /* 카드결제는 이 시점에 이미 돈을 받은 상태다 — 재고가 없어 주문을 못 만든다면
+           반드시 결제를 취소해서 "결제는 됐는데 주문은 없는" 상태를 만들지 않는다. */
+        try {
+          await portone.cancelPayment(paymentId, "재고 부족으로 자동 취소");
+        } catch (cancelErr) {
+          console.error("[order] ⚠️ 재고 부족으로 인한 결제 자동 취소 실패 — 수동 확인 필요:", paymentId, cancelErr.message);
+        }
+        const [, productId, size] = m;
+        const product = products.find((p) => p.id === productId);
+        return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, size, name: product ? product.nameKo : productId } };
+      }
+      console.error("[order] 재고 차감 실패:", invError.message);
+      return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
+    }
+
+    const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
+    const sizes = [...new Set(inventoryItems.map((it) => it.size))];
+    const { data: stockRows } = await supabaseAdmin
+      .from("inventory")
+      .select("product_id, size, qty")
+      .in("product_id", productIds)
+      .in("size", sizes);
+    const zeroed = (stockRows || [])
+      .filter((row) => row.qty <= 0 && inventoryItems.some((it) => it.productId === row.product_id && it.size === row.size))
+      .map((row) => ({ name: products.find((p) => p.id === row.product_id)?.nameKo || row.product_id, size: row.size }));
+    if (zeroed.length) {
+      sendAdminLowStock(zeroed).catch((err) => console.error("[mailer] 재고 소진 알림 메일 발송 실패:", err.message));
+    }
+  }
+
+  const { data: saved, error: saveError } = await supabaseAdmin
+    .from("orders")
+    .insert({
+      order_no: orderNo(),
+      user_id: userId,
+      customer,
+      items,
+      subtotal,
+      shipping,
+      total,
+      payment_method: "card",
+      payment_id: paymentId,
+      status: "입금확인",
+    })
+    .select()
+    .single();
+
+  if (saveError) {
+    console.error("[order] 주문 저장 실패:", saveError.message);
+    return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
+  }
+
+  await supabaseAdmin.from("pending_payments").delete().eq("payment_id", paymentId);
+
+  sendAdminCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 관리자 알림 메일 발송 실패:", err.message));
+  sendCustomerCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 완료 메일 발송 실패:", err.message));
+
+  return { ok: true, saved };
+}
+
 app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
+  if (req.body && req.body.paymentId) {
+    const paymentId = String(req.body.paymentId).trim();
+    const { data: pending, error: pendErr } = await supabaseAdmin
+      .from("pending_payments")
+      .select("*")
+      .eq("payment_id", paymentId)
+      .maybeSingle();
+    if (pendErr || !pending) {
+      /* 결제 준비 요청 이후 웹훅이 먼저 도착해 이미 주문이 만들어졌을 수도 있다 — 그 경우 정상 케이스다. */
+      const { data: already } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+      if (already) {
+        return res.json({
+          no: already.order_no, at: already.created_at, customer: already.customer, items: already.items,
+          subtotal: already.subtotal, shipping: already.shipping, total: already.total,
+          paymentMethod: already.payment_method, sent: true,
+        });
+      }
+      return res.status(400).json({ error: "결제 정보를 찾을 수 없습니다. 처음부터 다시 시도해 주세요." });
+    }
+
+    let verified;
+    try {
+      verified = await portone.getVerifiedPayment(paymentId);
+    } catch (e) {
+      console.error("[order] 결제 조회 실패:", e.message);
+      return res.status(502).json({ error: "결제 확인 중 오류가 발생했습니다." });
+    }
+    if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
+      console.error(
+        "[order] 결제 검증 실패:", paymentId,
+        "status=", verified.status, "amount=", verified.amount && verified.amount.total, "expected=", pending.total
+      );
+      return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
+    }
+
+    const result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+    if (!result.ok) return res.status(result.status).json(result.body);
+    return res.json({
+      no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
+      subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
+      paymentMethod: result.saved.payment_method, sent: true,
+    });
+  }
+
   const { customer, items: rawItems } = req.body || {};
 
   if (!customer || typeof customer !== "object") {
@@ -277,6 +533,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     subtotal: saved.subtotal,
     shipping: saved.shipping,
     total: saved.total,
+    paymentMethod: "bank_transfer",
     sent: true,
   });
 });
@@ -287,6 +544,11 @@ app.get("/api/config", (req, res) => {
   res.json({
     supabaseUrl: process.env.SUPABASE_URL || null,
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || null,
+    // storeId/channelKey는 포트원 결제창을 여는 데 필요한 공개 식별자다(비밀 아님) —
+    // 실제 인증은 서버의 PORTONE_API_SECRET으로만 이뤄지므로 브라우저에 노출돼도 안전하다.
+    cardPaymentEnabled: portone.isConfigured(),
+    portoneStoreId: process.env.PORTONE_STORE_ID || null,
+    portoneChannelKey: process.env.PORTONE_CHANNEL_KEY || null,
   });
 });
 

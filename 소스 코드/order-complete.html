@@ -70,12 +70,18 @@
         ${t("주문번호")} <b class="tnum">${esc(order.no)}</b> · ${t("{name}님", { name: esc(c.name) })}
       </p>
 
+      ${order.paymentMethod === "card" ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("결제 완료")}</b><br>
+        ${t("결제금액")} <b class="tnum">${money(order.total)}</b><br>
+        <span class="small">${esc(t(SITE.shipping.leadTime))}.</span>
+      </div>` : `
       <div class="notice" style="margin-top:28px">
         <b>${t("입금 안내")}</b><br>
         ${esc(o.bankName)} ${esc(o.accountNo)} · ${t("예금주")} ${esc(o.holder)}<br>
         ${t("입금액")} <b class="tnum">${money(order.total)}</b> · ${t("입금자명")} <b>${esc(c.payer)}</b><br>
         <span class="small">${t("3일 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
-      </div>
+      </div>`}
 
       ${order.sent ? `
       <div class="notice" style="margin-top:14px">
