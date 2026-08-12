@@ -15,7 +15,7 @@
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
         <h1 class="h-xl">REITEN WORKS</h1>
-        <div id="works-topbar" hidden style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div id="works-topbar" hidden style="align-items:center;gap:12px;flex-wrap:wrap">
           <div class="chips" id="admin-lang-switch">
             <button class="chip" type="button" data-admin-lang="ko" aria-pressed="true">한국어</button>
             <button class="chip" type="button" data-admin-lang="de" aria-pressed="false">Deutsch</button>
@@ -1044,6 +1044,7 @@
     if (!orders) return false;
     el("admin-panel").hidden = false;
     el("works-topbar").hidden = false;
+    el("works-topbar").style.display = "flex";
     el("works-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
     el("admin-orders").innerHTML = "";
     paintAdminOrders();
