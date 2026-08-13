@@ -163,15 +163,17 @@ async function getActiveProducts() {
   return withRealSoldOut(data.map(toProductDto));
 }
 
-/* 관리자가 손으로 체크하는 soldOut 배열과 실제 결제 시 차감되는 inventory 테이블이 서로 다른
-   값을 가질 수 있다(주문으로 실재고가 0이 돼도 관리자가 체크박스를 갱신하기 전까지는 반영 안 됨,
-   또는 사이즈 행 자체가 아직 없어 항상 재고 0으로 취급됨 — 001_init.sql 참고). 고객 화면에 내려줄
-   때는 관리자가 체크한 soldOut과 실재고 0(또는 행 없음)인 사이즈를 합쳐서, 실제로는 주문이 막히는
-   사이즈가 "구매 가능"으로 보이는 일이 없게 한다. */
+/* 관리자가 손으로 체크하는 soldOut 배열(상품.sizes 전체에 적용 — "이 사이즈는 어느 컬러든 안 판다")과
+   실제 결제 시 차감되는 inventory 테이블(product_id + color + size, 014_inventory_by_color.sql)이
+   서로 다른 값을 가질 수 있다(주문으로 실재고가 0이 돼도 관리자가 체크박스를 갱신하기 전까지는
+   반영 안 됨, 또는 행 자체가 아직 없어 항상 재고 0으로 취급됨). 고객 화면에 내려줄 때는 컬러별
+   실재고 0(또는 행 없음)인 사이즈를 outOfStockByColor로 따로 계산해 붙여준다 — soldOut은 그대로
+   두고(전체 컬러 공통 품절), 특정 컬러만 재고가 없는 경우는 product.html이 "지금 고른 컬러"에
+   한해 그 사이즈를 막는 데 이 필드를 쓴다. */
 async function withRealSoldOut(products) {
   if (!products.length) return products;
   const ids = products.map((p) => p.id);
-  const { data, error } = await supabaseAdmin.from("inventory").select("product_id, size, qty").in("product_id", ids);
+  const { data, error } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").in("product_id", ids);
   if (error) {
     console.error("[products] 재고 조회 실패, 관리자가 입력한 품절 정보만 사용:", error.message);
     return products;
@@ -179,13 +181,19 @@ async function withRealSoldOut(products) {
   const qtyByProduct = new Map();
   for (const row of data) {
     if (!qtyByProduct.has(row.product_id)) qtyByProduct.set(row.product_id, new Map());
-    qtyByProduct.get(row.product_id).set(row.size, row.qty);
+    qtyByProduct.get(row.product_id).set(`${row.color}:${row.size}`, row.qty);
   }
   return products.map((p) => {
-    const qtyBySize = qtyByProduct.get(p.id);
-    const outOfStock = (p.sizes || []).filter((size) => !qtyBySize || (qtyBySize.get(size) ?? 0) <= 0);
-    if (!outOfStock.length) return p;
-    return { ...p, soldOut: [...new Set([...(p.soldOut || []), ...outOfStock])] };
+    const qtyByColorSize = qtyByProduct.get(p.id);
+    const outOfStockByColor = {};
+    for (const color of p.colors || []) {
+      const outSizes = (p.sizes || []).filter((size) => {
+        const qty = qtyByColorSize ? qtyByColorSize.get(`${color}:${size}`) : undefined;
+        return (qty ?? 0) <= 0;
+      });
+      if (outSizes.length) outOfStockByColor[color] = outSizes;
+    }
+    return { ...p, outOfStockByColor };
   });
 }
 
@@ -364,7 +372,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       typeof raw.size === "string" &&
       raw.size
     ) {
-      inventoryItems.push({ productId: raw.productId, size: raw.size, qty: items[i].qty });
+      inventoryItems.push({ productId: raw.productId, color: raw.color || "", size: raw.size, qty: items[i].qty });
     }
   });
 
@@ -373,9 +381,9 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       p_items: inventoryItems,
     });
     if (invError) {
-      const m = /OUT_OF_STOCK:([^:]+):(.+)/.exec(invError.message || "");
+      const m = /OUT_OF_STOCK:([^:]+):([^:]*):(.+)/.exec(invError.message || "");
       if (m) {
-        const [, productId, size] = m;
+        const [, productId, color, size] = m;
         /* 카드결제는 이 시점에 이미 돈을 받은 상태다 — 재고가 없어 주문을 못 만든다면
            반드시 결제를 취소해서 "결제는 됐는데 주문은 없는" 상태를 만들지 않는다.
            그 취소마저 실패하면(이중 실패) 서버 로그만으로는 관리자가 놓치기 쉬워 즉시 메일을 보낸다. */
@@ -388,25 +396,25 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
         }
         const product = products.find((p) => p.id === productId);
-        return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, size, name: product ? product.nameKo : productId } };
+        return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name: product ? product.nameKo : productId } };
       }
       console.error("[order] 재고 차감 실패:", invError.message);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
 
     logInventoryChange(
-      inventoryItems.map((it) => ({ productId: it.productId, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
+      inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
     );
 
     const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
     const sizes = [...new Set(inventoryItems.map((it) => it.size))];
     const { data: stockRows } = await supabaseAdmin
       .from("inventory")
-      .select("product_id, size, qty")
+      .select("product_id, color, size, qty")
       .in("product_id", productIds)
       .in("size", sizes);
     const zeroed = (stockRows || [])
-      .filter((row) => row.qty <= 0 && inventoryItems.some((it) => it.productId === row.product_id && it.size === row.size))
+      .filter((row) => row.qty <= 0 && inventoryItems.some((it) => it.productId === row.product_id && it.color === row.color && it.size === row.size))
       .map((row) => ({ name: products.find((p) => p.id === row.product_id)?.nameKo || row.product_id, size: row.size }));
     if (zeroed.length) {
       sendAdminLowStock(zeroed).catch((err) => console.error("[mailer] 재고 소진 알림 메일 발송 실패:", err.message));
@@ -542,7 +550,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       typeof raw.size === "string" &&
       raw.size
     ) {
-      inventoryItems.push({ productId: raw.productId, size: raw.size, qty: items[i].qty });
+      inventoryItems.push({ productId: raw.productId, color: raw.color || "", size: raw.size, qty: items[i].qty });
     }
   });
 
@@ -551,13 +559,14 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       p_items: inventoryItems,
     });
     if (invError) {
-      const m = /OUT_OF_STOCK:([^:]+):(.+)/.exec(invError.message || "");
+      const m = /OUT_OF_STOCK:([^:]+):([^:]*):(.+)/.exec(invError.message || "");
       if (m) {
-        const [, productId, size] = m;
+        const [, productId, color, size] = m;
         const product = products.find((p) => p.id === productId);
         return res.status(409).json({
           error: "OUT_OF_STOCK",
           productId,
+          color,
           size,
           name: product ? product.nameKo : productId,
         });
@@ -567,16 +576,16 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     }
 
     logInventoryChange(
-      inventoryItems.map((it) => ({ productId: it.productId, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
+      inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
     );
 
     /* 방금 차감한 조합 중 재고가 0이 된 게 있으면 관리자에게 알린다.
-       inventoryItems에 없는 다른 사이즈까지 걸리지 않도록 정확히 같은 (productId, size) 쌍만 추린다. */
+       inventoryItems에 없는 다른 컬러·사이즈까지 걸리지 않도록 정확히 같은 (productId, color, size) 쌍만 추린다. */
     const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
     const sizes = [...new Set(inventoryItems.map((it) => it.size))];
     const { data: stockRows } = await supabaseAdmin
       .from("inventory")
-      .select("product_id, size, qty")
+      .select("product_id, color, size, qty")
       .in("product_id", productIds)
       .in("size", sizes);
 
@@ -584,7 +593,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       .filter(
         (row) =>
           row.qty <= 0 &&
-          inventoryItems.some((it) => it.productId === row.product_id && it.size === row.size)
+          inventoryItems.some((it) => it.productId === row.product_id && it.color === row.color && it.size === row.size)
       )
       .map((row) => ({
         name: products.find((p) => p.id === row.product_id)?.nameKo || row.product_id,
@@ -820,6 +829,7 @@ function logInventoryChange(rows) {
     .insert(
       rows.map((r) => ({
         product_id: r.productId,
+        color: r.color || "",
         size: r.size,
         delta: r.delta,
         reason: r.reason,
@@ -1238,7 +1248,7 @@ app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
 
   const restoreItems = (order.items || [])
     .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
-    .map((it) => ({ productId: it.productId, size: it.size, qty: it.qty }));
+    .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
 
   if (!restoreItems.length) {
     return res.status(400).json({ error: "이 주문에는 자동으로 복원할 재고 정보가 없습니다(이전 방식으로 만들어진 주문). 재고 탭에서 직접 조정해 주세요." });
@@ -1248,7 +1258,7 @@ app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
   if (restoreError) return res.status(500).json({ error: "재고 복원에 실패했습니다." });
 
   logInventoryChange(
-    restoreItems.map((it) => ({ productId: it.productId, size: it.size, delta: it.qty, reason: "return_restock", ref: ret.order_no }))
+    restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "return_restock", ref: ret.order_no }))
   );
   await supabaseAdmin.from("return_requests").update({ restocked: true }).eq("id", ret.id);
   logAdminAction(req, "return.restock", "return", req.params.id, { orderNo: ret.order_no, items: restoreItems });
@@ -1259,38 +1269,40 @@ app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
 app.get("/api/admin/inventory", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from("inventory")
-    .select("product_id, size, qty")
+    .select("product_id, color, size, qty")
     .order("product_id", { ascending: true });
 
   if (error) return res.status(500).json({ error: "재고를 불러오지 못했습니다." });
-  res.json(data.map((r) => ({ productId: r.product_id, size: r.size, qty: r.qty })));
+  res.json(data.map((r) => ({ productId: r.product_id, color: r.color, size: r.size, qty: r.qty })));
 });
 
 app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
-  const { productId, size, qty } = req.body || {};
+  const { productId, color, size, qty } = req.body || {};
   const qtyNum = Math.floor(Number(qty));
-  if (!productId || !size || !Number.isFinite(qtyNum) || qtyNum < 0) {
-    return res.status(400).json({ error: "productId, size, qty(0 이상)가 필요합니다." });
+  const colorStr = String(color || "");
+  if (!productId || !colorStr || !size || !Number.isFinite(qtyNum) || qtyNum < 0) {
+    return res.status(400).json({ error: "productId, color, size, qty(0 이상)가 필요합니다." });
   }
 
   const { data: prev } = await supabaseAdmin
     .from("inventory")
     .select("qty")
     .eq("product_id", productId)
+    .eq("color", colorStr)
     .eq("size", size)
     .maybeSingle();
 
   const { error } = await supabaseAdmin
     .from("inventory")
-    .upsert({ product_id: productId, size, qty: qtyNum }, { onConflict: "product_id,size" });
+    .upsert({ product_id: productId, color: colorStr, size, qty: qtyNum }, { onConflict: "product_id,color,size" });
 
   if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
 
   const delta = qtyNum - (prev ? prev.qty : 0);
   if (delta !== 0) {
-    logInventoryChange([{ productId, size, delta, reason: "admin_adjust", adminEmail: req.user.email }]);
+    logInventoryChange([{ productId, color: colorStr, size, delta, reason: "admin_adjust", adminEmail: req.user.email }]);
   }
-  logAdminAction(req, "inventory.update", "inventory", `${productId}:${size}`, { qty: qtyNum });
+  logAdminAction(req, "inventory.update", "inventory", `${productId}:${colorStr}:${size}`, { qty: qtyNum });
   res.json({ ok: true });
 });
 
@@ -1310,6 +1322,7 @@ app.get("/api/admin/inventory/log", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: "재고 이력을 불러오지 못했습니다." });
   res.json(
     data.map((r) => ({
+      color: r.color,
       size: r.size,
       delta: r.delta,
       reason: r.reason,
@@ -1325,6 +1338,7 @@ app.get("/api/admin/inventory/log", requireAdmin, async (req, res) => {
 const INVENTORY_EXPORT_COLUMNS = [
   { key: "productId", label: "상품 ID" },
   { key: "nameKo", label: "상품명" },
+  { key: "color", label: "컬러" },
   { key: "size", label: "사이즈" },
   { key: "qty", label: "재고수량" },
 ];
@@ -1335,7 +1349,7 @@ app.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
   }
 
   const [{ data: invRows, error: invError }, { data: productRows, error: prodError }] = await Promise.all([
-    supabaseAdmin.from("inventory").select("product_id, size, qty").order("product_id", { ascending: true }),
+    supabaseAdmin.from("inventory").select("product_id, color, size, qty").order("product_id", { ascending: true }),
     supabaseAdmin.from("products").select("id, name_ko"),
   ]);
   if (invError || prodError) return res.status(500).json({ error: "재고를 불러오지 못했습니다." });
@@ -1344,6 +1358,7 @@ app.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
   const rows = invRows.map((r) => ({
     productId: r.product_id,
     nameKo: nameById.get(r.product_id) || r.product_id,
+    color: r.color,
     size: r.size,
     qty: r.qty,
   }));
@@ -2220,14 +2235,14 @@ async function cancelStalePendingOrders() {
 
     const restoreItems = (order.items || [])
       .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
-      .map((it) => ({ productId: it.productId, size: it.size, qty: it.qty }));
+      .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
     if (restoreItems.length) {
       const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
       if (restoreError) {
         console.error("[auto-cancel] 재고 복원 실패:", order.order_no, restoreError.message);
       } else {
         logInventoryChange(
-          restoreItems.map((it) => ({ productId: it.productId, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
+          restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
         );
       }
     }

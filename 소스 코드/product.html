@@ -50,9 +50,17 @@
   const p = getProduct(qs("id")) || PRODUCTS[0];
   document.title = t(p.nameKo) + " — REITEN";
 
+  /* soldOut(상품.sizes 전체, 관리자가 손으로 체크)과 별개로, outOfStockByColor는 실제 재고(컬러별)가
+     0인 사이즈를 서버가 계산해 붙여준다(server.js withRealSoldOut). 지금 고른 컬러 기준으로만
+     사이즈를 막아야 하므로 항상 이 함수를 통해 조회한다. */
+  function outSizesForColor(color) {
+    return (p.outOfStockByColor && p.outOfStockByColor[color]) || [];
+  }
+
+  const initialColor = p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
   let state = {
-    color: p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0],
-    size: p.sizes.find(s => !p.soldOut.includes(s)) || p.sizes[0],
+    color: initialColor,
+    size: p.sizes.find(s => !p.soldOut.includes(s) && !outSizesForColor(initialColor).includes(s)) || p.sizes[0],
     qty: 1,
     img: 0,
   };
@@ -69,7 +77,8 @@
 
   function render() {
     const st = SIZE_TABLES[p.sizeTable];
-    const soldAll = p.sizes.every(s => p.soldOut.includes(s));
+    const outForColor = outSizesForColor(state.color);
+    const soldAll = p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s));
     const name = t(p.nameKo);
 
     root.innerHTML = `
@@ -195,13 +204,19 @@
     colorsEl.querySelectorAll(".color-dot").forEach(b =>
       b.addEventListener("click", () => {
         state.color = b.dataset.c;
+        // 컬러를 바꿨을 때 지금 고른 사이즈가 그 컬러엔 없으면(품절) 살 수 있는 사이즈로 옮겨준다.
+        const outSizes = outSizesForColor(state.color);
+        if (p.soldOut.includes(state.size) || outSizes.includes(state.size)) {
+          state.size = p.sizes.find(s => !p.soldOut.includes(s) && !outSizes.includes(s)) || state.size;
+        }
         render();
       }));
 
     // 사이즈
     const sizesEl = document.getElementById("sizes");
+    const outSizes = outSizesForColor(state.color);
     sizesEl.innerHTML = p.sizes.map(s => {
-      const out = p.soldOut.includes(s);
+      const out = p.soldOut.includes(s) || outSizes.includes(s);
       return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""}
                 aria-pressed="${s === state.size}">${s}</button>`;
     }).join("");

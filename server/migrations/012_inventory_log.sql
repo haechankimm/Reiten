@@ -7,6 +7,7 @@
 create table if not exists inventory_log (
   id uuid primary key default gen_random_uuid(),
   product_id text not null,
+  color text not null default '',   -- 014_inventory_by_color.sql 이전엔 항상 빈 문자열
   size text not null,
   delta int not null,
   reason text not null check (reason in ('order', 'auto_cancel', 'admin_cancel', 'return_restock', 'admin_adjust')),

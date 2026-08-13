@@ -234,11 +234,17 @@
      글자를 읽지 않고도 어떤 색인지 바로 알아볼 수 있게 한다. */
   .pf-color { display: inline-flex; align-items: center; gap: 7px; }
   .pf-color-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
-  .inv-card { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-canvas); flex-wrap: wrap; }
+  .inv-card { display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-canvas); }
+  .inv-card-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .inv-card-thumb { width: 48px; height: 48px; flex: none; border-radius: 6px; overflow: hidden; background: var(--bg-surface-2); }
   .inv-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .inv-card-name { flex: 1 1 150px; min-width: 130px; }
   .inv-card-name b { display: block; font-size: 13px; line-height: 1.3; }
+  .inv-card-colors { display: flex; flex-direction: column; gap: 8px; }
+  .inv-color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border-soft, var(--border)); }
+  .inv-color-row:first-child { border-top: none; padding-top: 0; }
+  .inv-color-swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
+  .inv-color-label { min-width: 64px; }
   .inv-card-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
   .inv-size { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 5px; border-radius: 6px; background: var(--bg-surface); min-width: 54px; }
   .inv-size-label { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
@@ -247,9 +253,9 @@
   .inv-size--out { background: color-mix(in srgb, var(--danger) 16%, var(--bg-surface)); }
   .inv-size--out .inv-size-label { color: var(--danger); }
   .admin-inv-qty { width: 48px; height: 30px; padding: 0 4px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
-  .inv-card-log { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .inv-card-log { padding-top: 10px; border-top: 1px solid var(--border); }
   .inv-log-list { display: flex; flex-direction: column; gap: 6px; }
-  .inv-log-row { display: grid; grid-template-columns: 120px 40px 50px 1fr; gap: 10px; align-items: center; }
+  .inv-log-row { display: grid; grid-template-columns: 120px 70px 40px 50px 1fr; gap: 10px; align-items: center; }
 
   /* ---------- 룩북: 실제 배치를 그대로 흉내 낸 클릭형 미리보기 ---------- */
   .look-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
@@ -1424,23 +1430,22 @@
      수량을 색으로 구분해서(품절=빨강, 2개 이하=주황) 한눈에 훑을 수 있게 바꿨다.
      이미 "상품" 탭에서 불러온 목록(productsState)이 있어도 재고 탭이 상품 탭보다 먼저
      그려질 수 있어(둘 다 로그인 직후 동시에 fetch됨) 여기서 상품 목록을 다시 받아 매칭한다. */
+  /* 재고는 이제 상품 × 컬러 × 사이즈 단위다(014_inventory_by_color.sql). 아직 값을 한 번도
+     입력하지 않은 조합은 inventory 테이블에 행 자체가 없으므로, 기존 행에서 사이즈를 뽑는 대신
+     "상품 등록 폼"에 저장된 컬러·사이즈 목록을 기준으로 입력칸을 전부 만들고, 값이 있으면 채워
+     넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
   async function paintAdminInventory() {
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
       adminFetch("/api/admin/products?pageSize=100"),
     ]);
-    if (!rows) return;
+    if (!rows || !productsRes) return;
 
-    const sizeQtyByProduct = new Map();
+    const qtyByProduct = new Map();
     rows.forEach((r) => {
-      if (!sizeQtyByProduct.has(r.productId)) sizeQtyByProduct.set(r.productId, new Map());
-      sizeQtyByProduct.get(r.productId).set(r.size, r.qty);
+      if (!qtyByProduct.has(r.productId)) qtyByProduct.set(r.productId, new Map());
+      qtyByProduct.get(r.productId).set(`${r.color}:${r.size}`, r.qty);
     });
-
-    // 상품 목록을 못 받아왔으면(드물게) 최소한 재고 데이터라도 상품코드 순으로 보여준다.
-    const products = productsRes
-      ? productsRes.items
-      : [...sizeQtyByProduct.keys()].map((id) => ({ id, nameKo: id, images: [] }));
 
     const legend = `
       <div class="inv-legend">
@@ -1448,33 +1453,47 @@
         <span class="inv-legend-item"><i class="inv-legend-dot" style="background:var(--status-pending-ink)"></i>${esc(t("재고 2개 이하"))}</span>
       </div>`;
 
-    const cards = products
+    const cards = productsRes.items
       .map((p) => {
-        const sizeQty = sizeQtyByProduct.get(p.id) || new Map();
-        const sizes = PF_SIZE_OPTIONS.filter((s) => sizeQty.has(s));
-        if (!sizes.length) return "";
+        const colors = (p.colors || []).filter((c) => COLORS[c]);
+        const sizes = p.sizes || [];
+        if (!colors.length || !sizes.length) return "";
+        const qtyByColorSize = qtyByProduct.get(p.id) || new Map();
         const img = (p.images || []).find(Boolean);
+
+        const colorRows = colors
+          .map((c) => {
+            const sizeInputs = sizes
+              .map((size) => {
+                const qty = qtyByColorSize.get(`${c}:${size}`) ?? 0;
+                return `
+              <div class="inv-size${invSizeClass(qty)}">
+                <span class="inv-size-label">${esc(size)}</span>
+                <input type="number" min="0" class="admin-inv-qty" data-color="${esc(c)}" data-size="${esc(size)}" value="${qty}">
+              </div>`;
+              })
+              .join("");
+            return `
+          <div class="inv-color-row">
+            <span class="inv-color-swatch" style="background:${esc(COLORS[c].hex)}" title="${esc(t(COLORS[c].label))}"></span>
+            <span class="small inv-color-label">${esc(t(COLORS[c].label))}</span>
+            <div class="inv-card-sizes">${sizeInputs}</div>
+          </div>`;
+          })
+          .join("");
+
         return `
       <div class="inv-card" data-product="${esc(p.id)}">
-        <div class="inv-card-thumb">${img ? `<img src="${esc(img)}" alt="">` : ""}</div>
-        <div class="inv-card-name">
-          <b>${esc(t(p.nameKo))}</b>
-          <span class="small">${esc(p.id)}</span>
+        <div class="inv-card-head">
+          <div class="inv-card-thumb">${img ? `<img src="${esc(img)}" alt="">` : ""}</div>
+          <div class="inv-card-name">
+            <b>${esc(t(p.nameKo))}</b>
+            <span class="small">${esc(p.id)}</span>
+          </div>
+          <button type="button" class="btn btn--sm btn--ghost inv-log-toggle">${esc(t("이력 보기"))}</button>
         </div>
-        <div class="inv-card-sizes">
-          ${sizes
-            .map((size) => {
-              const qty = sizeQty.get(size);
-              return `
-            <div class="inv-size${invSizeClass(qty)}">
-              <span class="inv-size-label">${esc(size)}</span>
-              <input type="number" min="0" class="admin-inv-qty" data-size="${esc(size)}" value="${qty}">
-            </div>`;
-            })
-            .join("")}
-        </div>
-        <button type="button" class="btn btn--sm btn--ghost inv-log-toggle">${esc(t("이력 보기"))}</button>
-        <div class="inv-card-log" style="flex-basis:100%" hidden></div>
+        <div class="inv-card-colors">${colorRows}</div>
+        <div class="inv-card-log" hidden></div>
       </div>`;
       })
       .join("");
@@ -1488,7 +1507,7 @@
         const qty = Number(input.value);
         await adminFetch("/api/admin/inventory", {
           method: "PATCH",
-          body: JSON.stringify({ productId: card.dataset.product, size: input.dataset.size, qty }),
+          body: JSON.stringify({ productId: card.dataset.product, color: input.dataset.color, size: input.dataset.size, qty }),
         });
         box.className = "inv-size" + invSizeClass(qty);
         toast(t("재고를 저장했습니다"));
@@ -1526,6 +1545,7 @@
             (r) => `
         <div class="inv-log-row small">
           <span class="tnum">${fmtDate(r.at)}</span>
+          <span>${r.color ? esc(t(COLORS[r.color]?.label || r.color)) : ""}</span>
           <span>${esc(r.size)}</span>
           <span class="tnum" style="color:${r.delta < 0 ? "var(--danger)" : "var(--ok)"}">${r.delta > 0 ? "+" : ""}${r.delta}</span>
           <span>${esc(t(INVENTORY_LOG_REASON_LABELS[r.reason] || r.reason))}${r.ref ? ` · ${esc(r.ref)}` : ""}${r.adminEmail ? ` · ${esc(r.adminEmail)}` : ""}</span>
