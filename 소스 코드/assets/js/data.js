@@ -16,7 +16,7 @@ const SITE = {
     holder: "김해찬",
     email: "Reiten.customersupport@gmail.com",
     kakao: "Reiten",
-    kakaoUrl: "[카카오톡 채널 URL 입력, 예: https://pf.kakao.com/_xxXXxx]",
+    kakaoUrl: "https://pf.kakao.com/_exjwiX",
     instagram: "reiten_korea",
 
     /* 주문서를 받을 엔드포인트 (선택).
