@@ -841,9 +841,12 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
 .line-item__media svg { width: 62%; height: 62%; }
 .line-item__name { font-size: 14px; font-weight: 620; }
 .line-item__opts { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
-.line-item__foot { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+/* flex-wrap 없이 gap만 있으면, 좁은 화면에서 수량 조절칸이 자리를 다 차지했을 때
+   "삭제" 버튼이 남은 폭에 맞춰 한 글자씩 세로로 쪼개져 보인다 — 필요하면 아예
+   다음 줄로 통째로 넘어가게(줄바꿈은 허용하되 버튼 안에서는 줄바꿈 금지). */
+.line-item__foot { display: flex; align-items: center; gap: 10px 14px; margin-top: 12px; flex-wrap: wrap; }
 .line-item__right { text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
-.remove { font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); letter-spacing: 0.06em; text-transform: uppercase; }
+.remove { font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .remove:hover { color: var(--danger); border-color: var(--danger); }
 
 .field { margin-bottom: 16px; }
