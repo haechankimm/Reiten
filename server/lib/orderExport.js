@@ -157,4 +157,35 @@ function toPdfBuffer(orders) {
   });
 }
 
-module.exports = { EXPORT_COLUMNS, toExportRow, toCsv, toXlsxBuffer, toPdfBuffer };
+/* ---------- 범용 내보내기(재고·대시보드) ----------
+   주문 내보내기와 달리 컬럼·행이 호출부마다 다르므로, "컬럼 정의 + 이미 평평한 행 배열"을
+   그대로 받는 범용 버전을 따로 둔다. csvEscape 등 아래쪽 로직은 위 주문용과 동일하게 공유한다. */
+function toCsvSection(title, columns, rows) {
+  const headers = columns.map((c) => c.label);
+  const lines = [csvEscape(title)];
+  lines.push(headers.map(csvEscape).join(","));
+  rows.forEach((row) => {
+    lines.push(columns.map((c) => csvEscape(row[c.key])).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+/* sections: [{ title, columns, rows }] — 여러 섹션을 빈 줄로 이어 붙인 CSV(대시보드용).
+   섹션이 하나뿐이면(재고용) 그냥 표 하나짜리 CSV가 된다. */
+function toCsvGeneric(sections) {
+  return "﻿" + sections.map((s) => toCsvSection(s.title, s.columns, s.rows)).join("\r\n\r\n");
+}
+
+/* sheets: [{ name, columns, rows }] — 시트별로 컬럼·행이 다른 엑셀 워크북. */
+async function toXlsxBufferGeneric(sheets) {
+  const wb = new ExcelJS.Workbook();
+  sheets.forEach(({ name, columns, rows }) => {
+    const ws = wb.addWorksheet(name);
+    ws.columns = columns.map((c) => ({ header: c.label, key: c.key, width: 18 }));
+    rows.forEach((row) => ws.addRow(row));
+    ws.getRow(1).font = { bold: true };
+  });
+  return wb.xlsx.writeBuffer();
+}
+
+module.exports = { EXPORT_COLUMNS, toExportRow, toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric };

@@ -26,6 +26,15 @@
       <div class="grid" id="also"></div>
     </div>
   </section>
+
+  <section class="sec sec--tight" id="recent-wrap" hidden>
+    <div class="wrap">
+      <div class="sec__head">
+        <h2 class="h-md" data-i18n="최근 본 상품">최근 본 상품</h2>
+      </div>
+      <div class="grid" id="recent"></div>
+    </div>
+  </section>
 </main>
 
 <script src="assets/js/data.js"></script>
@@ -257,6 +266,14 @@
     document.getElementById("also-wrap").hidden = false;
     document.getElementById("also").innerHTML = also.map((x, i) => productCard(x, i * 50)).join("");
   }
+
+  // 최근 본 상품 — 이 페이지를 기록으로 남기기 전에(자기 자신 제외) 먼저 읽어서 보여준다.
+  const recent = RecentlyViewed.list(p.id, 4);
+  if (recent.length) {
+    document.getElementById("recent-wrap").hidden = false;
+    document.getElementById("recent").innerHTML = recent.map((x, i) => productCard(x, i * 50)).join("");
+  }
+  RecentlyViewed.add(p.id);
 
   renderFooter();
   initReveal();

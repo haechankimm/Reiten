@@ -229,6 +229,11 @@
   .inv-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
   .inv-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
   .inv-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  /* 상품 등록 폼의 컬러 선택 칩 — 팔레트 관리 목록처럼 이름 앞에 색 동그라미를 붙여
+     글자를 읽지 않고도 어떤 색인지 바로 알아볼 수 있게 한다. */
+  .pf-color { display: inline-flex; align-items: center; gap: 7px; }
+  .pf-color-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
   .inv-card { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-canvas); flex-wrap: wrap; }
   .inv-card-thumb { width: 48px; height: 48px; flex: none; border-radius: 6px; overflow: hidden; background: var(--bg-surface-2); }
   .inv-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -503,10 +508,128 @@
           </div>
         </div>
 
-        <div id="admin-returns" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
-        <div id="admin-inventory" hidden></div>
-        <div id="admin-qna" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
-        <div id="admin-reviews" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start" hidden></div>
+        <div id="admin-returns" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="반품·교환 신청">반품·교환 신청</div>
+              <div class="content-sub" id="returns-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="ret-q" data-i18n="주문번호·이름·연락처 검색">주문번호·이름·연락처 검색</label>
+                <input id="ret-q" placeholder="예: R260801, 홍길동, 010" data-i18n-attr="placeholder:예: R260801, 홍길동, 010">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-status" data-i18n="상태">상태</label>
+                <select id="ret-status"><option value="" data-i18n="전체">전체</option></select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-from" data-i18n="시작일">시작일</label>
+                <input id="ret-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-to" data-i18n="종료일">종료일</label>
+                <input id="ret-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="ret-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="ret-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-returns-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>
+        <div id="admin-inventory" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="재고">재고</div>
+            </div>
+            <div style="position:relative">
+              <button type="button" class="btn btn--sm btn--ghost" id="inv-export" data-i18n="내보내기">내보내기</button>
+              <div id="inv-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
+                <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
+                <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-inventory-body"></div>
+        </div>
+        <div id="admin-qna" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title">Q&amp;A</div>
+              <div class="content-sub" id="qna-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="qna-q" data-i18n="작성자·문의 내용·상품ID 검색">작성자·문의 내용·상품ID 검색</label>
+                <input id="qna-q">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-status" data-i18n="상태">상태</label>
+                <select id="qna-status">
+                  <option value="" data-i18n="전체">전체</option>
+                  <option value="답변대기" data-i18n="답변대기">답변대기</option>
+                  <option value="답변완료" data-i18n="답변완료">답변완료</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-from" data-i18n="시작일">시작일</label>
+                <input id="qna-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-to" data-i18n="종료일">종료일</label>
+                <input id="qna-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="qna-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="qna-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-qna-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>
+        <div id="admin-reviews" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="리뷰">리뷰</div>
+              <div class="content-sub" id="reviews-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="rv-q" data-i18n="작성자·리뷰 내용·상품ID 검색">작성자·리뷰 내용·상품ID 검색</label>
+                <input id="rv-q">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-status" data-i18n="상태">상태</label>
+                <select id="rv-status">
+                  <option value="" data-i18n="전체">전체</option>
+                  <option value="approved" data-i18n="게시중">게시중</option>
+                  <option value="pending" data-i18n="승인 대기">승인 대기</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-from" data-i18n="시작일">시작일</label>
+                <input id="rv-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-to" data-i18n="종료일">종료일</label>
+                <input id="rv-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="rv-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="rv-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-reviews-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>
 
         <div id="admin-products" style="display:grid;gap:24px" hidden>
           <div class="panel">
@@ -694,6 +817,18 @@
         </div>
 
         <div id="admin-dashboard" style="display:grid;gap:20px" hidden>
+          <div class="content-head" style="margin-bottom:0">
+            <div>
+              <div class="content-title" data-i18n="대시보드">대시보드</div>
+            </div>
+            <div style="position:relative">
+              <button type="button" class="btn btn--sm btn--ghost" id="dash-export" data-i18n="내보내기">내보내기</button>
+              <div id="dash-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
+                <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
+                <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+              </div>
+            </div>
+          </div>
           <div id="dashboard-stats" class="stat-row"></div>
           <div class="panel">
             <b data-i18n="최근 14일 매출">최근 14일 매출</b>
@@ -1048,18 +1183,14 @@
   el("ord-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("ord-search").click(); });
 
   /* 지금 화면에 걸려 있는 검색·필터 조건 그대로 서버에 다시 물어서(페이지네이션만 빼고) 파일로 받는다.
-     인증 헤더가 필요해서 <a href>로 바로 못 걸고, fetch → blob → 임시 링크 클릭 방식을 쓴다. */
-  async function downloadOrdersExport(format) {
-    el("ord-export-menu").hidden = true;
+     인증 헤더가 필요해서 <a href>로 바로 못 걸고, fetch → blob → 임시 링크 클릭 방식을 쓴다.
+     주문·재고·대시보드 내보내기가 모두 이 방식을 공유한다. */
+  async function downloadExportFile(url, filenamePrefix, format) {
     const token = await getAccessToken();
     if (!token) { toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요.")); return; }
-    const params = ordersQueryParams();
-    params.delete("page");
-    params.delete("pageSize");
-    params.set("format", format);
     let res;
     try {
-      res = await fetch(`/api/admin/orders/export?${params.toString()}`, { headers: { Authorization: "Bearer " + token } });
+      res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
     } catch (e) {
       toast(t("요청이 실패했습니다"));
       return;
@@ -1071,30 +1202,44 @@
       return;
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const dlUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `reiten-orders-${new Date().toISOString().slice(0, 10)}.${format}`;
+    a.href = dlUrl;
+    a.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.${format}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(dlUrl);
   }
 
-  el("ord-export").addEventListener("click", (e) => {
-    e.stopPropagation();
-    el("ord-export-menu").hidden = !el("ord-export-menu").hidden;
-  });
-  el("ord-export-menu").querySelectorAll("[data-format]").forEach((b) =>
-    b.addEventListener("click", () => downloadOrdersExport(b.dataset.format))
-  );
-  document.addEventListener("click", (e) => {
-    if (!el("ord-export-menu").hidden && !el("ord-export-menu").contains(e.target) && e.target !== el("ord-export")) {
-      el("ord-export-menu").hidden = true;
-    }
-  });
+  function wireExportMenu(btnId, menuId, onFormat) {
+    el(btnId).addEventListener("click", (e) => {
+      e.stopPropagation();
+      el(menuId).hidden = !el(menuId).hidden;
+    });
+    el(menuId).querySelectorAll("[data-format]").forEach((b) =>
+      b.addEventListener("click", () => {
+        el(menuId).hidden = true;
+        onFormat(b.dataset.format);
+      })
+    );
+    document.addEventListener("click", (e) => {
+      if (!el(menuId).hidden && !el(menuId).contains(e.target) && e.target !== el(btnId)) {
+        el(menuId).hidden = true;
+      }
+    });
+  }
 
-  const returnsState = { page: 0, pageSize: 20, total: 0, items: [] };
+  function downloadOrdersExport(format) {
+    const params = ordersQueryParams();
+    params.delete("page");
+    params.delete("pageSize");
+    params.set("format", format);
+    return downloadExportFile(`/api/admin/orders/export?${params.toString()}`, "reiten-orders", format);
+  }
+  wireExportMenu("ord-export", "ord-export-menu", downloadOrdersExport);
+
+  const returnsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
 
   function returnCardHTML(r) {
     return `
@@ -1112,10 +1257,13 @@
   }
 
   function renderAdminReturns() {
+    el("returns-summary").textContent = t("총 {n}건", { n: returnsState.total });
     const hasMore = returnsState.items.length < returnsState.total;
-    el("admin-returns").innerHTML = returnsState.items.map(returnCardHTML).join("") + loadMoreHTML(hasMore, "admin-returns-more");
+    el("admin-returns-list").innerHTML = returnsState.items.length
+      ? returnsState.items.map(returnCardHTML).join("") + loadMoreHTML(hasMore, "admin-returns-more")
+      : `<p class="small">${esc(t("조건에 맞는 신청이 없습니다"))}</p>`;
 
-    el("admin-returns").querySelectorAll(".admin-return-status").forEach((sel) =>
+    el("admin-returns-list").querySelectorAll(".admin-return-status").forEach((sel) =>
       sel.addEventListener("change", async () => {
         const id = sel.closest("[data-id]").dataset.id;
         await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
@@ -1129,14 +1277,52 @@
     el("admin-returns-more")?.addEventListener("click", () => paintAdminReturns(true));
   }
 
+  function returnsQueryParams() {
+    const params = new URLSearchParams({ page: returnsState.page, pageSize: returnsState.pageSize });
+    if (returnsState.q) params.set("q", returnsState.q);
+    if (returnsState.status) params.set("status", returnsState.status);
+    if (returnsState.dateFrom) params.set("dateFrom", returnsState.dateFrom);
+    if (returnsState.dateTo) params.set("dateTo", returnsState.dateTo);
+    return params;
+  }
+
   async function paintAdminReturns(loadMore = false) {
     returnsState.page = loadMore ? returnsState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/returns?page=${returnsState.page}&pageSize=${returnsState.pageSize}`);
+    const result = await adminFetch(`/api/admin/returns?${returnsQueryParams().toString()}`);
     if (!result) return;
     returnsState.total = result.total;
     returnsState.items = loadMore ? returnsState.items.concat(result.items) : result.items;
     renderAdminReturns();
   }
+
+  function renderReturnStatusOptions() {
+    const select = el("ret-status");
+    const known = new Set([...select.options].map((o) => o.value));
+    RETURN_STATUSES.forEach((s) => {
+      if (known.has(s)) return;
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = t(s);
+      select.appendChild(opt);
+    });
+  }
+
+  renderReturnStatusOptions();
+  el("ret-search").addEventListener("click", () => {
+    returnsState.q = el("ret-q").value.trim();
+    returnsState.status = el("ret-status").value;
+    returnsState.dateFrom = el("ret-from").value;
+    returnsState.dateTo = el("ret-to").value;
+    paintAdminReturns();
+  });
+  el("ret-reset").addEventListener("click", () => {
+    el("ret-q").value = "";
+    el("ret-status").value = "";
+    el("ret-from").value = "";
+    el("ret-to").value = "";
+    el("ret-search").click();
+  });
+  el("ret-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("ret-search").click(); });
 
   function invSizeClass(qty) {
     if (qty <= 0) return " inv-size--out";
@@ -1202,9 +1388,9 @@
       })
       .join("");
 
-    el("admin-inventory").innerHTML = legend + `<div style="display:flex;flex-direction:column;gap:10px">${cards}</div>`;
+    el("admin-inventory-body").innerHTML = legend + `<div style="display:flex;flex-direction:column;gap:10px">${cards}</div>`;
 
-    el("admin-inventory").querySelectorAll(".admin-inv-qty").forEach((input) =>
+    el("admin-inventory-body").querySelectorAll(".admin-inv-qty").forEach((input) =>
       input.addEventListener("change", async () => {
         const card = input.closest("[data-product]");
         const box = input.closest(".inv-size");
@@ -1219,7 +1405,12 @@
     );
   }
 
-  const qnaState = { page: 0, pageSize: 20, total: 0, items: [] };
+  function downloadInventoryExport(format) {
+    return downloadExportFile(`/api/admin/inventory/export?format=${format}`, "reiten-inventory", format);
+  }
+  wireExportMenu("inv-export", "inv-export-menu", downloadInventoryExport);
+
+  const qnaState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
 
   function qnaCardHTML(q) {
     return `
@@ -1243,10 +1434,13 @@
   }
 
   function renderAdminQna() {
+    el("qna-summary").textContent = t("총 {n}건", { n: qnaState.total });
     const hasMore = qnaState.items.length < qnaState.total;
-    el("admin-qna").innerHTML = qnaState.items.map(qnaCardHTML).join("") + loadMoreHTML(hasMore, "admin-qna-more");
+    el("admin-qna-list").innerHTML = qnaState.items.length
+      ? qnaState.items.map(qnaCardHTML).join("") + loadMoreHTML(hasMore, "admin-qna-more")
+      : `<p class="small">${esc(t("조건에 맞는 문의가 없습니다"))}</p>`;
 
-    el("admin-qna").querySelectorAll(".admin-qna-submit").forEach((btn) =>
+    el("admin-qna-list").querySelectorAll(".admin-qna-submit").forEach((btn) =>
       btn.addEventListener("click", async () => {
         const card = btn.closest("[data-id]");
         const answer = card.querySelector(".admin-qna-answer").value.trim();
@@ -1266,17 +1460,42 @@
     el("admin-qna-more")?.addEventListener("click", () => paintAdminQna(true));
   }
 
+  function qnaQueryParams() {
+    const params = new URLSearchParams({ page: qnaState.page, pageSize: qnaState.pageSize });
+    if (qnaState.q) params.set("q", qnaState.q);
+    if (qnaState.status) params.set("status", qnaState.status);
+    if (qnaState.dateFrom) params.set("dateFrom", qnaState.dateFrom);
+    if (qnaState.dateTo) params.set("dateTo", qnaState.dateTo);
+    return params;
+  }
+
   async function paintAdminQna(loadMore = false) {
     qnaState.page = loadMore ? qnaState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/qna?page=${qnaState.page}&pageSize=${qnaState.pageSize}`);
+    const result = await adminFetch(`/api/admin/qna?${qnaQueryParams().toString()}`);
     if (!result) return;
     qnaState.total = result.total;
     qnaState.items = loadMore ? qnaState.items.concat(result.items) : result.items;
     renderAdminQna();
   }
 
+  el("qna-search").addEventListener("click", () => {
+    qnaState.q = el("qna-q").value.trim();
+    qnaState.status = el("qna-status").value;
+    qnaState.dateFrom = el("qna-from").value;
+    qnaState.dateTo = el("qna-to").value;
+    paintAdminQna();
+  });
+  el("qna-reset").addEventListener("click", () => {
+    el("qna-q").value = "";
+    el("qna-status").value = "";
+    el("qna-from").value = "";
+    el("qna-to").value = "";
+    el("qna-search").click();
+  });
+  el("qna-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("qna-search").click(); });
+
   /* ---------- 리뷰 승인 ---------- */
-  const reviewsState = { page: 0, pageSize: 20, total: 0, items: [] };
+  const reviewsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
 
   function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
 
@@ -1303,10 +1522,13 @@
   }
 
   function renderAdminReviews() {
+    el("reviews-summary").textContent = t("총 {n}건", { n: reviewsState.total });
     const hasMore = reviewsState.items.length < reviewsState.total;
-    el("admin-reviews").innerHTML = reviewsState.items.map(reviewCardHTML).join("") + loadMoreHTML(hasMore, "admin-reviews-more");
+    el("admin-reviews-list").innerHTML = reviewsState.items.length
+      ? reviewsState.items.map(reviewCardHTML).join("") + loadMoreHTML(hasMore, "admin-reviews-more")
+      : `<p class="small">${esc(t("조건에 맞는 리뷰가 없습니다"))}</p>`;
 
-    el("admin-reviews").querySelectorAll(".admin-review-toggle").forEach((btn) =>
+    el("admin-reviews-list").querySelectorAll(".admin-review-toggle").forEach((btn) =>
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         const item = reviewsState.items.find((x) => x.id === id);
@@ -1323,7 +1545,7 @@
       })
     );
 
-    el("admin-reviews").querySelectorAll(".admin-review-delete").forEach((btn) =>
+    el("admin-reviews-list").querySelectorAll(".admin-review-delete").forEach((btn) =>
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         if (!confirm(t("이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
@@ -1338,14 +1560,39 @@
     el("admin-reviews-more")?.addEventListener("click", () => paintAdminReviews(true));
   }
 
+  function reviewsQueryParams() {
+    const params = new URLSearchParams({ page: reviewsState.page, pageSize: reviewsState.pageSize });
+    if (reviewsState.q) params.set("q", reviewsState.q);
+    if (reviewsState.status) params.set("status", reviewsState.status);
+    if (reviewsState.dateFrom) params.set("dateFrom", reviewsState.dateFrom);
+    if (reviewsState.dateTo) params.set("dateTo", reviewsState.dateTo);
+    return params;
+  }
+
   async function paintAdminReviews(loadMore = false) {
     reviewsState.page = loadMore ? reviewsState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/reviews?page=${reviewsState.page}&pageSize=${reviewsState.pageSize}`);
+    const result = await adminFetch(`/api/admin/reviews?${reviewsQueryParams().toString()}`);
     if (!result) return;
     reviewsState.total = result.total;
     reviewsState.items = loadMore ? reviewsState.items.concat(result.items) : result.items;
     renderAdminReviews();
   }
+
+  el("rv-search").addEventListener("click", () => {
+    reviewsState.q = el("rv-q").value.trim();
+    reviewsState.status = el("rv-status").value;
+    reviewsState.dateFrom = el("rv-from").value;
+    reviewsState.dateTo = el("rv-to").value;
+    paintAdminReviews();
+  });
+  el("rv-reset").addEventListener("click", () => {
+    el("rv-q").value = "";
+    el("rv-status").value = "";
+    el("rv-from").value = "";
+    el("rv-to").value = "";
+    el("rv-search").click();
+  });
+  el("rv-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("rv-search").click(); });
 
   /* ---------- 상품 관리 ---------- */
   let pfEditingId = null;
@@ -1373,7 +1620,9 @@
 
   function renderPfColors() {
     el("pf-colors").innerHTML = Object.values(COLORS).map((c) => `
-      <button type="button" class="chip pf-color" data-c="${c.key}" aria-pressed="${pfSelectedColors.includes(c.key)}">${esc(t(c.label))}</button>
+      <button type="button" class="chip pf-color" data-c="${c.key}" aria-pressed="${pfSelectedColors.includes(c.key)}">
+        <span class="pf-color-dot" style="background:${esc(c.hex)}"></span>${esc(t(c.label))}
+      </button>
     `).join("");
     el("pf-colors").querySelectorAll(".pf-color").forEach((b) =>
       b.addEventListener("click", () => {
@@ -2174,6 +2423,8 @@
     "order.export": "주문 목록 내보내기",
     "return.update": "반품 상태 변경",
     "inventory.update": "재고 수정",
+    "inventory.export": "재고 목록 내보내기",
+    "dashboard.export": "대시보드 내보내기",
     "product.create": "상품 등록",
     "product.update": "상품 수정",
     "product.delete": "상품 삭제",
@@ -2325,6 +2576,11 @@
     if (!result) return;
     renderDashboard(result);
   }
+
+  function downloadDashboardExport(format) {
+    return downloadExportFile(`/api/admin/dashboard/export?format=${format}`, "reiten-dashboard", format);
+  }
+  wireExportMenu("dash-export", "dash-export-menu", downloadDashboardExport);
 
   /* /api/admin/orders 호출이 실제로 성공했을 때(=서버가 관리자로 인정했을 때)만 패널을 연다 —
      profile.role만 믿지 않는다(계정 페이지 관리자 판단 로직과 동일한 원칙). */

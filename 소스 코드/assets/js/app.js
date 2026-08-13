@@ -167,6 +167,36 @@ const Cart = {
 };
 
 /* =========================================================
+   최근 본 상품 — 상품 상세 페이지를 열 때마다 id를 맨 앞에 쌓아두고(중복 제거),
+   product.html의 "최근 본 상품" 섹션에서 그대로 읽어 보여준다. 서버 없이 기기별로만
+   기억하면 되는 정보라 Cart처럼 localStorage에만 저장한다.
+   ========================================================= */
+const RECENTLY_VIEWED_KEY = "reiten_recently_viewed_v1";
+const RECENTLY_VIEWED_MAX = 10;
+
+const RecentlyViewed = {
+  read() {
+    try { return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY)) || []; }
+    catch (e) { return []; }
+  },
+  write(ids) {
+    try { localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(ids)); } catch (e) {}
+  },
+  add(productId) {
+    const ids = RecentlyViewed.read().filter((id) => id !== productId);
+    ids.unshift(productId);
+    RecentlyViewed.write(ids.slice(0, RECENTLY_VIEWED_MAX));
+  },
+  list(excludeId, limit = 4) {
+    return RecentlyViewed.read()
+      .filter((id) => id !== excludeId)
+      .map((id) => getProduct(id))
+      .filter(Boolean)
+      .slice(0, limit);
+  },
+};
+
+/* =========================================================
    토스트
    ========================================================= */
 let toastTimer;

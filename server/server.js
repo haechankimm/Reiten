@@ -23,7 +23,7 @@ const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
-const { toCsv, toXlsxBuffer, toPdfBuffer } = require("./lib/orderExport");
+const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric } = require("./lib/orderExport");
 const portone = require("./lib/portone");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -731,14 +731,15 @@ app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
    orders 테이블만으로 계산 가능해서 새 테이블 없이 집계만 한다. 취소된 주문은 매출에서 뺀다.
    상품별 판매량은 orders.items(주문 시점 스냅샷, productId 없이 name만 있음)를 이름으로 묶어 집계한다 —
    상품이 삭제·개명돼도 과거 주문 내역 자체는 그대로 남아있기 때문. */
-app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
+/* GET /api/admin/dashboard(화면)와 GET /api/admin/dashboard/export(내보내기)가 집계 로직을 공유한다. */
+async function computeDashboardStats() {
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("items, total, status, created_at")
     .order("created_at", { ascending: false })
     .limit(2000);
 
-  if (error) return res.status(500).json({ error: "집계에 실패했습니다." });
+  if (error) return { error };
 
   const isCancelled = (o) => o.status === "취소";
   const now = new Date();
@@ -775,14 +776,79 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
     .slice(0, 5)
     .map(([name, qty]) => ({ name, qty }));
 
-  res.json({
+  return {
     todayRevenue,
     monthRevenue,
     totalOrders: data.length,
     pendingCount,
     dailyRevenue: [...revenueByDay.entries()].map(([date, total]) => ({ date, total })),
     bestsellers,
-  });
+  };
+}
+
+app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
+  const stats = await computeDashboardStats();
+  if (stats.error) return res.status(500).json({ error: "집계에 실패했습니다." });
+  res.json(stats);
+});
+
+/* 대시보드 내보내기 — 화면에 없는 표 형태 데이터라 CSV는 요약/일별 매출/베스트셀러 세 구간을
+   빈 줄로 이어 붙이고, 엑셀은 시트 세 개로 나눈다. ?format=csv|xlsx */
+app.get("/api/admin/dashboard/export", requireAdmin, async (req, res) => {
+  const format = String(req.query.format || "csv").toLowerCase();
+  if (!["csv", "xlsx"].includes(format)) {
+    return res.status(400).json({ error: "format은 csv, xlsx 중 하나여야 합니다." });
+  }
+
+  const stats = await computeDashboardStats();
+  if (stats.error) return res.status(500).json({ error: "집계에 실패했습니다." });
+
+  const summaryColumns = [
+    { key: "label", label: "항목" },
+    { key: "value", label: "값" },
+  ];
+  const summaryRows = [
+    { label: "오늘 매출", value: stats.todayRevenue },
+    { label: "이번 달 매출", value: stats.monthRevenue },
+    { label: "전체 주문", value: stats.totalOrders },
+    { label: "입금대기", value: stats.pendingCount },
+  ];
+  const dailyColumns = [
+    { key: "date", label: "날짜" },
+    { key: "total", label: "매출" },
+  ];
+  const bestsellerColumns = [
+    { key: "name", label: "상품명" },
+    { key: "qty", label: "판매수량" },
+  ];
+
+  const filename = `reiten-dashboard-${new Date().toISOString().slice(0, 10)}`;
+  try {
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      res.send(
+        toCsvGeneric([
+          { title: "요약", columns: summaryColumns, rows: summaryRows },
+          { title: "최근 14일 매출", columns: dailyColumns, rows: stats.dailyRevenue },
+          { title: "베스트셀러 TOP5", columns: bestsellerColumns, rows: stats.bestsellers },
+        ])
+      );
+    } else {
+      const buf = await toXlsxBufferGeneric([
+        { name: "요약", columns: summaryColumns, rows: summaryRows },
+        { name: "일별 매출", columns: dailyColumns, rows: stats.dailyRevenue },
+        { name: "베스트셀러", columns: bestsellerColumns, rows: stats.bestsellers },
+      ]);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      res.send(Buffer.from(buf));
+    }
+    logAdminAction(req, "dashboard.export", "dashboard", "export", { format });
+  } catch (e) {
+    console.error("[admin/dashboard/export] 생성 실패:", e.message);
+    res.status(500).json({ error: "내보내기 파일 생성에 실패했습니다." });
+  }
 });
 
 /* ---------- 관리자 ---------- */
@@ -940,13 +1006,33 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
+function applyReturnFilters(query, reqQuery) {
+  const { q, status, dateFrom, dateTo } = reqQuery;
+  if (q) {
+    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
+    if (v) query = query.or(`order_no.ilike.%${v}%,contact_name.ilike.%${v}%,contact_tel.ilike.%${v}%`);
+  }
+  if (status) query = query.eq("status", status);
+  if (dateFrom) {
+    const d = new Date(`${dateFrom}T00:00:00+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
+  }
+  if (dateTo) {
+    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
+  }
+  return query;
+}
+
 app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("return_requests")
     .select("id, order_no, contact_name, contact_tel, reason, detail, status, created_at", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    .order("created_at", { ascending: false });
+  query = applyReturnFilters(query, req.query);
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
 
@@ -1005,6 +1091,53 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
   logAdminAction(req, "inventory.update", "inventory", `${productId}:${size}`, { qty: qtyNum });
   res.json({ ok: true });
+});
+
+/* 재고 내보내기 — inventory에는 상품명이 없어(product_id만 있음) products와 조인해 이름을 붙인다.
+   화면(재고 탭)의 상품코드 순 정렬을 그대로 따른다. ?format=csv|xlsx */
+const INVENTORY_EXPORT_COLUMNS = [
+  { key: "productId", label: "상품 ID" },
+  { key: "nameKo", label: "상품명" },
+  { key: "size", label: "사이즈" },
+  { key: "qty", label: "재고수량" },
+];
+app.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
+  const format = String(req.query.format || "csv").toLowerCase();
+  if (!["csv", "xlsx"].includes(format)) {
+    return res.status(400).json({ error: "format은 csv, xlsx 중 하나여야 합니다." });
+  }
+
+  const [{ data: invRows, error: invError }, { data: productRows, error: prodError }] = await Promise.all([
+    supabaseAdmin.from("inventory").select("product_id, size, qty").order("product_id", { ascending: true }),
+    supabaseAdmin.from("products").select("id, name_ko"),
+  ]);
+  if (invError || prodError) return res.status(500).json({ error: "재고를 불러오지 못했습니다." });
+
+  const nameById = new Map((productRows || []).map((p) => [p.id, p.name_ko]));
+  const rows = invRows.map((r) => ({
+    productId: r.product_id,
+    nameKo: nameById.get(r.product_id) || r.product_id,
+    size: r.size,
+    qty: r.qty,
+  }));
+
+  const filename = `reiten-inventory-${new Date().toISOString().slice(0, 10)}`;
+  try {
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      res.send(toCsvGeneric([{ title: "재고", columns: INVENTORY_EXPORT_COLUMNS, rows }]));
+    } else {
+      const buf = await toXlsxBufferGeneric([{ name: "재고", columns: INVENTORY_EXPORT_COLUMNS, rows }]);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      res.send(Buffer.from(buf));
+    }
+    logAdminAction(req, "inventory.export", "inventory", "export", { format, count: rows.length });
+  } catch (e) {
+    console.error("[admin/inventory/export] 생성 실패:", e.message);
+    res.status(500).json({ error: "내보내기 파일 생성에 실패했습니다." });
+  }
 });
 
 /* ---------- 상품 관리 (관리자만) ----------
@@ -1540,14 +1673,35 @@ app.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
 
 /* ---------- 리뷰 승인 (관리자만) ----------
    승인 대기(approved=false)인 리뷰가 먼저 오도록 정렬해 관리자가 검수할 목록을 바로 볼 수 있게 한다. */
+/* 리뷰 목록 필터 — q는 작성자명·내용·상품ID 부분 일치, status는 approved/pending(게시중/승인 대기). */
+function applyReviewFilters(query, reqQuery) {
+  const { q, status, dateFrom, dateTo } = reqQuery;
+  if (q) {
+    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
+    if (v) query = query.or(`name.ilike.%${v}%,comment.ilike.%${v}%,product_id.ilike.%${v}%`);
+  }
+  if (status === "approved") query = query.eq("approved", true);
+  else if (status === "pending") query = query.eq("approved", false);
+  if (dateFrom) {
+    const d = new Date(`${dateFrom}T00:00:00+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
+  }
+  if (dateTo) {
+    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
+  }
+  return query;
+}
+
 app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("reviews")
     .select("*", { count: "exact" })
     .order("approved", { ascending: true })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    .order("created_at", { ascending: false });
+  query = applyReviewFilters(query, req.query);
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "리뷰 목록을 불러오지 못했습니다." });
   res.json({ items: data.map(toReviewDto), page, pageSize, total: count ?? data.length });
@@ -1634,13 +1788,33 @@ app.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
   res.json(toQnaDto(data, { redact: false }));
 });
 
+/* 문의 목록 필터 — q는 작성자명·문의내용·상품ID 부분 일치, status는 "답변대기"/"답변완료". */
+function applyQnaFilters(query, reqQuery) {
+  const { q, status, dateFrom, dateTo } = reqQuery;
+  if (q) {
+    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
+    if (v) query = query.or(`name.ilike.%${v}%,question.ilike.%${v}%,product_id.ilike.%${v}%`);
+  }
+  if (status) query = query.eq("status", status);
+  if (dateFrom) {
+    const d = new Date(`${dateFrom}T00:00:00+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
+  }
+  if (dateTo) {
+    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
+  }
+  return query;
+}
+
 app.get("/api/admin/qna", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("qna")
     .select("*", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    .order("created_at", { ascending: false });
+  query = applyQnaFilters(query, req.query);
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
   res.json({ items: data.map((q) => toQnaDto(q, { redact: false })), page, pageSize, total: count ?? data.length });
