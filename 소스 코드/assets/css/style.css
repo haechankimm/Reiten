@@ -794,6 +794,9 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: clamp(10px, 1.5vw, 18px);
+  /* 그리드 기본값(stretch)이면 같은 줄의 칸이 서로 다른 가로세로 비율일 때 짧은 쪽이
+     긴 쪽 높이까지 늘어나 사진 밑에 빈 공간이 생긴다 — 칸마다 자기 비율대로만 높이가 붙게 한다. */
+  align-items: start;
 }
 .look figure { margin: 0; grid-column: span 4; }
 .look figure.w6 { grid-column: span 6; }
