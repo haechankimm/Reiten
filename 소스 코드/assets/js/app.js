@@ -56,6 +56,22 @@ async function loadLookbook() {
   } catch (e) {}
 }
 
+/* 색상 팔레트 — server/가 떠 있으면 관리자 패널에서 추가·수정·삭제한 DB 목록으로
+   COLORS 내용을 통째로 교체한다. COLORS는 배열이 아니라 키로 바로 찾아 쓰는 객체라
+   (예: COLORS[c].hex) 참조를 유지하려면 기존 키를 지우고 새 키로 다시 채워야 한다.
+   서버가 없거나 요청이 실패하면 data.js의 정적 목록이 그대로 남는다. */
+async function loadColors() {
+  try {
+    const res = await fetch("/api/colors");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      Object.keys(COLORS).forEach((k) => delete COLORS[k]);
+      data.forEach((c) => { COLORS[c.key] = c; });
+    }
+  } catch (e) {}
+}
+
 /* =========================================================
    테마 (오프화이트 / 나이트)
    ========================================================= */
@@ -417,7 +433,10 @@ function productCard(p, delay = 0) {
          ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
        </div>`;
 
+  // 팔레트에서 이미 지워진 색상 키(옛 상품 데이터, 또는 관리자가 삭제한 색상)는 조용히 건너뛴다 —
+  // 없으면 COLORS[c]가 undefined라 .hex에서 곧바로 죽는다.
   const dots = p.colors
+    .filter((c) => COLORS[c])
     .map((c) => `<i class="sw" style="background:${COLORS[c].hex}" title="${esc(t(COLORS[c].label))}"></i>`)
     .join("");
 

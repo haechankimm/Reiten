@@ -6,7 +6,7 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const { SITE, PRODUCTS: STATIC_PRODUCTS, LOOKBOOK: STATIC_LOOKBOOK, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
+const { SITE, PRODUCTS: STATIC_PRODUCTS, LOOKBOOK: STATIC_LOOKBOOK, COLORS: STATIC_COLORS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
 const {
@@ -947,7 +947,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "상품 ID는 영문 소문자·숫자·하이픈만 2~60자로 입력해 주세요." });
   }
 
-  const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true });
+  const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
 
   const { data, error } = await supabaseAdmin
@@ -966,7 +966,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
-  const { patch, error: patchError } = productPatchFromBody(req.body || {}, { forCreate: false });
+  const { patch, error: patchError } = productPatchFromBody(req.body || {}, { forCreate: false, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
   patch.updated_at = new Date().toISOString();
@@ -1021,6 +1021,156 @@ app.post("/api/admin/products/photo", requireAdmin, (req, res) => {
       res.status(500).json({ error: "사진 업로드에 실패했습니다." });
     }
   });
+});
+
+/* ---------- 상품 색상 팔레트 (product_colors 테이블 — 관리자 패널에서 추가·수정·삭제) ----------
+   data.js의 정적 COLORS는 마이그레이션 010을 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다.
+   products.colors 배열이 이 테이블의 key를 참조하므로, key는 한 번 만들어지면 값이 바뀌지 않는다
+   (라벨·hex는 수정 가능하지만 key 자체는 수정 API가 없음). */
+function toColorDto(row) {
+  return { key: row.key, label: row.label, labelDe: row.label_de || null, hex: row.hex };
+}
+
+function staticColorList() {
+  return Object.values(STATIC_COLORS).map((c) => ({ key: c.key, label: c.label, labelDe: null, hex: c.hex }));
+}
+
+async function getPublicColors() {
+  const { data, error } = await supabaseAdmin.from("product_colors").select("*").order("sort_order", { ascending: true });
+  if (error) {
+    console.error("[colors] DB 조회 실패, 정적 목록으로 폴백:", error.message);
+    return staticColorList();
+  }
+  return data.map(toColorDto);
+}
+
+app.get("/api/colors", async (req, res) => {
+  res.json(await getPublicColors());
+});
+
+/* 상품 저장 시 colors 배열을 검증할 때 쓴다({ key: true, ... } 형태) — 관리자가
+   product_colors에 새로 추가한 색상까지 포함해야 저장 시 걸러지지 않는다(productPatchFromBody 참고). */
+async function getValidColorMap() {
+  const list = await getPublicColors();
+  return Object.fromEntries(list.map((c) => [c.key, true]));
+}
+
+app.get("/api/admin/colors", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin.from("product_colors").select("*").order("sort_order", { ascending: true });
+  if (error) return res.status(500).json({ error: "색상 목록을 불러오지 못했습니다." });
+  res.json(data.map(toColorDto));
+});
+
+function slugifyColorKey(label) {
+  const base = String(label || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "color";
+}
+
+/* 한글 라벨은 슬러그가 비거나("color"로만 남거나) 겹치기 쉬워서, DB에 이미 있는 key와
+   충돌하면 -2, -3 ...을 붙여 유일한 값을 찾을 때까지 반복한다. */
+async function uniqueColorKey(label) {
+  const base = slugifyColorKey(label);
+  let key = base;
+  let suffix = 2;
+  for (;;) {
+    const { data, error } = await supabaseAdmin.from("product_colors").select("key").eq("key", key).maybeSingle();
+    if (error) throw error;
+    if (!data) return key;
+    key = `${base}-${suffix++}`;
+  }
+}
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+
+app.post("/api/admin/colors", requireAdmin, async (req, res) => {
+  const { label, labelDe, hex } = req.body || {};
+  const labelStr = String(label || "").trim().slice(0, 40);
+  if (!labelStr) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
+  const hexStr = String(hex || "").trim();
+  if (!HEX_RE.test(hexStr)) return res.status(400).json({ error: "색상 값은 #RRGGBB 형식으로 입력해 주세요." });
+
+  let key;
+  try {
+    key = await uniqueColorKey(labelStr);
+  } catch (e) {
+    console.error("[admin/colors] key 생성 실패:", e.message);
+    return res.status(500).json({ error: "생성에 실패했습니다." });
+  }
+
+  const { count } = await supabaseAdmin.from("product_colors").select("key", { count: "exact", head: true });
+
+  const { data, error } = await supabaseAdmin
+    .from("product_colors")
+    .insert({
+      key,
+      label: labelStr,
+      label_de: labelDe ? String(labelDe).trim().slice(0, 40) : null,
+      hex: hexStr,
+      sort_order: count ?? 0,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[admin/colors] 생성 실패:", error.message);
+    return res.status(500).json({ error: "생성에 실패했습니다." });
+  }
+  logAdminAction(req, "color.create", "color", data.key, { label: data.label });
+  res.json(toColorDto(data));
+});
+
+app.patch("/api/admin/colors/:key", requireAdmin, async (req, res) => {
+  const { label, labelDe, hex } = req.body || {};
+  const patch = { updated_at: new Date().toISOString() };
+  if (label !== undefined) {
+    const v = String(label || "").trim().slice(0, 40);
+    if (!v) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
+    patch.label = v;
+  }
+  if (labelDe !== undefined) patch.label_de = labelDe ? String(labelDe).trim().slice(0, 40) : null;
+  if (hex !== undefined) {
+    const v = String(hex || "").trim();
+    if (!HEX_RE.test(v)) return res.status(400).json({ error: "색상 값은 #RRGGBB 형식으로 입력해 주세요." });
+    patch.hex = v;
+  }
+
+  const { data, error } = await supabaseAdmin.from("product_colors").update(patch).eq("key", req.params.key).select().maybeSingle();
+  if (error) {
+    console.error("[admin/colors] 수정 실패:", error.message);
+    return res.status(500).json({ error: "수정에 실패했습니다." });
+  }
+  if (!data) return res.status(404).json({ error: "존재하지 않는 색상입니다." });
+  logAdminAction(req, "color.update", "color", req.params.key, patch);
+  res.json(toColorDto(data));
+});
+
+/* 이미 어떤 활성 상품이 쓰고 있는 색상을 지우면 그 상품의 컬러 스와치가 깨지므로
+   (COLORS[key]가 undefined가 됨), 삭제 전에 반드시 사용 여부를 먼저 확인한다. */
+app.delete("/api/admin/colors/:key", requireAdmin, async (req, res) => {
+  const key = req.params.key;
+  const { data: inUse, error: checkError } = await supabaseAdmin
+    .from("products")
+    .select("id")
+    .eq("active", true)
+    .contains("colors", [key]);
+  if (checkError) {
+    console.error("[admin/colors] 사용 여부 확인 실패:", checkError.message);
+    return res.status(500).json({ error: "삭제 가능 여부를 확인하지 못했습니다." });
+  }
+  if (inUse.length) {
+    return res.status(409).json({ error: `이 색상을 사용 중인 상품이 ${inUse.length}개 있어 삭제할 수 없습니다.` });
+  }
+
+  const { error } = await supabaseAdmin.from("product_colors").delete().eq("key", key);
+  if (error) {
+    console.error("[admin/colors] 삭제 실패:", error.message);
+    return res.status(500).json({ error: "삭제에 실패했습니다." });
+  }
+  logAdminAction(req, "color.delete", "color", key);
+  res.json({ ok: true });
 });
 
 /* ---------- 룩북 (lookbook 테이블 — 관리자 패널에서 추가·수정·삭제) ----------

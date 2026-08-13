@@ -24,8 +24,10 @@ function toProductDto(row) {
 }
 
 /* forCreate=true면 필수 필드(name/nameKo/type/category/price)가 비어 있을 때 에러를 반환한다.
-   forCreate=false(수정)면 body에 들어온 필드만 patch에 반영한다. */
-function productPatchFromBody(b, { forCreate }) {
+   forCreate=false(수정)면 body에 들어온 필드만 patch에 반영한다.
+   validColors는 { key: true, ... } 형태 — 관리자가 product_colors 테이블에 추가한 색상까지
+   포함해서 호출부(server.js)가 넘겨준다. 안 넘기면(단위 테스트 등) data.js의 정적 COLORS로 폴백한다. */
+function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
   const patch = {};
   if (forCreate || b.name !== undefined) {
     const v = String(b.name || "").trim().slice(0, 120);
@@ -57,7 +59,7 @@ function productPatchFromBody(b, { forCreate }) {
     patch.images = Array.isArray(b.images) ? b.images.slice(0, 6).map((u) => (u ? String(u).slice(0, 500) : null)) : [];
   }
   if (b.colors !== undefined) {
-    patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => COLORS[c]) : [];
+    patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => validColors[c]) : [];
   }
   if (b.sizes !== undefined) {
     patch.sizes = Array.isArray(b.sizes) ? b.sizes.filter((s) => typeof s === "string").slice(0, 10) : [];

@@ -36,13 +36,13 @@
   renderHeader("shop.html");
 
   (async () => {
-  await loadProducts();
+  await Promise.all([loadProducts(), loadColors()]);
 
   const p = getProduct(qs("id")) || PRODUCTS[0];
   document.title = t(p.nameKo) + " — REITEN";
 
   let state = {
-    color: p.colors[0],
+    color: p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0],
     size: p.sizes.find(s => !p.soldOut.includes(s)) || p.sizes[0],
     qty: 1,
     img: 0,
@@ -178,7 +178,7 @@
   function bind() {
     // 컬러
     const colorsEl = document.getElementById("colors");
-    colorsEl.innerHTML = p.colors.map(c => `
+    colorsEl.innerHTML = p.colors.filter(c => COLORS[c]).map(c => `
       <button class="color-dot" type="button" data-c="${c}"
               aria-pressed="${c === state.color}" aria-label="${esc(t(COLORS[c].label))}"
               style="background:${COLORS[c].hex}"></button>`).join("");

@@ -139,7 +139,7 @@
   renderHeader("customizer.html");
 
   (async () => {
-  await loadProducts();
+  await Promise.all([loadProducts(), loadColors()]);
 
   const BASES = PRODUCTS.filter(p => p.charmReady);
 
@@ -153,7 +153,7 @@
     qty: 1,
     light: false,
   };
-  state.color = state.base.colors[0];
+  state.color = state.base.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
   state.size = state.base.sizes[1] || state.base.sizes[0];
 
   const el = (id) => document.getElementById(id);
@@ -183,7 +183,7 @@
     el("base-name").textContent = money(state.base.price);
 
     // color
-    el("colors").innerHTML = state.base.colors.map(c =>
+    el("colors").innerHTML = state.base.colors.filter(c => COLORS[c]).map(c =>
       `<button class="color-dot" type="button" data-c="${c}" aria-pressed="${c === state.color}"
                aria-label="${esc(t(COLORS[c].label))}" style="background:${COLORS[c].hex}"></button>`
     ).join("");
@@ -240,7 +240,9 @@
   function bind() {
     el("bases").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
       state.base = getProduct(b.dataset.b);
-      if (!state.base.colors.includes(state.color)) state.color = state.base.colors[0];
+      if (!state.base.colors.includes(state.color) || !COLORS[state.color]) {
+        state.color = state.base.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
+      }
       if (!state.base.sizes.includes(state.size)) state.size = state.base.sizes[0];
       paint();
     }));

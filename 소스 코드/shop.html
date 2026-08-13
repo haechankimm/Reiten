@@ -41,7 +41,7 @@
   renderFooter();
 
   (async () => {
-    await loadProducts();
+    await Promise.all([loadProducts(), loadColors()]);
 
     const cats = ["전체", ...new Set(PRODUCTS.map(p => p.category))];
     let active = qs("cat") || "전체";

@@ -62,7 +62,7 @@
             <p class="err" id="rq-err"></p>
           </div>
           <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
-          <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="취소">취소</button>
+          <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="편집 취소">취소</button>
         </form>
 
         <form id="reset-confirm-form" novalidate style="margin-top:24px;max-width:44ch" hidden>
@@ -228,7 +228,7 @@
                 </div>
                 <div style="display:flex;gap:8px">
                   <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
-                  <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="취소">취소</button>
+                  <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="편집 취소">취소</button>
                 </div>
               </form>
             </div>
@@ -288,7 +288,7 @@
                 </div>
                 <div style="display:flex;gap:8px">
                   <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
-                  <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
+                  <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="편집 취소">취소</button>
                 </div>
               </form>
             </div>
@@ -1197,7 +1197,10 @@
 
   /* ---------- 부팅 ---------- */
   (async () => {
-    const client = await getSupabaseClient();
+    /* 옛 관리자 패널은 곧 삭제될 예정이라 색상 추가·수정·삭제 UI는 여기 넣지 않지만,
+       상품 폼의 pf-colors가 관리자가 Works에서 새로 만든 색상을 몰라서 저장 시 지워버리는
+       사고는 막아야 하므로 최신 팔레트만 미리 받아둔다. */
+    const [client] = await Promise.all([getSupabaseClient(), loadColors()]);
     if (!client) {
       el("no-server-notice").hidden = false;
       return;

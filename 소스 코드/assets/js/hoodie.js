@@ -27,6 +27,15 @@ function zipperHardwareFill(finishKey, charmKey) {
   return "url(#metal)";
 }
 
+/* 지퍼 금속 부분의 야간 발광 여부 — 참과 완전히 같은 규칙을 쓴다(zipperHardwareFill 참고).
+   실버 금속(또는 참 없음)은 강하게, 컬러 참의 금속은 참 색을 은은하게, 매트 블랙은
+   원래 하드웨어처럼 무광으로 어두워지기만 한다. */
+function zipperGlowClass(finishKey, charmKey) {
+  if (charmKey === "none" || finishKey === "silver") return " reflective";
+  if (finishKey === "color") return " reflective-soft";
+  return "";
+}
+
 function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silver", type = "zip" } = {}) {
   const charm = charmSVG(charmKey, finishKey, {
     attrs: `x="${-CHARM_W / 2}" y="0" width="${CHARM_W}" height="${CHARM_W * 1.2}" overflow="visible"`,
@@ -178,10 +187,14 @@ function hoodieSVG({ colorHex = "#16161a", charmKey = "star", finishKey = "silve
     <path d="M384,250 h32 M384,254.5 h20" stroke="#000" stroke-opacity=".3" stroke-width="1.6"/>
   </g>
 
-  <!-- 지퍼 -->
+  <!-- 지퍼 테이프(원단색) — 옷감과 같은 색이라 야간에도 발광하지 않고 하드웨어처럼 어두워지기만 한다 -->
   <g class="hardware">
     <rect x="390" y="${zipperTop}" width="20" height="${zipperHeight}" fill="${colorHex}"/>
     <rect x="390" y="${zipperTop}" width="20" height="${zipperHeight}" fill="#000" opacity=".22"/>
+  </g>
+
+  <!-- 지퍼 금속(이빨 · 슬라이더 · 연결선 · 고리) — 참과 같은 마감 규칙으로 야간에 발광한다 -->
+  <g class="hardware${zipperGlowClass(finishKey, charmKey)}">
     <line x1="400" y1="244" x2="400" y2="${zipperLineEndY}" stroke="#a3a8ae" stroke-width="7"
           stroke-dasharray="4 4"/>
     <line x1="400" y1="244" x2="400" y2="${zipperLineEndY}" stroke="#000" stroke-opacity=".4" stroke-width="1.4"/>

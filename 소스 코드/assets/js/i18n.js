@@ -450,6 +450,18 @@ const I18N = {
   "스카이 블루": { en: "Sky Blue", ja: "スカイブルー", de: "Himmelblau" },
   "클레이": { en: "Clay", ja: "クレイ", de: "Ton" },
 
+  "색상 팔레트 관리": { de: "Farbpalette verwalten" },
+  "색상 이름": { de: "Farbname" },
+  "독일어 이름 (선택)": { de: "Deutscher Name (optional)" },
+  "색상 값": { de: "Farbwert" },
+  "+ 새 색상": { de: "+ Neue Farbe" },
+  "색상 이름을 입력해 주세요.": { de: "Bitte gib einen Farbnamen ein." },
+  "색상 값은 #RRGGBB 형식으로 입력해 주세요.": { de: "Bitte gib den Farbwert im Format #RRGGBB ein." },
+  "색상을 추가했습니다.": { de: "Farbe hinzugefügt." },
+  "색상을 수정했습니다.": { de: "Farbe aktualisiert." },
+  "색상을 삭제했습니다.": { de: "Farbe gelöscht." },
+  "이 색상을 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Diese Farbe löschen? Das kann nicht rückgängig gemacht werden." },
+
   "사이즈": { en: "Size", ja: "サイズ" },
   "총장": { en: "Length", ja: "着丈" },
   "가슴단면": { en: "Chest", ja: "身幅" },
@@ -610,6 +622,12 @@ const I18N = {
 
   /* ---------- 공용 에러 ---------- */
   "처리에 실패했습니다": { en: "Failed to process", ja: "処理に失敗しました" },
+
+  /* "취소"가 바로 아래에서 "주문 취소" 상태(Cancelled)로 쓰이는 것과 겹치지 않도록,
+     폼 닫기 버튼(상품·룩북·정보 등록 폼의 "취소")은 이 별도 키로 연결한다 — 화면에 보이는
+     한글 글자는 그대로 "취소"이고 data-i18n 속성만 이 키를 가리킨다(ko 모드는 딕셔너리를
+     안 거치므로 화면엔 영향 없음). */
+  "편집 취소": { de: "Abbrechen" },
 
   /* ---------- 주문 · 반품 상태 (고객 주문내역 + 관리자 패널 공용) ---------- */
   "입금대기": { en: "Awaiting Payment", ja: "入金待ち", de: "Zahlung ausstehend" },

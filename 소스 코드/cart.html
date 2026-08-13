@@ -501,7 +501,10 @@
     location.href = "order-complete.html";
   });
 
-  paint();
+  /* itemDisplay()가 COLORS[it.color]를 직접 참조하므로(관리자가 새로 추가한 색상일 수 있음),
+     화면을 그리기 전에 최신 팔레트를 먼저 받아온다. 실패해도 loadColors()는 조용히 넘어가고
+     data.js의 정적 목록이 남으므로 여기서 별도 처리는 필요 없다. */
+  loadColors().then(paint);
   renderFooter();
 </script>
 </body>

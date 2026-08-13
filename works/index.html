@@ -389,7 +389,7 @@
               <p class="err" id="rq-err"></p>
             </div>
             <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
-            <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="취소">취소</button>
+            <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="편집 취소">취소</button>
           </form>
 
           <form id="reset-confirm-form" novalidate style="margin-top:24px" hidden>
@@ -495,6 +495,7 @@
               <div class="field" style="grid-column:1/-1">
                 <label data-i18n="컬러">컬러</label>
                 <div class="chips" id="pf-colors"></div>
+                <div id="pf-color-manage" style="margin-top:10px"></div>
               </div>
               <div class="field" style="grid-column:1/-1">
                 <label data-i18n="사이즈 재고 (체크 해제 시 품절로 표시)">사이즈 재고 (체크 해제 시 품절로 표시)</label>
@@ -512,7 +513,7 @@
               </div>
               <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
-                <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="취소">취소</button>
+                <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="편집 취소">취소</button>
               </div>
             </form>
           </div>
@@ -577,7 +578,7 @@
               </div>
               <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
-                <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="취소">취소</button>
+                <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="편집 취소">취소</button>
                 <button class="btn btn--danger" type="button" id="lf-delete" hidden data-i18n="삭제">삭제</button>
               </div>
             </form>
@@ -603,7 +604,7 @@
               </div>
               <div style="grid-column:1/-1;display:flex;gap:8px">
                 <button class="btn" type="submit" id="sf-submit" data-i18n="저장">저장</button>
-                <button class="btn btn--ghost" type="button" id="sf-cancel" hidden data-i18n="취소">취소</button>
+                <button class="btn btn--ghost" type="button" id="sf-cancel" hidden data-i18n="편집 취소">취소</button>
                 <button class="btn btn--danger" type="button" id="sf-delete" hidden data-i18n="삭제">삭제</button>
               </div>
             </form>
@@ -744,6 +745,20 @@
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
     b.addEventListener("click", () => setLang(b.dataset.adminLang));
   });
+
+  /* 색상 팔레트 — 이 페이지는 app.js를 안 불러오므로 소스 코드/assets/js/app.js의
+     loadColors()와 같은 로직을 여기서도 별도로 둔다. 실패하면 data.js의 정적 6종이 그대로 남는다. */
+  async function loadColorsLocal() {
+    try {
+      const res = await fetch("/api/colors");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        Object.keys(COLORS).forEach((k) => delete COLORS[k]);
+        data.forEach((c) => { COLORS[c.key] = c; });
+      }
+    } catch (e) {}
+  }
 
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
@@ -1105,6 +1120,119 @@
         renderPfColors();
       })
     );
+    renderColorManager();
+  }
+
+  /* ---------- 색상 팔레트 관리(추가·수정·삭제) ----------
+     상품에 쓸 색상을 고르는 위 칩 목록과 별개로, 그 팔레트 자체(전역 COLORS)를
+     여기서 바로 추가·수정·삭제한다. null = 목록만 보임, "new" = 새 색상 추가 폼,
+     그 외에는 해당 key의 색상을 수정하는 폼이 열려 있는 상태. */
+  let colorManagerMode = null;
+
+  function openColorManager(mode) {
+    colorManagerMode = mode;
+    renderColorManager();
+  }
+
+  function colorSwatchRow(c) {
+    const label = esc(t(c.label)) + (c.labelDe ? ` · ${esc(c.labelDe)}` : "");
+    return `
+      <div class="color-manage-row" style="display:flex;align-items:center;gap:8px;padding:5px 0">
+        <span style="width:18px;height:18px;flex:none;border-radius:50%;border:1px solid var(--line);background:${esc(c.hex)}"></span>
+        <span class="small" style="flex:1">${label}</span>
+        <button type="button" class="btn btn--sm btn--ghost cm-edit" data-c="${c.key}">${esc(t("수정"))}</button>
+        <button type="button" class="btn btn--sm btn--danger cm-delete" data-c="${c.key}">${esc(t("삭제"))}</button>
+      </div>`;
+  }
+
+  function colorManagerFormHTML(existing) {
+    const label = existing ? esc(existing.label) : "";
+    const labelDe = existing && existing.labelDe ? esc(existing.labelDe) : "";
+    const hex = existing ? existing.hex : "#8a8a8a";
+    return `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px;margin-top:6px;border:1px dashed var(--line);border-radius:8px">
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("색상 이름"))}</label>
+          <input type="text" id="cm-label" value="${label}" maxlength="40">
+        </div>
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("독일어 이름 (선택)"))}</label>
+          <input type="text" id="cm-label-de" value="${labelDe}" maxlength="40">
+        </div>
+        <div class="field" style="margin:0">
+          <label>${esc(t("색상 값"))}</label>
+          <div style="display:flex;gap:6px">
+            <input type="color" id="cm-hex" value="${hex}" style="width:44px;height:44px;padding:2px;border:1px solid var(--line);border-radius:6px;background:none">
+            <input type="text" id="cm-hex-text" value="${hex}" maxlength="7" style="width:90px">
+          </div>
+        </div>
+        <button type="button" class="btn btn--sm" id="cm-save">${esc(t("저장"))}</button>
+        <button type="button" class="btn btn--sm btn--ghost" id="cm-cancel">${esc(t("편집 취소"))}</button>
+      </div>`;
+  }
+
+  function renderColorManager() {
+    const rows = Object.values(COLORS).map(colorSwatchRow).join("");
+    const isNew = colorManagerMode === "new";
+    const editing = colorManagerMode && !isNew ? COLORS[colorManagerMode] : null;
+    const formHTML = isNew ? colorManagerFormHTML(null) : editing ? colorManagerFormHTML(editing) : "";
+
+    el("pf-color-manage").innerHTML = `
+      <div class="small" style="font-weight:600;margin-bottom:4px">${esc(t("색상 팔레트 관리"))}</div>
+      ${rows}
+      ${formHTML || `<button type="button" class="btn btn--sm btn--ghost" id="cm-add" style="margin-top:6px">${esc(t("+ 새 색상"))}</button>`}
+    `;
+
+    el("pf-color-manage").querySelectorAll(".cm-edit").forEach((b) =>
+      b.addEventListener("click", () => openColorManager(b.dataset.c))
+    );
+    el("pf-color-manage").querySelectorAll(".cm-delete").forEach((b) =>
+      b.addEventListener("click", () => deleteColor(b.dataset.c))
+    );
+    const addBtn = el("cm-add");
+    if (addBtn) addBtn.addEventListener("click", () => openColorManager("new"));
+
+    if (formHTML) {
+      const hexInput = el("cm-hex");
+      const hexText = el("cm-hex-text");
+      hexInput.addEventListener("input", () => (hexText.value = hexInput.value));
+      hexText.addEventListener("input", () => {
+        if (/^#[0-9a-fA-F]{6}$/.test(hexText.value)) hexInput.value = hexText.value;
+      });
+      el("cm-save").addEventListener("click", () => saveColor(colorManagerMode));
+      el("cm-cancel").addEventListener("click", () => openColorManager(null));
+    }
+  }
+
+  async function saveColor(mode) {
+    const label = el("cm-label").value.trim();
+    const labelDe = el("cm-label-de").value.trim();
+    const hex = el("cm-hex-text").value.trim();
+    if (!label) return toast(t("색상 이름을 입력해 주세요."));
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return toast(t("색상 값은 #RRGGBB 형식으로 입력해 주세요."));
+
+    const isNew = mode === "new";
+    const result = await adminFetch(isNew ? "/api/admin/colors" : `/api/admin/colors/${mode}`, {
+      method: isNew ? "POST" : "PATCH",
+      body: JSON.stringify({ label, labelDe: labelDe || null, hex }),
+    });
+    if (!result) return; // adminFetch가 이미 실패 사유를 토스트로 띄움
+
+    COLORS[result.key] = result;
+    if (isNew) pfSelectedColors = [...pfSelectedColors, result.key];
+    colorManagerMode = null;
+    renderPfColors();
+    toast(t(isNew ? "색상을 추가했습니다." : "색상을 수정했습니다."));
+  }
+
+  async function deleteColor(key) {
+    if (!confirm(t("이 색상을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+    const result = await adminFetch(`/api/admin/colors/${key}`, { method: "DELETE" });
+    if (!result) return;
+    delete COLORS[key];
+    pfSelectedColors = pfSelectedColors.filter((k) => k !== key);
+    renderPfColors();
+    toast(t("색상을 삭제했습니다."));
   }
 
   const PF_UPLOAD_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>`;
@@ -1922,7 +2050,7 @@
 
   /* ---------- 부팅 ---------- */
   (async () => {
-    const client = await getSupabaseClient();
+    const [client] = await Promise.all([getSupabaseClient(), loadColorsLocal()]);
     if (!client) {
       el("no-server-notice").hidden = false;
       return;

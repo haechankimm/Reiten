@@ -87,7 +87,7 @@
   renderHeader("");
 
   (async () => {
-  await loadProducts();
+  await Promise.all([loadProducts(), loadColors()]);
 
   const el = (id) => document.getElementById(id);
   const filterProduct = qs("product");

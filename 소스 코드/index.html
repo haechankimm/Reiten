@@ -160,7 +160,7 @@
   renderFooter();
 
   (async () => {
-    await Promise.all([loadProducts(), loadLookbook()]);
+    await Promise.all([loadProducts(), loadLookbook(), loadColors()]);
 
     document.getElementById("freeover").textContent = money(SITE.shipping.freeOver);
 
