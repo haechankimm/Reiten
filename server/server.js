@@ -23,6 +23,7 @@ const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
+const { toCsv, toXlsxBuffer, toPdfBuffer } = require("./lib/orderExport");
 const portone = require("./lib/portone");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -785,13 +786,38 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
 });
 
 /* ---------- 관리자 ---------- */
+/* 필터: q(주문번호·주문자명·연락처 중 아무 데나 부분 일치) · status(정확히 일치) ·
+   dateFrom/dateTo(그 날짜의 KST 00:00~23:59:59, YYYY-MM-DD). q는 PostgREST의 or 필터로
+   세 컬럼(주소값은 jsonb라 ->> 로 텍스트 추출)을 한 번에 검색한다.
+   목록(GET /api/admin/orders)과 내보내기(GET /api/admin/orders/export)가 이 로직을 공유한다. */
+function applyOrderFilters(query, reqQuery) {
+  const { q, status, dateFrom, dateTo } = reqQuery;
+  if (q) {
+    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
+    if (v) query = query.or(`order_no.ilike.%${v}%,customer->>name.ilike.%${v}%,customer->>tel.ilike.%${v}%`);
+  }
+  if (status) query = query.eq("status", status);
+  if (dateFrom) {
+    const d = new Date(`${dateFrom}T00:00:00+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
+  }
+  if (dateTo) {
+    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
+    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
+  }
+  return query;
+}
+
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await supabaseAdmin
+
+  let query = supabaseAdmin
     .from("orders")
     .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    .order("created_at", { ascending: false });
+  query = applyOrderFilters(query, req.query);
+
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
 
@@ -812,6 +838,49 @@ app.get("/api/admin/orders", requireAdmin, async (req, res) => {
     pageSize,
     total: count ?? data.length,
   });
+});
+
+/* 주문 목록 내보내기 — 화면의 검색·필터 조건을 그대로 받아(위 applyOrderFilters 재사용)
+   페이지네이션 없이 최대 EXPORT_MAX_ROWS건까지 한 번에 뽑는다. ?format=csv|xlsx|pdf. */
+const EXPORT_MAX_ROWS = 5000;
+app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
+  const format = String(req.query.format || "csv").toLowerCase();
+  if (!["csv", "xlsx", "pdf"].includes(format)) {
+    return res.status(400).json({ error: "format은 csv, xlsx, pdf 중 하나여야 합니다." });
+  }
+
+  let query = supabaseAdmin
+    .from("orders")
+    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at")
+    .order("created_at", { ascending: false })
+    .limit(EXPORT_MAX_ROWS);
+  query = applyOrderFilters(query, req.query);
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
+
+  const filename = `reiten-orders-${new Date().toISOString().slice(0, 10)}`;
+  try {
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      res.send(toCsv(data));
+    } else if (format === "xlsx") {
+      const buf = await toXlsxBuffer(data);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      res.send(Buffer.from(buf));
+    } else {
+      const buf = await toPdfBuffer(data);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
+      res.send(buf);
+    }
+    logAdminAction(req, "order.export", "order", "export", { format, count: data.length, q: req.query.q || null });
+  } catch (e) {
+    console.error("[admin/orders/export] 생성 실패:", e.message);
+    res.status(500).json({ error: "내보내기 파일 생성에 실패했습니다." });
+  }
 });
 
 /* status만 바꾸면 상태만, courier/trackingNo를 함께 보내면 배송정보도 같이 저장한다.

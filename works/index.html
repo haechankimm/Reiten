@@ -297,6 +297,33 @@
   .pe-row input[type="range"] { flex: 1; accent-color: var(--accent); }
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* ---------- 모바일 화면 대응 ----------
+     사이드바가 폭 고정(208px)이라 좁은 화면에서는 서랍(drawer)처럼 평소엔 화면 밖에 숨겨두고,
+     햄버거 버튼으로 열고 닫는다. 데스크톱(넓은 화면)에서는 이 규칙들이 전혀 적용되지 않는다. */
+  .sidebar-toggle { display: none; }
+  .sidebar-backdrop { display: none; }
+  @media (max-width: 860px) {
+    .sidebar-toggle {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg-surface); color: var(--text-primary); flex-shrink: 0;
+    }
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 236px;
+      transform: translateX(-100%); transition: transform .22s ease; box-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+    .sidebar.is-open { transform: translateX(0); box-shadow: 8px 0 24px rgba(0,0,0,.25); }
+    .sidebar-backdrop.is-open {
+      display: block; position: fixed; inset: 0; z-index: 55;
+      background: rgba(0,0,0,.4);
+    }
+    .topbar { padding: 0 12px; gap: 10px; }
+    .brand-word { display: none; }
+    .admin-chip .admin-name, .admin-chip .admin-role { display: none; }
+    .content { padding: 14px 12px 32px; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -347,9 +374,13 @@
       <span data-i18n="활동 로그">활동 로그</span>
     </button>
   </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
   <div class="main">
     <header class="topbar">
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="메뉴 열기" data-i18n-attr="aria-label:메뉴 열기" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <div class="brand">
         <img src="/assets/img/logo-mark.png" class="brand-mark-img" alt="Reiten">
         <span class="brand-word">REITEN</span>
@@ -433,6 +464,36 @@
             <div>
               <div class="content-title" data-i18n="전체 주문">전체 주문</div>
               <div class="content-sub" id="orders-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="ord-q" data-i18n="주문번호·이름·연락처 검색">주문번호·이름·연락처 검색</label>
+                <input id="ord-q" placeholder="예: R260801, 홍길동, 010" data-i18n-attr="placeholder:예: R260801, 홍길동, 010">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ord-status" data-i18n="상태">상태</label>
+                <select id="ord-status"><option value="" data-i18n="전체">전체</option></select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ord-from" data-i18n="시작일">시작일</label>
+                <input id="ord-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ord-to" data-i18n="종료일">종료일</label>
+                <input id="ord-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;position:relative">
+                <button type="button" class="btn btn--sm" id="ord-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="ord-reset" data-i18n="초기화">초기화</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="ord-export" data-i18n="내보내기">내보내기</button>
+                <div id="ord-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="pdf" style="justify-content:flex-start" data-i18n="PDF">PDF</button>
+                </div>
+              </div>
             </div>
           </div>
           <div class="split">
@@ -783,6 +844,22 @@
   }
   switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
 
+  /* ---------- 모바일 사이드바 서랍(drawer) 열기/닫기 ----------
+     좁은 화면에서만 CSS로 실제 서랍처럼 보이고(위 @media 참고), 넓은 화면에서는
+     이 토글이 있어도 CSS가 .is-open을 무시하므로 사이드바는 항상 그대로 보인다. */
+  function closeSidebarDrawer() {
+    el("sidebar").classList.remove("is-open");
+    el("sidebar-backdrop").classList.remove("is-open");
+    el("sidebar-toggle").setAttribute("aria-expanded", "false");
+  }
+  el("sidebar-toggle").addEventListener("click", () => {
+    const isOpen = el("sidebar").classList.toggle("is-open");
+    el("sidebar-backdrop").classList.toggle("is-open", isOpen);
+    el("sidebar-toggle").setAttribute("aria-expanded", String(isOpen));
+  });
+  el("sidebar-backdrop").addEventListener("click", closeSidebarDrawer);
+  el("sidebar").querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", closeSidebarDrawer));
+
   el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
     b.addEventListener("click", () => setLang(b.dataset.adminLang));
@@ -833,7 +910,7 @@
   }
 
   /* ---------- 전체 주문 (리스트 + 디테일 패널) ---------- */
-  const ordersState = { page: 0, pageSize: 20, total: 0, items: [] };
+  const ordersState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
   let selectedOrderNo = null;
 
   function orderStatusChip(status) {
@@ -921,14 +998,100 @@
     }
   }
 
+  function ordersQueryParams() {
+    const params = new URLSearchParams({ page: ordersState.page, pageSize: ordersState.pageSize });
+    if (ordersState.q) params.set("q", ordersState.q);
+    if (ordersState.status) params.set("status", ordersState.status);
+    if (ordersState.dateFrom) params.set("dateFrom", ordersState.dateFrom);
+    if (ordersState.dateTo) params.set("dateTo", ordersState.dateTo);
+    return params;
+  }
+
   async function paintAdminOrders(loadMore = false) {
     ordersState.page = loadMore ? ordersState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/orders?page=${ordersState.page}&pageSize=${ordersState.pageSize}`);
+    const result = await adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`);
     if (!result) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
+    if (!loadMore) selectedOrderNo = null;
     renderOrdersSplit();
   }
+
+  function renderOrderStatusOptions() {
+    const select = el("ord-status");
+    const known = new Set([...select.options].map((o) => o.value));
+    ORDER_STATUSES.forEach((s) => {
+      if (known.has(s)) return;
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = t(s);
+      select.appendChild(opt);
+    });
+  }
+
+  renderOrderStatusOptions();
+  el("ord-search").addEventListener("click", () => {
+    ordersState.q = el("ord-q").value.trim();
+    ordersState.status = el("ord-status").value;
+    ordersState.dateFrom = el("ord-from").value;
+    ordersState.dateTo = el("ord-to").value;
+    paintAdminOrders();
+  });
+  el("ord-reset").addEventListener("click", () => {
+    el("ord-q").value = "";
+    el("ord-status").value = "";
+    el("ord-from").value = "";
+    el("ord-to").value = "";
+    el("ord-search").click();
+  });
+  el("ord-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("ord-search").click(); });
+
+  /* 지금 화면에 걸려 있는 검색·필터 조건 그대로 서버에 다시 물어서(페이지네이션만 빼고) 파일로 받는다.
+     인증 헤더가 필요해서 <a href>로 바로 못 걸고, fetch → blob → 임시 링크 클릭 방식을 쓴다. */
+  async function downloadOrdersExport(format) {
+    el("ord-export-menu").hidden = true;
+    const token = await getAccessToken();
+    if (!token) { toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요.")); return; }
+    const params = ordersQueryParams();
+    params.delete("page");
+    params.delete("pageSize");
+    params.set("format", format);
+    let res;
+    try {
+      res = await fetch(`/api/admin/orders/export?${params.toString()}`, { headers: { Authorization: "Bearer " + token } });
+    } catch (e) {
+      toast(t("요청이 실패했습니다"));
+      return;
+    }
+    if (!res.ok) {
+      let message = "";
+      try { message = (await res.json()).error || ""; } catch (e) {}
+      toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reiten-orders-${new Date().toISOString().slice(0, 10)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  el("ord-export").addEventListener("click", (e) => {
+    e.stopPropagation();
+    el("ord-export-menu").hidden = !el("ord-export-menu").hidden;
+  });
+  el("ord-export-menu").querySelectorAll("[data-format]").forEach((b) =>
+    b.addEventListener("click", () => downloadOrdersExport(b.dataset.format))
+  );
+  document.addEventListener("click", (e) => {
+    if (!el("ord-export-menu").hidden && !el("ord-export-menu").contains(e.target) && e.target !== el("ord-export")) {
+      el("ord-export-menu").hidden = true;
+    }
+  });
 
   const returnsState = { page: 0, pageSize: 20, total: 0, items: [] };
 
@@ -2007,6 +2170,7 @@
      008_admin_audit_log.sql을 실행하지 않았으면 서버가 저장을 조용히 건너뛰므로 여기도 빈 목록만 보임. */
   const AUDIT_ACTION_LABELS = {
     "order.update": "주문 정보 변경",
+    "order.export": "주문 목록 내보내기",
     "return.update": "반품 상태 변경",
     "inventory.update": "재고 수정",
     "product.create": "상품 등록",

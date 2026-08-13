@@ -36,7 +36,7 @@ const I18N = {
   "야간 주행 모드 전환": { en: "Toggle night-ride mode", ja: "ナイトライドモード切替" },
   "야간 주행 모드": { en: "Night-ride mode", ja: "ナイトライドモード" },
   "장바구니": { en: "Cart", ja: "カート" },
-  "메뉴 열기": { en: "Open menu", ja: "メニューを開く" },
+  "메뉴 열기": { en: "Open menu", ja: "メニューを開く", de: "Menü öffnen" },
   "Reiten — 독일어로 '타다'.<br>말에서 기계로 옮겨 탄 사람들을 위한 옷.": {
     en: "Reiten — German for 'to ride'.<br>Clothing for those who traded reins for a throttle.",
     ja: "Reiten — ドイツ語で「乗る」。<br>手綱からスロットルへ、乗り換えた人たちの服。",
@@ -455,6 +455,11 @@ const I18N = {
   "내용": { de: "Inhalt" },
   "예: Supabase, Render, 사업자등록번호": { de: "z. B. Supabase, Render, Gewerberegisternummer" },
   "예: haechankimm": { de: "z. B. haechankimm" },
+  "주문번호·이름·연락처 검색": { de: "Suche nach Bestellnr., Name, Telefon" },
+  "예: R260801, 홍길동, 010": { de: "z. B. R260801, Max Mustermann, 010" },
+  "내보내기": { de: "Exportieren" },
+  "스프레드시트 (CSV)": { de: "Tabelle (CSV)" },
+  "엑셀 (XLSX)": { de: "Excel (XLSX)" },
   "링크 또는 값": { de: "Link oder Wert" },
   "상품 ID": { de: "Produkt-ID" },
   "영문 소문자·숫자·하이픈": { de: "Kleinbuchstaben, Zahlen, Bindestrich" },
@@ -780,6 +785,7 @@ const I18N = {
   /* 활동 로그 탭의 작업 이름(AUDIT_ACTION_LABELS, works/index.html) — "상품 수정"·"룩북 칸 수정"은
      위에서 이미 다른 용도로 번역돼 있어 그대로 재사용된다. */
   "주문 정보 변경": { de: "Bestellung geändert" },
+  "주문 목록 내보내기": { de: "Bestellliste exportiert" },
   "반품 상태 변경": { de: "Rückgabestatus geändert" },
   "재고 수정": { de: "Lagerbestand geändert" },
   "상품 등록": { de: "Produkt erstellt" },

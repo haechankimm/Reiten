@@ -89,6 +89,7 @@
 > 전체 변경 내역은 `git log`가 정확하지만, 매번 명령어를 돌리기보다 여기서 최근 흐름만
 > 빠르게 훑을 수 있게 요약해둡니다. 오래된 항목은 가끔 정리(요약/삭제)해도 됩니다.
 
+- **2026-08-13** — Works "전체 주문" 검색·필터·내보내기 + 모바일 화면 대응(아직 커밋 전). ① **주문 검색/필터** — 활동 로그와 같은 패턴으로 주문번호·주문자명·연락처(부분 일치, 하나로 통합 검색) · 상태 · 시작일/종료일 필터 추가(`GET /api/admin/orders`에 `q`/`status`/`dateFrom`/`dateTo` 쿼리, `applyOrderFilters()`로 목록·내보내기가 필터 로직을 공유). 이름·연락처는 `customer` jsonb 컬럼에서 `->>` 로 텍스트를 꺼내 검색 ② **주문 목록 내보내기(CSV·엑셀·PDF)** 신설 — `GET /api/admin/orders/export?format=csv|xlsx|pdf`가 화면의 검색 조건 그대로(최대 5,000건) 파일로 반환, 관리자 패널의 "내보내기" 버튼을 누르면 형식을 고르는 작은 메뉴가 뜸(인증 헤더가 필요해 `<a href>`가 아니라 `fetch` → blob → 임시 링크 클릭 방식). CSV는 엑셀에서 한글이 안 깨지도록 UTF-8 BOM 포함, 엑셀은 `exceljs`로 진짜 `.xlsx` 생성, PDF는 `pdfkit`으로 생성하되 **기본 폰트에 한글 글리프가 없어서** 사이트 본문과 같은 Pretendard 폰트를 `server/assets/fonts/Pretendard-Regular.otf`로 내려받아 직접 임베드함(PDF는 컬럼이 다 안 들어가서 핵심 8개만 가로 방향으로, 전체 데이터는 CSV·엑셀 쪽 담당). 새 의존성 `exceljs`·`pdfkit`을 `server/package.json`에 추가(`npm install` 필요 — **Render 배포 시 자동으로 설치되지만, 로컬에서 pull 받은 사람은 `cd server && npm install` 한 번 해야 함**). 순수 변환 로직은 `server/lib/orderExport.js`로 분리(Supabase 없이 pypdf/직접 실행으로 한글 렌더링·CSV·XLSX 전부 검증함) ③ **Works 모바일 화면 대응** — 폭 고정(208px) 사이드바가 좁은 화면에서 눌려 보이던 문제 → 860px 이하에서는 사이드바가 평소엔 화면 밖에 숨어 있다가 상단바의 햄버거 버튼으로 서랍처럼 열고 닫히게 변경(배경 클릭이나 메뉴 항목 선택 시 자동으로 닫힘), 상단바도 좁을 때 로고 글자·관리자 이름 등 부차적인 요소를 숨겨 안 눌리게 함. 모바일 사이즈(375px)로 직접 렌더링해서 서랍 열기/닫기까지 확인함. 참고로 `.split`(목록+상세 2단 레이아웃)은 이미 960px 이하에서 1단으로 바뀌도록 되어 있어서 그 부분은 추가로 손댈 필요 없었음
 - **2026-08-13** — 카카오톡 채널 연결 완료(아직 커밋 전) — `SITE.order.kakao`(채널명 "Reiten") · `SITE.order.kakaoUrl`(`https://pf.kakao.com/_exjwiX`)를 모두 채워서 푸터의 카카오톡 링크가 실제 채널로 이동하도록 완료(인스타그램과 같은 방식). 사용자가 준 주소는 `http://`였는데 사이트 나머지가 전부 `https://`라 일관성을 맞추려고 `https://`로 바꿔 넣음(카카오는 https도 지원) ② **Works 독일어 번역 누락분 추가 발견·수정** — 관리자가 "관리자 검색 예시(placeholder)"와 "룩북 가로세로 비율 드롭다운"이 독일어 모드에서도 한글로 보인다고 제보 → 확인해보니 두 곳 다 `data-i18n` 자체가 안 걸려 있거나(비율 드롭다운 6개 옵션) 새로 추가한 문자열에 번역이 안 채워진 것(검색 placeholder)이 원인이었음. `works/index.html`·`account.html`(옛 패널)의 룩북 비율 옵션에 `data-i18n` 추가 + `i18n.js`에 번역 6개 채움, 검색 placeholder도 번역 추가. 이번에 전체 파일을 스크립트로 훑어서(`data-i18n`/`data-i18n-attr`/`t()` 호출을 전부 추출해 독일어 번역 누락 여부 대조) **Works 안에 더 이상 이런 누락이 없는 것까지 확인**
 - **2026-08-13** — Works 사용성 개선 묶음(아직 커밋 전). ① **"재고" 탭** — "상품코드 · 사이즈"만 텍스트로 40줄(8상품×5사이즈) 나열돼 다 똑같이 생겨 알아보기 힘들다는 피드백 → 상품 썸네일·이름으로 카드를 묶고, 사이즈별 수량 입력칸을 색으로 구분(품절=빨강, 2개 이하=주황)해서 한눈에 훑을 수 있게 바꿈(`paintAdminInventory()`, 재고 API가 상품명·사진을 안 줘서 화면 그릴 때 `/api/admin/products`를 같이 불러와 매칭) ② **"활동 로그" 탭에 필터 신설** — 관리자(이메일 부분 일치) · 작업 종류 · 시작일/종료일로 검색 가능(`GET /api/admin/audit-log`에 `adminEmail`/`action`/`dateFrom`/`dateTo` 쿼리 추가, 날짜는 KST 기준으로 변환). 기존에 있던 페이지네이션("더 보기")은 그대로 유지 ③ 로그의 관리자 표시를 전체 이메일 대신 `@` 앞부분만(예: `haechankimm@gmail.com` → `haechankimm`) 보여주도록 변경 — **저장되는 값 자체는 전체 이메일 그대로**(감사 목적상 원본은 남겨야 해서), 화면에 표시할 때만 잘라서 보여줌(`title` 속성에 전체 이메일을 남겨 마우스 올리면 확인 가능) ④ **상품/정보/룩북 등록 폼의 입력칸 정렬 불일치 수정** — 라벨 길이가 필드마다 달라서(예: "이름 (예: Supabase, Render, 사업자등록번호)") 한 줄인 라벨과 두 줄로 줄바꿈되는 라벨이 같은 줄에 섞이면 입력창 높이가 서로 안 맞아 삐뚤빼뚤해 보이던 문제 → 그리드에 `align-items:end`를 줘서 모든 입력창이 줄 하단 기준으로 항상 맞춰지게 하고, 유난히 길었던 라벨 몇 개는 짧게 줄이고 예시 문구를 `placeholder`로 옮김(`product-form`/`settings-form`/`lookbook-form` 공통 적용) ⑤ **인스타그램 계정(`reiten_korea`) 반영** — `data.js`의 `SITE.order.instagram`을 채우고, 이전에는 `href="#"`로 아무 데도 안 가던 푸터 링크도 실제 프로필(`instagram.com/reiten_korea`)로 연결되게 같이 고침 ⑥ **푸터의 미입력 자리표시자 숨김 처리** — `SITE.order.kakao`처럼 아직 `[카카오톡 채널 주소 입력]` 같은 대괄호 자리표시자가 남아있는 값은, 실제 값이 채워지기 전까지 고객 화면에 그 문구 자체가 그대로 노출되고 있었음 → `[`로 시작하는 값은 해당 줄을 아예 숨기도록 `renderFooter()` 수정(값이 채워지면 자동으로 다시 보임, 인스타그램도 같은 방식으로 보호)
 - **2026-08-13** — 카드결제 PG 계약 신청 진행 중(포트원 콘솔) — `KG이니시스`·`NHN KCP`·`카카오페이` 3개 채널에 신용카드 일반결제 등으로 접수, 고객확인이행(KYC) 서류(사업자통장사본·사업자등록증·대표자 신분증)도 제출 완료. 지금은 PG사·카드사 심사 대기 단계(위 "다음 세션이 가장 먼저 할 일" 5번 참고) — 코드 쪽은 이미 테스트 채널로 다 준비돼 있어서, 승인 후 라이브 채널 키만 `PORTONE_CHANNEL_KEY`에 교체하면 됨
@@ -243,7 +244,7 @@ npm start
 | 프런트 런타임 의존성 | **없음** (프레임워크·번들러·패키지 매니저 모두 불필요) |
 | 외부 리소스 | Pretendard 폰트 1개 (jsDelivr CDN) — 실패해도 시스템 폰트로 폴백. `account.html`은 로그인 시에만 Supabase JS를 jsDelivr에서 추가로 불러옴 |
 | 브라우저 요구사항 | ES2020, CSS `color-mix()`, `mix-blend-mode`, IntersectionObserver, Web Animations API |
-| `server/` 의존성 | Node.js + `express`, `@supabase/supabase-js`, `resend`, `cloudinary`, `multer`, `dotenv` (선택 실행 시에만 필요, [12번](#12-nodejs-백엔드-서버-선택)) |
+| `server/` 의존성 | Node.js + `express`, `@supabase/supabase-js`, `resend`, `cloudinary`, `multer`, `dotenv`, `exceljs`(주문 엑셀 내보내기), `pdfkit`(주문 PDF 내보내기) (선택 실행 시에만 필요, [12번](#12-nodejs-백엔드-서버-선택)) |
 | `server/` 실행 시 추가로 필요한 것 | Supabase 프로젝트, Resend 계정, Cloudinary 계정 (모두 무료 티어로 충분, [12번](#12-nodejs-백엔드-서버-선택)) |
 
 ---
@@ -448,7 +449,8 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `POST /api/orders/lookup` | 없음 | 비회원 주문 조회. `{ orderNo, tel }`이 저장된 주문과 일치할 때만 상태·배송정보·내역을 반환(연락처는 숫자만 비교). 불일치 시 어느 쪽이 틀렸는지 알려주지 않고 `404` |
 | `GET /api/my/orders` | 로그인 필요 | 로그인한 회원 본인의 주문내역(배송정보 포함) |
 | `POST /api/returns` | 선택 | 반품·교환 신청 접수(비회원도 가능) |
-| `GET/PATCH /api/admin/orders`, `/api/admin/returns` | **관리자만**(role=admin) | 전체 주문/반품신청 조회 및 상태 변경(**목록은 페이지네이션**, 아래 참고). 주문 `PATCH`는 `status`와 `courier`/`trackingNo`(택배사·운송장번호)를 함께 또는 따로 받으며, **`status`가 정확히 `"입금확인"`으로 바뀌는 순간에만** 고객에게 입금 확인 메일을 발송 |
+| `GET/PATCH /api/admin/orders`, `/api/admin/returns` | **관리자만**(role=admin) | 전체 주문/반품신청 조회 및 상태 변경(**목록은 페이지네이션**, 아래 참고). 주문 `PATCH`는 `status`와 `courier`/`trackingNo`(택배사·운송장번호)를 함께 또는 따로 받으며, **`status`가 정확히 `"입금확인"`으로 바뀌는 순간에만** 고객에게 입금 확인 메일을 발송. `GET`은 `?q=`(주문번호·주문자명·연락처 통합 검색) · `?status=` · `?dateFrom=`/`?dateTo=`(YYYY-MM-DD, KST)로 필터링 가능 |
+| `GET /api/admin/orders/export` | **관리자만**(role=admin) | 주문 목록 내보내기 — `/api/admin/orders`와 같은 필터 쿼리를 받아(페이지네이션은 없고 최대 5,000건) `?format=csv\|xlsx\|pdf`로 CSV·엑셀(`.xlsx`)·PDF 파일을 반환. PDF는 핵심 컬럼만 가로 방향으로 담고, 전체 컬럼은 CSV·엑셀에만 있음 |
 | `GET/PATCH /api/admin/inventory` | **관리자만**(role=admin) | 재고 수량 조회·수정 |
 | `GET/POST /api/reviews` | 없음 | 리뷰 조회(승인된 것만, 아래 참고), 등록(사진 첨부 시 Cloudinary 업로드 후 `photoUrl` 저장, 인스타 아이디는 `instagramHandle`로 저장 — `reviews.html`이 `https://instagram.com/{아이디}` 링크로 렌더). 새로 등록된 리뷰는 승인 전까지 이 목록에 보이지 않음 |
 | `POST /api/reviews/:id/helpful` | 없음 | 리뷰 "도움돼요" 카운트를 원자적으로 +1(`increment_helpful` RPC). 중복 클릭 방지는 브라우저 `localStorage`(`reiten_liked_reviews`) 기준이라 완벽하진 않음 |
@@ -840,6 +842,7 @@ hoodie: {
 | 리뷰 | `server/` 없이 정적 배포만 하면 리뷰 등록이 불가능합니다(조회만, 항상 빈 목록) |
 | 브라우저 | `color-mix()`를 씁니다. 2023년 이전 구형 브라우저에서는 일부 색이 어긋날 수 있습니다 |
 | 번역 완성도 | UI 전반과 상품 데이터는 번역됐지만, 판매자 정보(사업자명·주소 등)와 주문서 원문(판매자에게 전송되는 텍스트)은 의도적으로 항상 한국어입니다 |
+| `exceljs`(엑셀 내보내기)의 하위 의존성 `uuid` | `npm audit`에서 moderate 취약점으로 뜸("buf를 직접 넘길 때 버퍼 경계 체크 누락") — `exceljs`가 내부적으로 인자 없이 `uuid.v4()`만 호출해서 이 프로젝트에서 실제로 영향받는 경로는 아니라고 판단해 그대로 둠. `npm audit fix --force`는 `exceljs`를 훨씬 오래된 3.x로 낮춰서(breaking change) 득보다 실이 큼 — `exceljs`가 업스트림에서 고치면 그때 업데이트 |
 
 ---
 
