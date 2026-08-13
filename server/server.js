@@ -1,5 +1,6 @@
 require("dotenv").config();
 const crypto = require("crypto");
+const fs = require("fs");
 const Sentry = require("@sentry/node");
 const path = require("path");
 const express = require("express");
@@ -136,6 +137,61 @@ app.use((req, res, next) => {
    works/index.html이 절대경로(/assets/...)로 자산을 불러오므로 이 프리픽스 아래에서도 정상 동작한다.
    works.reiten.kr가 실제로 연결되면 이 라우트는 지워도 된다. */
 app.use("/__works-preview", express.static(WORKS_DIR));
+
+function escapeHtmlAttr(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* product.html은 순수 정적 파일(내용은 브라우저에서 JS가 채운다) — 그래서 og:title/og:image를
+   JS로 아무리 잘 넣어도, 카카오톡·페이스북 같은 링크 미리보기 봇에는 전혀 반영되지 않는다.
+   그 봇들은 JS를 실행하지 않고 서버가 응답한 raw HTML만 그대로 읽기 때문이다("함께 보면 좋은 것"
+   추천처럼 화면에 보이는 것과, 크롤러가 보는 것은 다른 문제). express.static보다 먼저 이 라우트를
+   등록해 GET /product.html?id=... 요청만 가로채서 <head>의 title·description·og 태그를 실제
+   상품 정보로 바꿔치기한 뒤 돌려주고, id가 없거나 상품을 못 찾으면 next()로 넘겨 평소처럼
+   정적 파일이 그대로 나가게 한다. */
+app.get("/product.html", async (req, res, next) => {
+  const id = req.query.id;
+  if (!id) return next();
+
+  let product;
+  try {
+    const products = await getActiveProducts();
+    product = products.find((p) => p.id === id);
+  } catch (e) {
+    return next();
+  }
+  if (!product) return next();
+
+  let html;
+  try {
+    html = await fs.promises.readFile(path.join(SITE_DIR, "product.html"), "utf8");
+  } catch (e) {
+    return next();
+  }
+
+  const title = `${product.nameKo} — REITEN`;
+  const description = String(product.short || product.desc || "").slice(0, 150);
+  const image = (product.images || []).find(Boolean);
+  const imageUrl = image ? new URL(image, `${req.protocol}://${req.get("host")}`).href : "https://reiten.kr/assets/img/og-image.png";
+  const pageUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+
+  const metaTags = [
+    `<meta property="og:title" content="${escapeHtmlAttr(title)}">`,
+    `<meta property="og:description" content="${escapeHtmlAttr(description)}">`,
+    `<meta property="og:type" content="product">`,
+    `<meta property="og:url" content="${escapeHtmlAttr(pageUrl)}">`,
+    `<meta property="og:image" content="${escapeHtmlAttr(imageUrl)}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+  ].join("\n");
+
+  html = html
+    .replace(/<title>.*?<\/title>/, `<title>${escapeHtmlAttr(title)}</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtmlAttr(description)}">`)
+    .replace("</head>", `${metaTags}\n</head>`);
+
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
 
 app.use(
   express.static(SITE_DIR, {
