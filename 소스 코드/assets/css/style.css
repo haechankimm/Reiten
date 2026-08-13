@@ -60,6 +60,14 @@ html[data-theme="night"] {
 *::before,
 *::after { box-sizing: border-box; }
 
+/* .btn/.chips/.summary__row처럼 display:flex 등을 지정하는 클래스가 hidden 속성과
+   같이 붙으면, 브라우저 기본 스타일시트([hidden]{display:none})보다 이 파일의 클래스
+   규칙이 우선순위상 이겨서 hidden이어도 그대로 보이는 문제가 있었다(예: account.html의
+   "비밀번호를 잊으셨나요?" 클릭 시 탭 전환칩이 그대로 남아있던 버그, works/index.html은
+   이미 같은 이유로 이 규칙을 갖고 있다). 클래스별로 하나씩 예외를 추가하는 대신 여기서
+   한 번에 막는다. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 
 body {
@@ -265,7 +273,6 @@ html[data-theme="night"] .logo-invert { filter: invert(1) brightness(1.6); }
   gap: 2px;
   z-index: 90;
 }
-.lang-menu[hidden] { display: none; }
 .lang-menu button {
   display: flex;
   align-items: center;
@@ -1035,7 +1042,6 @@ html[data-admin-theme="grass"][data-theme="night"] {
   vertical-align: middle;
 }
 .admin-badge::before { content: "●"; font-size: 7px; line-height: 1; color: #7c9470; }
-.admin-badge[hidden] { display: none; }
 
 /* ---------- 로밍 말 애니메이션(숲길) ---------- */
 #admin-horse-scene {
