@@ -240,6 +240,7 @@ const I18N = {
   "대표자": { en: "CEO", ja: "代表者" },
   "사업장 주소": { en: "Business Address", ja: "事業所住所" },
   "연락처": { en: "Contact", ja: "連絡先" },
+  "카카오톡 채널": { en: "KakaoTalk Channel", ja: "カカオトーク チャンネル" },
   "이메일": { en: "Email", ja: "メール", de: "E-Mail" },
 
   /* ---------- Cart / Order ---------- */

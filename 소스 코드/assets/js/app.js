@@ -327,7 +327,9 @@ function renderFooter() {
             ? `<li><a href="https://instagram.com/${esc(o.instagram)}" target="_blank" rel="noopener">Instagram @${esc(o.instagram)}</a></li>`
             : ""}
           ${o.kakao && !o.kakao.startsWith("[")
-            ? `<li><span class="small">${esc(o.kakao)}</span></li>`
+            ? o.kakaoUrl && !o.kakaoUrl.startsWith("[")
+              ? `<li><a href="${esc(o.kakaoUrl)}" target="_blank" rel="noopener">${t("카카오톡 채널")} ${esc(o.kakao)}</a></li>`
+              : `<li><span class="small">${esc(o.kakao)}</span></li>`
             : ""}
         </ul>
       </div>
