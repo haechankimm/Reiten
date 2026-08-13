@@ -67,10 +67,13 @@
 
   const root = document.getElementById("root");
 
+  const GALLERY_IMG_WIDTHS = [500, 900, 1400, 1800];
+
   function mediaHTML(src, alt) {
+    const srcset = cloudinarySrcset(src, GALLERY_IMG_WIDTHS);
     return src
       ? `<div class="shot shot--contain" style="aspect-ratio:4/5">
-           <img src="${src}" alt="${esc(alt)}" width="1122" height="1402" fetchpriority="high">
+           <img src="${src}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 900px) 100vw, 600px"` : ""} alt="${esc(alt)}" width="1122" height="1402" fetchpriority="high">
          </div>`
       : `<div class="ph" style="aspect-ratio:4/5"><span class="ph__label">${t("사진 준비중")}</span></div>`;
   }
@@ -93,7 +96,7 @@
         <div id="main-media">${mediaHTML(p.images[state.img], name)}</div>
         ${p.images.length > 1 ? `<div class="pdp__thumbs">${p.images.map((src, i) => `
           <button class="thumb" type="button" data-i="${i}" aria-selected="${i === state.img}" aria-label="${esc(t("이미지 {n}", { n: i + 1 }))}">
-            ${src ? `<img src="${src}" alt="" loading="lazy">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
+            ${src ? `<img src="${src}" ${cloudinarySrcset(src, [100, 160]) ? `srcset="${cloudinarySrcset(src, [100, 160])}" sizes="80px"` : ""} alt="" loading="lazy">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
           </button>`).join("")}</div>` : ""}
       </div>
 
@@ -274,6 +277,33 @@
   }
 
   render();
+
+  /* 검색엔진용 구조화 데이터(Product) — 컬러·사이즈를 바꿀 때마다 다시 만들 필요는 없어서
+     render()가 아니라 여기서 한 번만 넣는다. 재고 0(품절)은 모든 컬러·사이즈 조합을 다 확인해서
+     — soldOut(관리자가 손으로 체크한 전체 품절)과 outOfStockByColor(컬러별 실재고)를 합쳐 —
+     진짜로 살 수 있는 조합이 하나도 없을 때만 OutOfStock으로 표시한다. */
+  const fullyOutOfStock = p.sizes.every((size) => p.soldOut.includes(size) || p.colors.every((c) => outSizesForColor(c).includes(size)));
+  const ld = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    name: t(p.nameKo),
+    image: p.images.filter(Boolean).map((src) => new URL(src, location.href).href),
+    description: t(p.desc || p.short || ""),
+    sku: p.id,
+    brand: { "@type": "Brand", name: "REITEN" },
+    offers: {
+      "@type": "Offer",
+      url: location.href,
+      priceCurrency: "KRW",
+      price: String(p.price),
+      availability: fullyOutOfStock ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      itemCondition: "https://schema.org/NewCondition",
+    },
+  };
+  const ldScript = document.createElement("script");
+  ldScript.type = "application/ld+json";
+  ldScript.textContent = JSON.stringify(ld);
+  document.head.appendChild(ldScript);
 
   // 추천
   const also = PRODUCTS.filter(x => x.id !== p.id).slice(0, 4);

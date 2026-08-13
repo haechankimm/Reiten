@@ -219,6 +219,29 @@ async function sendAdminCardCancelFailed({ paymentId, productId, size, cancelErr
   });
 }
 
+/* 반품 승인 환불 실패 긴급 알림(관리자용) — 반품을 "완료"로 승인하면서 자동으로 포트원 환불을
+   시도했는데 실패한 경우. 고객은 이미 반품 승인 처리됐다고 알고 있을 수 있어 빠르게 확인이
+   필요하다. 실패해도 호출부에서 항상 catch할 것. */
+async function sendAdminRefundFailed({ orderNo, amount, error }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 환불 실패 긴급 알림을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] ⚠️ 긴급 — 반품 자동환불 실패 (${orderNo})`,
+    html: `
+      <h2 style="color:#c00">반품을 승인 처리했지만, 카드결제 자동환불이 실패했습니다.</h2>
+      <p><b>주문번호</b> ${escHtml(orderNo)}</p>
+      <p><b>환불 예정 금액</b> ${won(amount)}</p>
+      <p><b>실패 사유</b> ${escHtml(error || "-")}</p>
+      <p style="margin-top:16px;color:#c00"><b>포트원 관리자 콘솔에서 이 결제를 직접 확인하고 수동으로 환불 처리해 주세요.</b></p>
+    `,
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -229,4 +252,5 @@ module.exports = {
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
+  sendAdminRefundFailed,
 };

@@ -1334,6 +1334,7 @@
               ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>`
               : `<button type="button" class="btn btn--sm btn--ghost admin-return-restock">${esc(t("재고 복원"))}</button>`
           }
+          ${r.refunded ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
         </div>
       </div>`;
   }
@@ -1348,11 +1349,26 @@
     el("admin-returns-list").querySelectorAll(".admin-return-status").forEach((sel) =>
       sel.addEventListener("change", async () => {
         const id = sel.closest("[data-id]").dataset.id;
-        await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
+        const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify({ status: sel.value }),
         });
-        toast(t("상태를 저장했습니다"));
+        if (!result) return;
+
+        /* 카드결제 건이 "완료"로 바뀌면 서버가 포트원 환불을 같이 시도한다 — 그 결과를 그대로
+           토스트로 보여준다(성공/실패/무통장입금이라 자동환불 대상이 아님, 세 가지). */
+        if (result.refund?.method === "card" && result.refund.ok) {
+          const item = returnsState.items.find((x) => x.id === id);
+          if (item) item.refunded = true;
+          toast(t("상태를 저장하고 환불까지 완료했습니다"));
+          renderAdminReturns();
+        } else if (result.refund?.method === "card" && !result.refund.ok) {
+          toast(t("상태는 저장했지만 환불에 실패했습니다. 포트원에서 직접 확인해 주세요."));
+        } else if (result.refund?.method === "bank_manual") {
+          toast(t("상태를 저장했습니다. 무통장입금 건이라 계좌로 직접 환불해 주세요."));
+        } else {
+          toast(t("상태를 저장했습니다"));
+        }
       })
     );
 
@@ -2764,6 +2780,7 @@
     "order.export": "주문 목록 내보내기",
     "return.update": "반품 상태 변경",
     "return.restock": "반품 재고 복원",
+    "return.refund": "반품 환불",
     "inventory.update": "재고 수정",
     "inventory.export": "재고 목록 내보내기",
     "dashboard.export": "대시보드 내보내기",

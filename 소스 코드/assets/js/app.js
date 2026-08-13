@@ -20,6 +20,15 @@ const getProduct = (id) => PRODUCTS.find((p) => p.id === id);
 const getCharm = (k) => CHARMS.find((c) => c.key === k);
 const getFinish = (k) => FINISHES.find((f) => f.key === k);
 
+/* Cloudinary에 올라간 사진에만 너비별 변환 URL을 붙여 srcset을 만든다 — 지금까지는 카드
+   썸네일이든 상세 페이지 큰 사진이든 항상 업로드 시점 원본 크기(최대 1800px)를 그대로
+   내려받고 있었다. 그 외(로컬 정적 이미지, 외부 URL)는 원본 그대로 쓴다 — 변환 서버가
+   없는 주소에 임의로 리사이즈 파라미터를 붙이면 404만 날 뿐이다. */
+function cloudinarySrcset(url, widths) {
+  if (!url || !url.includes("res.cloudinary.com") || !url.includes("/upload/")) return null;
+  return widths.map((w) => `${url.replace("/upload/", `/upload/w_${w},c_limit,q_auto,f_auto/`)} ${w}w`).join(", ");
+}
+
 let uidSeed = 0;
 const uid = () => "u" + Date.now().toString(36) + (uidSeed++).toString(36);
 
@@ -456,12 +465,15 @@ function rideGuideHTML(key) {
 /* =========================================================
    상품 카드
    ========================================================= */
+const CARD_IMG_WIDTHS = [400, 600, 900];
+
 function productCard(p, delay = 0) {
   const img = p.images.find(Boolean);
   const name = t(p.nameKo);
+  const srcset = cloudinarySrcset(img, CARD_IMG_WIDTHS);
   const media = img
     ? `<div class="card__media beamable">
-         <img src="${img}" alt="${esc(name)}" loading="lazy">
+         <img src="${img}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 640px) 45vw, 300px"` : ""} alt="${esc(name)}" loading="lazy">
          ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
        </div>`
     : `<div class="card__media ph">

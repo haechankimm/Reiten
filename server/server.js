@@ -20,10 +20,12 @@ const {
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
+  sendAdminRefundFailed,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
-const { orderNo, priceItem, shippingFor, couponDiscount } = require("./lib/pricing");
+const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
+const { resolveCoupon } = require("./lib/coupons");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
@@ -210,66 +212,6 @@ app.get("/api/products", async (req, res) => {
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
 const PRICE_OPTS = { extras: EXTRAS, charmPrice: CHARM_PRICE, extraPrice: EXTRA_PRICE };
 
-/* ---------- 쿠폰 ----------
-   유효성(존재·활성·기간·최소금액·사용횟수)은 Supabase 조회가 필요해 여기서 확인하고, 실제 할인액
-   계산은 순수 함수인 couponDiscount(lib/pricing.js)에 맡긴다. 카드결제 사전검증(prepare)과
-   무통장입금(/api/order) 양쪽에서 이 함수 하나만 부르면 되게 해서, 할인 규칙이 두 곳에서
-   따로 놀지 않게 한다. 반환값은 { code, discount } — 쿠폰을 안 썼으면 { code: null, discount: 0 },
-   유효하지 않으면 { error } 를 던진다(throw). */
-async function resolveCoupon(rawCode, { rawItems, items, subtotal }) {
-  if (!rawCode) return { code: null, discount: 0 };
-
-  const code = String(rawCode).trim().toUpperCase().slice(0, 40);
-  if (!code) return { code: null, discount: 0 };
-
-  const { data: coupon, error } = await supabaseAdmin.from("coupons").select("*").eq("code", code).maybeSingle();
-  if (error || !coupon || !coupon.active) {
-    const e = new Error("유효하지 않은 쿠폰 코드입니다.");
-    e.status = 400;
-    throw e;
-  }
-
-  const now = new Date();
-  if (coupon.starts_at && now < new Date(coupon.starts_at)) {
-    const e = new Error("아직 사용할 수 없는 쿠폰입니다.");
-    e.status = 400;
-    throw e;
-  }
-  if (coupon.ends_at && now > new Date(coupon.ends_at)) {
-    const e = new Error("기간이 만료된 쿠폰입니다.");
-    e.status = 400;
-    throw e;
-  }
-  if (subtotal < coupon.min_subtotal) {
-    const e = new Error(`이 쿠폰은 ${coupon.min_subtotal.toLocaleString("ko-KR")}원 이상 주문부터 사용할 수 있습니다.`);
-    e.status = 400;
-    throw e;
-  }
-  if (coupon.usage_limit != null) {
-    /* 동시에 마지막 1장을 두 주문이 같이 쓰면 usage_limit을 살짝 넘길 수 있는 이론적 여지가 있다
-       (재고 차감처럼 원자적 락을 걸지 않음) — 소규모 쿠폰 운영 규모에서는 감수할 만한 수준이라
-       단순 카운트 조회로 처리한다. */
-    const { count } = await supabaseAdmin
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("coupon_code", coupon.code);
-    if ((count || 0) >= coupon.usage_limit) {
-      const e = new Error("쿠폰 사용 횟수가 모두 소진되었습니다.");
-      e.status = 400;
-      throw e;
-    }
-  }
-
-  const discount = couponDiscount(coupon, { subtotal, items, rawItems });
-  if (discount <= 0) {
-    const e = new Error("이 쿠폰은 장바구니에 담긴 상품에 적용할 수 없습니다.");
-    e.status = 400;
-    throw e;
-  }
-
-  return { code: coupon.code, discount };
-}
-
 /* ---------- 카드결제(포트원) ----------
    결제창을 열기 전에 서버가 먼저 금액을 계산해서 pending_payments에 저장해두고, 그 값 그대로
    결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
@@ -303,7 +245,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
 
   let coupon;
   try {
-    coupon = await resolveCoupon(couponCode, { rawItems, items, subtotal });
+    coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
   } catch (e) {
     return res.status(e.status || 400).json({ error: e.message });
   }
@@ -533,7 +475,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
      재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
   let coupon;
   try {
-    coupon = await resolveCoupon(couponCode, { rawItems, items, subtotal });
+    coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
   } catch (e) {
     return res.status(e.status || 400).json({ error: e.message });
   }
@@ -1186,7 +1128,7 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
   let query = supabaseAdmin
     .from("return_requests")
-    .select("id, order_no, contact_name, contact_tel, reason, detail, status, restocked, created_at", { count: "exact" })
+    .select("id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at", { count: "exact" })
     .order("created_at", { ascending: false });
   query = applyReturnFilters(query, req.query);
   const { data, error, count } = await query.range(from, to);
@@ -1203,6 +1145,7 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       detail: r.detail,
       status: r.status,
       restocked: r.restocked,
+      refunded: r.refunded,
       at: r.created_at,
     })),
     page,
@@ -1211,19 +1154,55 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   });
 });
 
+/* 반품 승인 시 카드결제 자동환불 — status가 (처음으로) "완료"가 되는 순간, 해당 주문이 카드결제
+   건이면 포트원 환불을 자동으로 시도한다. 무통장입금은 계좌로 직접 돈을 보내야 해서 API로 할 수
+   없다 — 그 경우 화면에 "직접 환불하라"고만 알려준다. 환불 시도 자체가 실패하면(카드 결제는 됐는데
+   자동환불도 실패) 관리자가 놓치기 쉬운 상황이라 즉시 긴급 메일을 보낸다(카드결제 이중실패 알림과
+   같은 원칙). refunded 플래그로 같은 반품을 두 번 환불 시도하지 않게 막는다. */
 app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
-  const { status } = req.body || {};
-  if (!String(status || "").trim()) {
+  const statusStr = String((req.body || {}).status || "").trim();
+  if (!statusStr) {
     return res.status(400).json({ error: "status가 필요합니다." });
   }
-  const { error } = await supabaseAdmin
-    .from("return_requests")
-    .update({ status: String(status).trim() })
-    .eq("id", req.params.id);
 
+  const { data: prev, error: prevError } = await supabaseAdmin
+    .from("return_requests")
+    .select("id, order_no, status, refunded")
+    .eq("id", req.params.id)
+    .single();
+  if (prevError || !prev) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
+
+  const { error } = await supabaseAdmin.from("return_requests").update({ status: statusStr }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "상태 변경에 실패했습니다." });
-  logAdminAction(req, "return.update", "return", req.params.id, { status: String(status).trim() });
-  res.json({ ok: true });
+  logAdminAction(req, "return.update", "return", req.params.id, { status: statusStr });
+
+  let refund = null;
+  if (statusStr === "완료" && prev.status !== "완료" && !prev.refunded) {
+    const { data: order } = await supabaseAdmin
+      .from("orders")
+      .select("payment_method, payment_id, total")
+      .eq("order_no", prev.order_no)
+      .maybeSingle();
+
+    if (order && order.payment_method === "card" && order.payment_id) {
+      try {
+        await portone.cancelPayment(order.payment_id, "반품 승인에 따른 환불");
+        await supabaseAdmin.from("return_requests").update({ refunded: true }).eq("id", prev.id);
+        logAdminAction(req, "return.refund", "return", req.params.id, { orderNo: prev.order_no, amount: order.total });
+        refund = { method: "card", ok: true };
+      } catch (refundErr) {
+        console.error("[return] ⚠️ 반품 승인 환불 실패 — 수동 확인 필요:", prev.order_no, refundErr.message);
+        sendAdminRefundFailed({ orderNo: prev.order_no, amount: order.total, error: refundErr.message }).catch((err) =>
+          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
+        );
+        refund = { method: "card", ok: false };
+      }
+    } else if (order && order.payment_method === "bank_transfer") {
+      refund = { method: "bank_manual", ok: false };
+    }
+  }
+
+  res.json({ ok: true, refund });
 });
 
 /* 반품 승인 시 재고 복원 — return_requests는 주문번호만 갖고 있고 어떤 항목을 반품했는지는
@@ -1499,7 +1478,7 @@ app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
   const subtotal = items.reduce((s, it) => s + it.sum, 0);
 
   try {
-    const coupon = await resolveCoupon(code, { rawItems, items, subtotal });
+    const coupon = await resolveCoupon(supabaseAdmin, code, { rawItems, items, subtotal });
     res.json(coupon);
   } catch (e) {
     res.status(e.status || 400).json({ error: e.message });
