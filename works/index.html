@@ -247,6 +247,9 @@
   .inv-size--out { background: color-mix(in srgb, var(--danger) 16%, var(--bg-surface)); }
   .inv-size--out .inv-size-label { color: var(--danger); }
   .admin-inv-qty { width: 48px; height: 30px; padding: 0 4px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
+  .inv-card-log { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .inv-log-list { display: flex; flex-direction: column; gap: 6px; }
+  .inv-log-row { display: grid; grid-template-columns: 120px 40px 50px 1fr; gap: 10px; align-items: center; }
 
   /* ---------- 룩북: 실제 배치를 그대로 흉내 낸 클릭형 미리보기 ---------- */
   .look-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
@@ -356,6 +359,10 @@
     <button type="button" class="nav-item" data-tab="products">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/></svg>
       <span data-i18n="상품">상품</span>
+    </button>
+    <button type="button" class="nav-item" data-tab="coupons">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1.5a1.5 1.5 0 0 0 0 3V15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.5a1.5 1.5 0 0 0 0-3V9Z"/><path d="M9.5 7v10" stroke-dasharray="2 2"/></svg>
+      <span data-i18n="쿠폰">쿠폰</span>
     </button>
     <button type="button" class="nav-item" data-tab="reviews">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8Z"/></svg>
@@ -629,6 +636,70 @@
             </div>
           </div>
           <div id="admin-reviews-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>
+
+        <div id="admin-coupons" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="쿠폰">쿠폰</div>
+              <div class="content-sub" data-i18n="할인율·할인적용상품·기간·사용횟수를 자유롭게 설정할 수 있습니다.">할인율·할인적용상품·기간·사용횟수를 자유롭게 설정할 수 있습니다.</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <b id="coupon-form-title" data-i18n="새 쿠폰">새 쿠폰</b>
+            <form id="coupon-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px 16px;align-items:end">
+              <div class="field">
+                <label for="cp-code" data-i18n="쿠폰 코드">쿠폰 코드</label>
+                <input id="cp-code" required pattern="[A-Za-z0-9_-]{3,40}" placeholder="예: WELCOME10" data-i18n-attr="placeholder:예: WELCOME10">
+              </div>
+              <div class="field">
+                <label for="cp-discount-type" data-i18n="할인 방식">할인 방식</label>
+                <select id="cp-discount-type">
+                  <option value="percent" data-i18n="정률(%)">정률(%)</option>
+                  <option value="amount" data-i18n="정액(원)">정액(원)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cp-discount-value" data-i18n="할인 값">할인 값</label>
+                <input id="cp-discount-value" type="number" min="1" required>
+              </div>
+              <div class="field">
+                <label for="cp-scope" data-i18n="적용 범위">적용 범위</label>
+                <select id="cp-scope">
+                  <option value="all" data-i18n="전체 상품">전체 상품</option>
+                  <option value="products" data-i18n="지정 상품만">지정 상품만</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cp-min-subtotal" data-i18n="최소 주문금액">최소 주문금액</label>
+                <input id="cp-min-subtotal" type="number" min="0" value="0">
+              </div>
+              <div class="field">
+                <label for="cp-usage-limit" data-i18n="사용 한도(전체)">사용 한도(전체)</label>
+                <input id="cp-usage-limit" type="number" min="1" placeholder="비워두면 무제한" data-i18n-attr="placeholder:비워두면 무제한">
+              </div>
+              <div class="field">
+                <label for="cp-starts" data-i18n="시작일(선택)">시작일(선택)</label>
+                <input id="cp-starts" type="date">
+              </div>
+              <div class="field">
+                <label for="cp-ends" data-i18n="종료일(선택)">종료일(선택)</label>
+                <input id="cp-ends" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label class="checkbox"><input type="checkbox" id="cp-active" checked><span data-i18n="활성화">활성화</span></label>
+              </div>
+              <div class="field" id="cp-products-field" style="grid-column:1/-1" hidden>
+                <label data-i18n="적용 상품 선택">적용 상품 선택</label>
+                <div class="chips" id="cp-products"></div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button type="submit" class="btn btn--sm" id="cp-save" data-i18n="저장">저장</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="cp-cancel" hidden data-i18n="편집 취소">편집 취소</button>
+              </div>
+            </form>
+          </div>
+          <div id="admin-coupons-list" style="display:grid;gap:10px"></div>
         </div>
 
         <div id="admin-products" style="display:grid;gap:24px" hidden>
@@ -978,7 +1049,7 @@
       })
     );
   }
-  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
+  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
 
   /* ---------- 모바일 사이드바 서랍(drawer) 열기/닫기 ----------
      좁은 화면에서만 CSS로 실제 서랍처럼 보이고(위 @media 참고), 넓은 화면에서는
@@ -1250,8 +1321,13 @@
         </div>
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
         <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
-        <div style="margin-top:10px">
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+          ${
+            r.restocked
+              ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>`
+              : `<button type="button" class="btn btn--sm btn--ghost admin-return-restock">${esc(t("재고 복원"))}</button>`
+          }
         </div>
       </div>`;
   }
@@ -1271,6 +1347,19 @@
           body: JSON.stringify({ status: sel.value }),
         });
         toast(t("상태를 저장했습니다"));
+      })
+    );
+
+    el("admin-returns-list").querySelectorAll(".admin-return-restock").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        btn.disabled = true;
+        const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}/restock`, { method: "POST" });
+        if (!result) { btn.disabled = false; return; }
+        const item = returnsState.items.find((x) => x.id === id);
+        if (item) item.restocked = true;
+        toast(t("재고를 복원했습니다"));
+        renderAdminReturns();
       })
     );
 
@@ -1384,6 +1473,8 @@
             })
             .join("")}
         </div>
+        <button type="button" class="btn btn--sm btn--ghost inv-log-toggle">${esc(t("이력 보기"))}</button>
+        <div class="inv-card-log" style="flex-basis:100%" hidden></div>
       </div>`;
       })
       .join("");
@@ -1403,6 +1494,45 @@
         toast(t("재고를 저장했습니다"));
       })
     );
+
+    el("admin-inventory-body").querySelectorAll(".inv-log-toggle").forEach((btn) =>
+      btn.addEventListener("click", () => toggleInventoryLog(btn))
+    );
+  }
+
+  const INVENTORY_LOG_REASON_LABELS = {
+    order: "주문 차감",
+    auto_cancel: "미입금 자동취소 복원",
+    admin_cancel: "관리자 취소 복원",
+    return_restock: "반품 복원",
+    admin_adjust: "관리자 수정",
+  };
+
+  async function toggleInventoryLog(btn) {
+    const card = btn.closest("[data-product]");
+    const panel = card.querySelector(".inv-card-log");
+    const opening = panel.hidden;
+    panel.hidden = !opening;
+    btn.textContent = t(opening ? "이력 닫기" : "이력 보기");
+    if (!opening || panel.dataset.loaded) return;
+
+    panel.innerHTML = `<p class="small">${esc(t("불러오는 중…"))}</p>`;
+    const rows = await adminFetch(`/api/admin/inventory/log?productId=${encodeURIComponent(card.dataset.product)}`);
+    if (!rows) { panel.hidden = true; btn.textContent = t("이력 보기"); return; }
+    panel.dataset.loaded = "1";
+    panel.innerHTML = rows.length
+      ? `<div class="inv-log-list">${rows
+          .map(
+            (r) => `
+        <div class="inv-log-row small">
+          <span class="tnum">${fmtDate(r.at)}</span>
+          <span>${esc(r.size)}</span>
+          <span class="tnum" style="color:${r.delta < 0 ? "var(--danger)" : "var(--ok)"}">${r.delta > 0 ? "+" : ""}${r.delta}</span>
+          <span>${esc(t(INVENTORY_LOG_REASON_LABELS[r.reason] || r.reason))}${r.ref ? ` · ${esc(r.ref)}` : ""}${r.adminEmail ? ` · ${esc(r.adminEmail)}` : ""}</span>
+        </div>`
+          )
+          .join("")}</div>`
+      : `<p class="small">${esc(t("아직 변동 이력이 없습니다"))}</p>`;
   }
 
   function downloadInventoryExport(format) {
@@ -1593,6 +1723,195 @@
     el("rv-search").click();
   });
   el("rv-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("rv-search").click(); });
+
+  /* ---------- 쿠폰 ----------
+     할인율·정액, 적용 상품, 기간, 사용 한도를 관리자가 직접 만들 수 있게 한다.
+     "상품 관리"의 색상 팔레트 관리와 같은 패턴 — cpEditingCode가 null이면 새로 만드는 중,
+     코드가 들어 있으면 그 쿠폰을 수정하는 중이다. */
+  const couponsState = { items: [] };
+  let cpEditingCode = null;
+  let cpSelectedProductIds = [];
+
+  function couponScopeLabel(c) {
+    return c.scope === "products" ? t("{n}개 상품 지정", { n: c.productIds.length }) : t("전체 상품");
+  }
+
+  function couponDiscountLabel(c) {
+    return c.discountType === "percent" ? `${c.discountValue}%` : money(c.discountValue);
+  }
+
+  function couponCardHTML(c) {
+    const period =
+      c.startsAt || c.endsAt
+        ? `${c.startsAt ? c.startsAt.slice(0, 10) : "-"} ~ ${c.endsAt ? c.endsAt.slice(0, 10) : "-"}`
+        : t("기간 제한 없음");
+    return `
+      <div class="panel" data-code="${esc(c.code)}" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+        <div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <b class="tnum">${esc(c.code)}</b>
+            <span class="status-chip ${c.active ? "st-confirmed" : "st-neutral"}">${esc(t(c.active ? "활성" : "비활성"))}</span>
+          </div>
+          <p class="small" style="margin-top:6px">
+            ${esc(couponDiscountLabel(c))} ${esc(t("할인"))} · ${esc(couponScopeLabel(c))}
+            ${c.minSubtotal ? ` · ${esc(t("최소 {n} 이상", { n: money(c.minSubtotal) }))}` : ""}
+            ${c.usageLimit ? ` · ${esc(t("한도 {n}회", { n: c.usageLimit }))}` : ""}
+          </p>
+          <p class="small" style="margin-top:4px;color:var(--text-muted)">${esc(period)}</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn--sm btn--ghost cp-toggle">${esc(t(c.active ? "비활성화" : "활성화"))}</button>
+          <button type="button" class="btn btn--sm btn--ghost cp-edit">${esc(t("수정"))}</button>
+          <button type="button" class="btn btn--sm btn--danger cp-delete">${esc(t("삭제"))}</button>
+        </div>
+      </div>`;
+  }
+
+  function renderAdminCoupons() {
+    el("admin-coupons-list").innerHTML = couponsState.items.length
+      ? couponsState.items.map(couponCardHTML).join("")
+      : `<p class="small">${esc(t("등록된 쿠폰이 없습니다"))}</p>`;
+
+    el("admin-coupons-list").querySelectorAll(".cp-toggle").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const code = btn.closest("[data-code]").dataset.code;
+        const c = couponsState.items.find((x) => x.code === code);
+        if (!c) return;
+        const result = await adminFetch(`/api/admin/coupons/${encodeURIComponent(code)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ active: !c.active }),
+        });
+        if (!result) return;
+        c.active = result.active;
+        renderAdminCoupons();
+      })
+    );
+    el("admin-coupons-list").querySelectorAll(".cp-edit").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const code = btn.closest("[data-code]").dataset.code;
+        const c = couponsState.items.find((x) => x.code === code);
+        if (c) fillCouponForm(c);
+      })
+    );
+    el("admin-coupons-list").querySelectorAll(".cp-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const code = btn.closest("[data-code]").dataset.code;
+        if (!confirm(t("이 쿠폰을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
+        const result = await adminFetch(`/api/admin/coupons/${encodeURIComponent(code)}`, { method: "DELETE" });
+        if (!result) return;
+        couponsState.items = couponsState.items.filter((x) => x.code !== code);
+        if (cpEditingCode === code) resetCouponForm();
+        renderAdminCoupons();
+        toast(t("쿠폰을 삭제했습니다"));
+      })
+    );
+  }
+
+  async function paintAdminCoupons() {
+    const result = await adminFetch("/api/admin/coupons");
+    if (!result) return;
+    couponsState.items = result;
+    renderAdminCoupons();
+  }
+
+  /* 적용 상품 선택 칩 — 상품 등록 폼의 컬러 칩과 같은 토글 방식. scope가 "지정 상품만"일 때만 보인다. */
+  function renderCouponProductChips() {
+    const products = productsState.items;
+    if (!products.length) {
+      el("cp-products").innerHTML = `<p class="small">${esc(t("상품 목록을 불러오는 중입니다…"))}</p>`;
+      return;
+    }
+    el("cp-products").innerHTML = products
+      .map(
+        (p) => `<button type="button" class="chip cp-product" data-id="${esc(p.id)}" aria-pressed="${cpSelectedProductIds.includes(p.id)}">${esc(t(p.nameKo))}</button>`
+      )
+      .join("");
+    el("cp-products").querySelectorAll(".cp-product").forEach((b) =>
+      b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        cpSelectedProductIds = cpSelectedProductIds.includes(id) ? cpSelectedProductIds.filter((x) => x !== id) : [...cpSelectedProductIds, id];
+        renderCouponProductChips();
+      })
+    );
+  }
+
+  function syncCouponScopeUI() {
+    const isProducts = el("cp-scope").value === "products";
+    el("cp-products-field").hidden = !isProducts;
+    if (isProducts) renderCouponProductChips();
+  }
+  el("cp-scope").addEventListener("change", syncCouponScopeUI);
+
+  function resetCouponForm() {
+    cpEditingCode = null;
+    cpSelectedProductIds = [];
+    el("coupon-form-title").textContent = t("새 쿠폰");
+    el("coupon-form").reset();
+    el("cp-code").disabled = false;
+    el("cp-active").checked = true;
+    el("cp-cancel").hidden = true;
+    syncCouponScopeUI();
+  }
+
+  function fillCouponForm(c) {
+    cpEditingCode = c.code;
+    cpSelectedProductIds = [...c.productIds];
+    el("coupon-form-title").textContent = t("쿠폰 수정") + ` — ${c.code}`;
+    el("cp-code").value = c.code;
+    el("cp-code").disabled = true; // 코드 자체가 기본키라 수정 중에는 바꿀 수 없다.
+    el("cp-discount-type").value = c.discountType;
+    el("cp-discount-value").value = c.discountValue;
+    el("cp-scope").value = c.scope;
+    el("cp-min-subtotal").value = c.minSubtotal || 0;
+    el("cp-usage-limit").value = c.usageLimit || "";
+    el("cp-starts").value = c.startsAt ? c.startsAt.slice(0, 10) : "";
+    el("cp-ends").value = c.endsAt ? c.endsAt.slice(0, 10) : "";
+    el("cp-active").checked = c.active;
+    el("cp-cancel").hidden = false;
+    syncCouponScopeUI();
+  }
+
+  el("cp-cancel").addEventListener("click", resetCouponForm);
+
+  el("coupon-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const scope = el("cp-scope").value;
+    if (scope === "products" && !cpSelectedProductIds.length) {
+      toast(t("적용할 상품을 하나 이상 선택해 주세요."));
+      return;
+    }
+    const body = {
+      discountType: el("cp-discount-type").value,
+      discountValue: Number(el("cp-discount-value").value),
+      scope,
+      productIds: cpSelectedProductIds,
+      minSubtotal: Number(el("cp-min-subtotal").value) || 0,
+      usageLimit: el("cp-usage-limit").value ? Number(el("cp-usage-limit").value) : null,
+      startsAt: el("cp-starts").value ? `${el("cp-starts").value}T00:00:00+09:00` : null,
+      endsAt: el("cp-ends").value ? `${el("cp-ends").value}T23:59:59+09:00` : null,
+      active: el("cp-active").checked,
+    };
+
+    const saveBtn = el("cp-save");
+    saveBtn.disabled = true;
+    let result;
+    if (cpEditingCode) {
+      result = await adminFetch(`/api/admin/coupons/${encodeURIComponent(cpEditingCode)}`, { method: "PATCH", body: JSON.stringify(body) });
+    } else {
+      result = await adminFetch("/api/admin/coupons", { method: "POST", body: JSON.stringify({ code: el("cp-code").value, ...body }) });
+    }
+    saveBtn.disabled = false;
+    if (!result) return;
+
+    const idx = couponsState.items.findIndex((x) => x.code === result.code);
+    if (idx > -1) couponsState.items[idx] = result;
+    else couponsState.items.unshift(result);
+    renderAdminCoupons();
+    toast(t(cpEditingCode ? "쿠폰을 수정했습니다" : "쿠폰을 만들었습니다"));
+    resetCouponForm();
+  });
+
+  resetCouponForm();
 
   /* ---------- 상품 관리 ---------- */
   let pfEditingId = null;
@@ -2422,9 +2741,13 @@
     "order.update": "주문 정보 변경",
     "order.export": "주문 목록 내보내기",
     "return.update": "반품 상태 변경",
+    "return.restock": "반품 재고 복원",
     "inventory.update": "재고 수정",
     "inventory.export": "재고 목록 내보내기",
     "dashboard.export": "대시보드 내보내기",
+    "coupon.create": "쿠폰 생성",
+    "coupon.update": "쿠폰 수정",
+    "coupon.delete": "쿠폰 삭제",
     "product.create": "상품 등록",
     "product.update": "상품 수정",
     "product.delete": "상품 삭제",
@@ -2599,6 +2922,7 @@
     paintAdminInventory();
     paintAdminQna();
     paintAdminProducts();
+    paintAdminCoupons();
     paintAdminReviews();
     paintAdminLookbook();
     paintAdminSettings();

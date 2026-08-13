@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { orderNo, priceItem, shippingFor } = require("../lib/pricing");
+const { orderNo, priceItem, shippingFor, couponDiscount } = require("../lib/pricing");
 
 const PRODUCTS = [
   { id: "core-zip-hoodie", price: 119000 },
@@ -87,4 +87,30 @@ test("priceItem — 수량은 1~99로 clamp된다", () => {
   assert.equal(low.qty, 1);
   const high = priceItem({ productId: "core-zip-hoodie", qty: 500 }, PRODUCTS, PRICE_OPTS);
   assert.equal(high.qty, 99);
+});
+
+const rawItems = [{ productId: "core-zip-hoodie" }, { productId: "reflect-crop-hoodie" }];
+const items = [
+  { sum: 119000 },
+  { sum: 178000 },
+];
+
+test("couponDiscount — scope=all 정률 할인은 전체 합계 기준", () => {
+  const coupon = { discount_type: "percent", discount_value: 10, scope: "all", product_ids: [] };
+  assert.equal(couponDiscount(coupon, { subtotal: 297000, items, rawItems }), 29700);
+});
+
+test("couponDiscount — scope=all 정액 할인은 합계를 넘지 않는다", () => {
+  const coupon = { discount_type: "amount", discount_value: 500000, scope: "all", product_ids: [] };
+  assert.equal(couponDiscount(coupon, { subtotal: 297000, items, rawItems }), 297000);
+});
+
+test("couponDiscount — scope=products는 해당 상품 합계만 할인 대상", () => {
+  const coupon = { discount_type: "percent", discount_value: 10, scope: "products", product_ids: ["core-zip-hoodie"] };
+  assert.equal(couponDiscount(coupon, { subtotal: 297000, items, rawItems }), 11900);
+});
+
+test("couponDiscount — 적용 상품이 장바구니에 없으면 할인 0", () => {
+  const coupon = { discount_type: "percent", discount_value: 10, scope: "products", product_ids: ["no-such-product"] };
+  assert.equal(couponDiscount(coupon, { subtotal: 297000, items, rawItems }), 0);
 });

@@ -126,7 +126,16 @@
           <aside>
             <div class="panel panel--sticky">
               <h2 class="h-md" style="margin-bottom:16px" data-i18n="결제 금액">결제 금액</h2>
+              <div class="field" style="margin-bottom:16px">
+                <label for="f-coupon" data-i18n="쿠폰 코드">쿠폰 코드</label>
+                <div style="display:flex;gap:8px">
+                  <input id="f-coupon" style="flex:1;min-width:0" placeholder="있으시면 입력해 주세요" data-i18n-attr="placeholder:있으시면 입력해 주세요">
+                  <button type="button" class="btn btn--sm" id="coupon-apply" style="flex-shrink:0" data-i18n="적용">적용</button>
+                </div>
+                <p class="small" id="coupon-msg" style="margin-top:6px"></p>
+              </div>
               <div class="summary__row"><span data-i18n="상품 합계">상품 합계</span><span class="tnum" id="sum-sub"></span></div>
+              <div class="summary__row" id="sum-discount-row" hidden><span data-i18n="쿠폰 할인">쿠폰 할인</span><span class="tnum" id="sum-discount"></span></div>
               <div class="summary__row"><span data-i18n="배송비">배송비</span><span class="tnum" id="sum-ship"></span></div>
               <div class="summary__row total"><span data-i18n="총 결제금액">총 결제금액</span><span class="tnum" id="sum-total"></span></div>
 
@@ -159,6 +168,17 @@
   renderHeader("");
 
   const el = (id) => document.getElementById(id);
+
+  /* 쿠폰은 Cart(localStorage) 밖에 둔다 — 장바구니 내용이 바뀌면(수량·품목) 할인액도 달라질 수 있어
+     이 페이지에 머무는 동안만 유효한 상태로 취급하고, 담긴 상품이 바뀌면 다시 적용해야 한다.
+     실제 할인은 여기서 계산하지 않고 서버(/api/coupons/validate, 그리고 주문 생성 시 다시 한번)가
+     계산한 값만 그대로 표시한다. */
+  let appliedCoupon = null; // { code, discount } | null
+
+  function displayTotal() {
+    const discount = appliedCoupon ? appliedCoupon.discount : 0;
+    return Math.max(0, Cart.subtotal() - discount) + Cart.shipping();
+  }
 
   /* 담을 당시 언어로 번역된 문자열을 그대로 저장해두면, 나중에 언어를 바꿔도 장바구니에서는
      안 바뀐다. productId/color/size/charm/extras 같은 원본 키만 저장해두고, 화면에 그릴 때마다
@@ -236,14 +256,19 @@
         const it = Cart.read().find(i => i.key === key);
         if (b.dataset.act === "del") Cart.remove(key);
         else Cart.setQty(key, it.qty + (b.dataset.act === "inc" ? 1 : -1));
+        // 담긴 상품이 바뀌면 할인액도 달라질 수 있어 다시 적용하게 한다.
+        appliedCoupon = null;
+        el("coupon-msg").textContent = "";
         paint();
       })
     );
 
     const ship = Cart.shipping();
     el("sum-sub").textContent = money(Cart.subtotal());
+    el("sum-discount-row").hidden = !appliedCoupon;
+    if (appliedCoupon) el("sum-discount").textContent = "−" + money(appliedCoupon.discount);
     el("sum-ship").textContent = ship === 0 ? t("무료") : money(ship);
-    el("sum-total").textContent = money(Cart.total());
+    el("sum-total").textContent = money(displayTotal());
 
     const left = SITE.shipping.freeOver - Cart.subtotal();
     el("ship-hint").textContent = left > 0
@@ -318,6 +343,42 @@
     if (custom) el("f-memo").focus();
   });
 
+  async function applyCoupon() {
+    const code = el("f-coupon").value.trim();
+    const msg = el("coupon-msg");
+    if (!code) { msg.textContent = ""; return; }
+
+    const btn = el("coupon-apply");
+    btn.disabled = true;
+    msg.style.color = "";
+    msg.textContent = t("확인 중…");
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, items: Cart.read() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        appliedCoupon = null;
+        msg.style.color = "var(--danger, #c00)";
+        msg.textContent = body.error || t("쿠폰을 적용할 수 없습니다.");
+      } else {
+        appliedCoupon = { code: body.code, discount: body.discount };
+        msg.style.color = "";
+        msg.textContent = t("{discount} 할인이 적용되었습니다.", { discount: money(body.discount) });
+      }
+    } catch (e) {
+      appliedCoupon = null;
+      msg.style.color = "var(--danger, #c00)";
+      msg.textContent = t("요청이 실패했습니다");
+    }
+    btn.disabled = false;
+    paint();
+  }
+  el("coupon-apply").addEventListener("click", applyCoupon);
+  el("f-coupon").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } });
+
   /* 카드결제(포트원)는 server/가 설정을 마쳤을 때만 켠다 — /api/config가 없거나
      cardPaymentEnabled가 false면 결제 수단 선택란 자체를 안 보여주고 무통장입금만 남긴다
      (server/ 없는 정적 배포와 완전히 동일하게 동작). */
@@ -375,7 +436,7 @@
         const prepRes = await fetch("/api/payments/prepare", {
           method: "POST",
           headers,
-          body: JSON.stringify({ customer, items }),
+          body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined }),
         });
         if (!prepRes.ok) {
           const body = await prepRes.json().catch(() => ({}));
@@ -446,7 +507,9 @@
       })),
       subtotal: Cart.subtotal(),
       shipping: Cart.shipping(),
-      total: Cart.total(),
+      discount: appliedCoupon ? appliedCoupon.discount : 0,
+      couponCode: appliedCoupon ? appliedCoupon.code : null,
+      total: displayTotal(),
     };
 
     /* Node 백엔드(server/)가 같은 사이트를 서빙 중이면 /api/order가 응답한다.
@@ -460,7 +523,7 @@
       const res = await fetch("/api/order", {
         method: "POST",
         headers,
-        body: JSON.stringify({ customer, items }),
+        body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined }),
       });
 
       if (res.status === 409) {

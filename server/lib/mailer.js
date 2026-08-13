@@ -176,6 +176,49 @@ async function sendCustomerCardPaid(order) {
   });
 }
 
+/* 미입금 자동취소 안내 메일(고객용) — 크론이 3일 지난 입금대기 주문을 취소하는 순간 1회 발송.
+   재입금해서 다시 주문할 수 있다는 것도 함께 안내한다. */
+async function sendCustomerAutoCancelled(order) {
+  if (!resend || !order.customer.email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.email,
+    subject: `[REITEN] 미입금으로 주문이 취소되었습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 주문이 자동 취소되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <p style="margin-top:8px">입금 확인이 되지 않아 주문 접수 3일 경과 후 자동으로 취소되었습니다.</p>
+      <ul>${itemsHtml(order)}</ul>
+      <p style="margin-top:16px;color:#666">다시 주문하고 싶으시면 사이트에서 새로 담아 주문해 주세요. 이미 입금하셨다면 회신 메일로 알려주세요 — 확인 후 복구해드립니다.</p>
+    `,
+  });
+}
+
+/* 카드결제 재고부족 취소 실패 긴급 알림(관리자용) — "결제는 됐는데 물건은 없고, 그 결제 취소마저
+   실패한" 최악의 이중 실패 상황. 지금까지는 서버 로그에만 남고 관리자가 못 볼 수 있었다.
+   실패해도(이메일조차 안 나가도) 호출부에서 항상 catch할 것 — 그래도 로그는 남아 있다. */
+async function sendAdminCardCancelFailed({ paymentId, productId, size, cancelError }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 결제취소 실패 긴급 알림을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] ⚠️ 긴급 — 카드결제 취소 실패 (재고부족 후)`,
+    html: `
+      <h2 style="color:#c00">결제는 완료됐는데 재고가 없어 취소를 시도했지만, 그 취소마저 실패했습니다.</h2>
+      <p><b>결제 ID</b> ${escHtml(paymentId)}</p>
+      <p><b>상품</b> ${escHtml(productId)} / ${escHtml(size)}</p>
+      <p><b>취소 실패 사유</b> ${escHtml(cancelError || "-")}</p>
+      <p style="margin-top:16px;color:#c00"><b>포트원 관리자 콘솔에서 이 결제를 직접 확인하고 수동으로 환불 처리해 주세요.</b></p>
+    `,
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -184,4 +227,6 @@ module.exports = {
   sendAdminLowStock,
   sendAdminCardPaid,
   sendCustomerCardPaid,
+  sendCustomerAutoCancelled,
+  sendAdminCardCancelFailed,
 };

@@ -6,6 +6,7 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
+const cron = require("node-cron");
 const { SITE, PRODUCTS: STATIC_PRODUCTS, LOOKBOOK: STATIC_LOOKBOOK, COLORS: STATIC_COLORS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
@@ -17,9 +18,12 @@ const {
   sendAdminLowStock,
   sendAdminCardPaid,
   sendCustomerCardPaid,
+  sendCustomerAutoCancelled,
+  sendAdminCardCancelFailed,
 } = require("./lib/mailer");
+const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
-const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
+const { orderNo, priceItem, shippingFor, couponDiscount } = require("./lib/pricing");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
@@ -198,6 +202,66 @@ app.get("/api/products", async (req, res) => {
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
 const PRICE_OPTS = { extras: EXTRAS, charmPrice: CHARM_PRICE, extraPrice: EXTRA_PRICE };
 
+/* ---------- 쿠폰 ----------
+   유효성(존재·활성·기간·최소금액·사용횟수)은 Supabase 조회가 필요해 여기서 확인하고, 실제 할인액
+   계산은 순수 함수인 couponDiscount(lib/pricing.js)에 맡긴다. 카드결제 사전검증(prepare)과
+   무통장입금(/api/order) 양쪽에서 이 함수 하나만 부르면 되게 해서, 할인 규칙이 두 곳에서
+   따로 놀지 않게 한다. 반환값은 { code, discount } — 쿠폰을 안 썼으면 { code: null, discount: 0 },
+   유효하지 않으면 { error } 를 던진다(throw). */
+async function resolveCoupon(rawCode, { rawItems, items, subtotal }) {
+  if (!rawCode) return { code: null, discount: 0 };
+
+  const code = String(rawCode).trim().toUpperCase().slice(0, 40);
+  if (!code) return { code: null, discount: 0 };
+
+  const { data: coupon, error } = await supabaseAdmin.from("coupons").select("*").eq("code", code).maybeSingle();
+  if (error || !coupon || !coupon.active) {
+    const e = new Error("유효하지 않은 쿠폰 코드입니다.");
+    e.status = 400;
+    throw e;
+  }
+
+  const now = new Date();
+  if (coupon.starts_at && now < new Date(coupon.starts_at)) {
+    const e = new Error("아직 사용할 수 없는 쿠폰입니다.");
+    e.status = 400;
+    throw e;
+  }
+  if (coupon.ends_at && now > new Date(coupon.ends_at)) {
+    const e = new Error("기간이 만료된 쿠폰입니다.");
+    e.status = 400;
+    throw e;
+  }
+  if (subtotal < coupon.min_subtotal) {
+    const e = new Error(`이 쿠폰은 ${coupon.min_subtotal.toLocaleString("ko-KR")}원 이상 주문부터 사용할 수 있습니다.`);
+    e.status = 400;
+    throw e;
+  }
+  if (coupon.usage_limit != null) {
+    /* 동시에 마지막 1장을 두 주문이 같이 쓰면 usage_limit을 살짝 넘길 수 있는 이론적 여지가 있다
+       (재고 차감처럼 원자적 락을 걸지 않음) — 소규모 쿠폰 운영 규모에서는 감수할 만한 수준이라
+       단순 카운트 조회로 처리한다. */
+    const { count } = await supabaseAdmin
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("coupon_code", coupon.code);
+    if ((count || 0) >= coupon.usage_limit) {
+      const e = new Error("쿠폰 사용 횟수가 모두 소진되었습니다.");
+      e.status = 400;
+      throw e;
+    }
+  }
+
+  const discount = couponDiscount(coupon, { subtotal, items, rawItems });
+  if (discount <= 0) {
+    const e = new Error("이 쿠폰은 장바구니에 담긴 상품에 적용할 수 없습니다.");
+    e.status = 400;
+    throw e;
+  }
+
+  return { code: coupon.code, discount };
+}
+
 /* ---------- 카드결제(포트원) ----------
    결제창을 열기 전에 서버가 먼저 금액을 계산해서 pending_payments에 저장해두고, 그 값 그대로
    결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
@@ -208,7 +272,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
   }
 
-  const { customer, items: rawItems } = req.body || {};
+  const { customer, items: rawItems, couponCode } = req.body || {};
   if (!customer || typeof customer !== "object") {
     return res.status(400).json({ error: "customer 정보가 없습니다." });
   }
@@ -228,7 +292,15 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
 
   const subtotal = items.reduce((s, it) => s + it.sum, 0);
   const shipping = shippingFor(subtotal, SITE.shipping);
-  const total = subtotal + shipping;
+
+  let coupon;
+  try {
+    coupon = await resolveCoupon(couponCode, { rawItems, items, subtotal });
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
+  }
+
+  const total = subtotal - coupon.discount + shipping;
   const paymentId = "reiten-" + crypto.randomUUID();
   const normalizedCustomer = {
     name: String(customer.name).trim(),
@@ -249,6 +321,8 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     subtotal,
     shipping,
     total,
+    coupon_code: coupon.code,
+    discount: coupon.discount,
   });
   if (error) {
     console.error("[payments/prepare] 저장 실패:", error.message);
@@ -279,7 +353,8 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
    실패해도 예외를 던지지 않고 { ok:false, status, body }로 반환한다(호출부가 그대로 res에 흘려보냄). */
 async function finalizeCardOrder({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
-  const { customer, items, raw_items: rawItems, subtotal, shipping, total } = pending;
+  const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount } = pending;
+  const orderNumber = orderNo();
 
   const inventoryItems = [];
   rawItems.forEach((raw, i) => {
@@ -300,20 +375,28 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     if (invError) {
       const m = /OUT_OF_STOCK:([^:]+):(.+)/.exec(invError.message || "");
       if (m) {
+        const [, productId, size] = m;
         /* 카드결제는 이 시점에 이미 돈을 받은 상태다 — 재고가 없어 주문을 못 만든다면
-           반드시 결제를 취소해서 "결제는 됐는데 주문은 없는" 상태를 만들지 않는다. */
+           반드시 결제를 취소해서 "결제는 됐는데 주문은 없는" 상태를 만들지 않는다.
+           그 취소마저 실패하면(이중 실패) 서버 로그만으로는 관리자가 놓치기 쉬워 즉시 메일을 보낸다. */
         try {
           await portone.cancelPayment(paymentId, "재고 부족으로 자동 취소");
         } catch (cancelErr) {
           console.error("[order] ⚠️ 재고 부족으로 인한 결제 자동 취소 실패 — 수동 확인 필요:", paymentId, cancelErr.message);
+          sendAdminCardCancelFailed({ paymentId, productId, size, cancelError: cancelErr.message }).catch((err) =>
+            console.error("[mailer] 결제취소 실패 긴급 알림 메일 발송 실패:", err.message)
+          );
         }
-        const [, productId, size] = m;
         const product = products.find((p) => p.id === productId);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, size, name: product ? product.nameKo : productId } };
       }
       console.error("[order] 재고 차감 실패:", invError.message);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
+
+    logInventoryChange(
+      inventoryItems.map((it) => ({ productId: it.productId, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
+    );
 
     const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
     const sizes = [...new Set(inventoryItems.map((it) => it.size))];
@@ -330,16 +413,23 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     }
   }
 
+  /* 반품 시 재고를 복원하려면 어떤 상품·사이즈·컬러를 얼마나 샀는지가 주문 레코드 자체에 남아있어야
+     한다 — items(name/options/qty/unit/sum)에는 원래 productId가 없어서 나중엔 알 수 없었다.
+     rawItems와 순서가 그대로 대응되므로 그대로 붙여서 저장한다. */
+  const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
+
   const { data: saved, error: saveError } = await supabaseAdmin
     .from("orders")
     .insert({
-      order_no: orderNo(),
+      order_no: orderNumber,
       user_id: userId,
       customer,
-      items,
+      items: itemsForStorage,
       subtotal,
       shipping,
       total,
+      coupon_code: couponCode || null,
+      discount: discount || 0,
       payment_method: "card",
       payment_id: paymentId,
       status: "입금확인",
@@ -356,6 +446,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
 
   sendAdminCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 관리자 알림 메일 발송 실패:", err.message));
   sendCustomerCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 완료 메일 발송 실패:", err.message));
+  kakao.sendAlimtalk("CARD_PAID", customer.tel, { name: customer.name, orderNo: saved.order_no }).catch(() => {});
 
   return { ok: true, saved };
 }
@@ -375,6 +466,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         return res.json({
           no: already.order_no, at: already.created_at, customer: already.customer, items: already.items,
           subtotal: already.subtotal, shipping: already.shipping, total: already.total,
+          discount: already.discount, couponCode: already.coupon_code,
           paymentMethod: already.payment_method, sent: true,
         });
       }
@@ -401,11 +493,12 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     return res.json({
       no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
       subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
+      discount: result.saved.discount, couponCode: result.saved.coupon_code,
       paymentMethod: result.saved.payment_method, sent: true,
     });
   }
 
-  const { customer, items: rawItems } = req.body || {};
+  const { customer, items: rawItems, couponCode } = req.body || {};
 
   if (!customer || typeof customer !== "object") {
     return res.status(400).json({ error: "customer 정보가 없습니다." });
@@ -424,6 +517,20 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   if (items.some((it) => it === null)) {
     return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
   }
+
+  const subtotal = items.reduce((s, it) => s + it.sum, 0);
+  const shipping = shippingFor(subtotal, SITE.shipping);
+
+  /* 쿠폰이 유효하지 않으면 재고를 건드리기 전에(아래 decrement_inventory 호출 전에) 먼저 실패시킨다 —
+     재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
+  let coupon;
+  try {
+    coupon = await resolveCoupon(couponCode, { rawItems, items, subtotal });
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
+  }
+
+  const orderNumber = orderNo();
 
   /* 실물 재고가 있는(참/추가아이템이 아닌) 상품·사이즈 조합만 차감 대상으로 뽑는다.
      rawItems와 items는 map()으로 만들어져 인덱스가 그대로 대응된다. */
@@ -459,6 +566,10 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       return res.status(500).json({ error: "재고 확인 중 오류가 발생했습니다." });
     }
 
+    logInventoryChange(
+      inventoryItems.map((it) => ({ productId: it.productId, size: it.size, delta: -it.qty, reason: "order", ref: orderNumber }))
+    );
+
     /* 방금 차감한 조합 중 재고가 0이 된 게 있으면 관리자에게 알린다.
        inventoryItems에 없는 다른 사이즈까지 걸리지 않도록 정확히 같은 (productId, size) 쌍만 추린다. */
     const productIds = [...new Set(inventoryItems.map((it) => it.productId))];
@@ -487,29 +598,34 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     }
   }
 
-  const subtotal = items.reduce((s, it) => s + it.sum, 0);
-  const shipping = shippingFor(subtotal, SITE.shipping);
-  const total = subtotal + shipping;
+  const total = subtotal - coupon.discount + shipping;
+  const normalizedCustomer = {
+    name: String(customer.name).trim(),
+    tel: String(customer.tel).trim(),
+    email: String(customer.email).trim(),
+    zip: String(customer.zip).trim(),
+    addr: String(customer.addr).trim(),
+    addr2: String(customer.addr2 || "").trim(),
+    memo: String(customer.memo || "").trim(),
+    payer: String(customer.payer).trim(),
+  };
+
+  /* 반품 시 재고를 복원하려면 어떤 상품·사이즈·컬러를 얼마나 샀는지가 주문 레코드 자체에 남아있어야
+     한다 — items(name/options/qty/unit/sum)에는 원래 productId가 없어서 나중엔 알 수 없었다. */
+  const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
 
   const { data: saved, error: saveError } = await supabaseAdmin
     .from("orders")
     .insert({
-      order_no: orderNo(),
+      order_no: orderNumber,
       user_id: req.user ? req.user.id : null,
-      customer: {
-        name: String(customer.name).trim(),
-        tel: String(customer.tel).trim(),
-        email: String(customer.email).trim(),
-        zip: String(customer.zip).trim(),
-        addr: String(customer.addr).trim(),
-        addr2: String(customer.addr2 || "").trim(),
-        memo: String(customer.memo || "").trim(),
-        payer: String(customer.payer).trim(),
-      },
-      items,
+      customer: normalizedCustomer,
+      items: itemsForStorage,
       subtotal,
       shipping,
       total,
+      coupon_code: coupon.code,
+      discount: coupon.discount,
     })
     .select()
     .single();
@@ -525,6 +641,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   sendCustomerOrderReceived(saved).catch((err) => {
     console.error("[mailer] 주문 접수 확인 메일 발송 실패:", err.message);
   });
+  kakao.sendAlimtalk("ORDER_RECEIVED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
 
   res.json({
     no: saved.order_no,
@@ -534,6 +651,8 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     subtotal: saved.subtotal,
     shipping: saved.shipping,
     total: saved.total,
+    discount: saved.discount,
+    couponCode: saved.coupon_code,
     paymentMethod: "bank_transfer",
     sent: true,
   });
@@ -686,6 +805,30 @@ function logAdminAction(req, action, targetType, targetId, detail) {
     })
     .then(({ error }) => {
       if (error) console.error("[audit-log] 적재 실패:", error.message);
+    });
+}
+
+/* ---------- 재고 변동 이력 ----------
+   inventory 테이블은 현재 수량만 갖고 있어 "왜 줄었는지"를 알 수 없었다(012_inventory_log.sql).
+   재고를 바꾸는 모든 지점(주문 차감, 자동취소·반품 복원, 관리자 수기 수정)에서 이 함수로 한 줄씩
+   남긴다. logAdminAction과 같은 fire-and-forget 원칙 — 로그 적재 실패가 본작업(재고 변경 자체)을
+   막아서는 안 된다. rows: [{ productId, size, delta, reason, ref?, adminEmail? }] */
+function logInventoryChange(rows) {
+  if (!rows || !rows.length) return;
+  supabaseAdmin
+    .from("inventory_log")
+    .insert(
+      rows.map((r) => ({
+        product_id: r.productId,
+        size: r.size,
+        delta: r.delta,
+        reason: r.reason,
+        ref: r.ref || null,
+        admin_email: r.adminEmail || null,
+      }))
+    )
+    .then(({ error }) => {
+      if (error) console.error("[inventory-log] 적재 실패:", error.message);
     });
 }
 
@@ -995,11 +1138,15 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
     sendCustomerPaymentConfirmed(saved).catch((err) => {
       console.error("[mailer] 입금 확인 메일 발송 실패:", err.message);
     });
+    kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
   }
   if (!prev?.tracking_no && saved.tracking_no) {
     sendCustomerShipped(saved).catch((err) => {
       console.error("[mailer] 배송 시작 메일 발송 실패:", err.message);
     });
+    kakao
+      .sendAlimtalk("SHIPPED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no, trackingNo: saved.tracking_no })
+      .catch(() => {});
   }
 
   logAdminAction(req, "order.update", "order", req.params.no, patch);
@@ -1029,7 +1176,7 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
   let query = supabaseAdmin
     .from("return_requests")
-    .select("id, order_no, contact_name, contact_tel, reason, detail, status, created_at", { count: "exact" })
+    .select("id, order_no, contact_name, contact_tel, reason, detail, status, restocked, created_at", { count: "exact" })
     .order("created_at", { ascending: false });
   query = applyReturnFilters(query, req.query);
   const { data, error, count } = await query.range(from, to);
@@ -1045,6 +1192,7 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       reason: r.reason,
       detail: r.detail,
       status: r.status,
+      restocked: r.restocked,
       at: r.created_at,
     })),
     page,
@@ -1068,6 +1216,46 @@ app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* 반품 승인 시 재고 복원 — return_requests는 주문번호만 갖고 있고 어떤 항목을 반품했는지는
+   따로 기록하지 않으므로(전체 반품 전제), 해당 주문의 전체 항목을 복원한다. 부분 반품이면
+   관리자가 이 버튼 대신 재고 탭에서 직접 수량을 조정해야 한다. 중복 복원(재고가 두 번 늘어나는
+   사고)을 막기 위해 restocked 플래그로 한 번만 허용한다. */
+app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
+  const { data: ret, error: retError } = await supabaseAdmin
+    .from("return_requests")
+    .select("id, order_no, restocked")
+    .eq("id", req.params.id)
+    .single();
+  if (retError || !ret) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
+  if (ret.restocked) return res.status(400).json({ error: "이미 재고를 복원한 반품입니다." });
+
+  const { data: order, error: orderError } = await supabaseAdmin
+    .from("orders")
+    .select("order_no, items")
+    .eq("order_no", ret.order_no)
+    .single();
+  if (orderError || !order) return res.status(404).json({ error: "연결된 주문을 찾을 수 없습니다." });
+
+  const restoreItems = (order.items || [])
+    .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
+    .map((it) => ({ productId: it.productId, size: it.size, qty: it.qty }));
+
+  if (!restoreItems.length) {
+    return res.status(400).json({ error: "이 주문에는 자동으로 복원할 재고 정보가 없습니다(이전 방식으로 만들어진 주문). 재고 탭에서 직접 조정해 주세요." });
+  }
+
+  const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
+  if (restoreError) return res.status(500).json({ error: "재고 복원에 실패했습니다." });
+
+  logInventoryChange(
+    restoreItems.map((it) => ({ productId: it.productId, size: it.size, delta: it.qty, reason: "return_restock", ref: ret.order_no }))
+  );
+  await supabaseAdmin.from("return_requests").update({ restocked: true }).eq("id", ret.id);
+  logAdminAction(req, "return.restock", "return", req.params.id, { orderNo: ret.order_no, items: restoreItems });
+
+  res.json({ ok: true });
+});
+
 app.get("/api/admin/inventory", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from("inventory")
@@ -1084,13 +1272,52 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
   if (!productId || !size || !Number.isFinite(qtyNum) || qtyNum < 0) {
     return res.status(400).json({ error: "productId, size, qty(0 이상)가 필요합니다." });
   }
+
+  const { data: prev } = await supabaseAdmin
+    .from("inventory")
+    .select("qty")
+    .eq("product_id", productId)
+    .eq("size", size)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin
     .from("inventory")
     .upsert({ product_id: productId, size, qty: qtyNum }, { onConflict: "product_id,size" });
 
   if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
+
+  const delta = qtyNum - (prev ? prev.qty : 0);
+  if (delta !== 0) {
+    logInventoryChange([{ productId, size, delta, reason: "admin_adjust", adminEmail: req.user.email }]);
+  }
   logAdminAction(req, "inventory.update", "inventory", `${productId}:${size}`, { qty: qtyNum });
   res.json({ ok: true });
+});
+
+/* 재고 변동 이력 조회 — productId로 좁혀서 최근 변동부터 보여준다(전체 상품을 한 번에 보여주기엔
+   너무 많다). 재고 탭의 상품 카드에서 "이력 보기"를 눌렀을 때 쓴다. */
+app.get("/api/admin/inventory/log", requireAdmin, async (req, res) => {
+  const { productId } = req.query;
+  if (!productId) return res.status(400).json({ error: "productId가 필요합니다." });
+
+  const { data, error } = await supabaseAdmin
+    .from("inventory_log")
+    .select("*")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) return res.status(500).json({ error: "재고 이력을 불러오지 못했습니다." });
+  res.json(
+    data.map((r) => ({
+      size: r.size,
+      delta: r.delta,
+      reason: r.reason,
+      ref: r.ref,
+      adminEmail: r.admin_email,
+      at: r.created_at,
+    }))
+  );
 });
 
 /* 재고 내보내기 — inventory에는 상품명이 없어(product_id만 있음) products와 조인해 이름을 붙인다.
@@ -1137,6 +1364,130 @@ app.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
   } catch (e) {
     console.error("[admin/inventory/export] 생성 실패:", e.message);
     res.status(500).json({ error: "내보내기 파일 생성에 실패했습니다." });
+  }
+});
+
+/* ---------- 쿠폰(할인코드) ----------
+   할인 유무·적용 상품·기간·사용횟수 전부 관리자가 자유롭게 만들 수 있게 한다(013_coupons.sql).
+   실제 유효성 검사·할인 계산은 resolveCoupon/couponDiscount(주문 생성 경로에서 재사용)가 맡고,
+   여기는 순수 CRUD만 담당한다. */
+function toCouponDto(c) {
+  return {
+    code: c.code,
+    discountType: c.discount_type,
+    discountValue: c.discount_value,
+    scope: c.scope,
+    productIds: c.product_ids || [],
+    minSubtotal: c.min_subtotal,
+    usageLimit: c.usage_limit,
+    startsAt: c.starts_at,
+    endsAt: c.ends_at,
+    active: c.active,
+    createdAt: c.created_at,
+  };
+}
+
+function couponPatchFromBody(body, { forCreate }) {
+  const patch = {};
+  if (forCreate || body.discountType !== undefined) {
+    if (!["percent", "amount"].includes(body.discountType)) {
+      return { error: "discountType은 percent 또는 amount여야 합니다." };
+    }
+    patch.discount_type = body.discountType;
+  }
+  if (forCreate || body.discountValue !== undefined) {
+    const v = Math.floor(Number(body.discountValue));
+    if (!Number.isFinite(v) || v <= 0) return { error: "discountValue는 0보다 큰 숫자여야 합니다." };
+    if ((body.discountType || patch.discount_type) === "percent" && v > 100) {
+      return { error: "정률 할인은 100을 넘을 수 없습니다." };
+    }
+    patch.discount_value = v;
+  }
+  if (forCreate || body.scope !== undefined) {
+    if (!["all", "products"].includes(body.scope)) return { error: "scope는 all 또는 products여야 합니다." };
+    patch.scope = body.scope;
+  }
+  if (forCreate || body.productIds !== undefined) {
+    patch.product_ids = Array.isArray(body.productIds) ? body.productIds.filter((id) => typeof id === "string") : [];
+  }
+  if (forCreate || body.minSubtotal !== undefined) {
+    patch.min_subtotal = Math.max(0, Math.floor(Number(body.minSubtotal) || 0));
+  }
+  if (body.usageLimit !== undefined) {
+    patch.usage_limit = body.usageLimit === null || body.usageLimit === "" ? null : Math.max(1, Math.floor(Number(body.usageLimit)));
+  }
+  if (body.startsAt !== undefined) patch.starts_at = body.startsAt || null;
+  if (body.endsAt !== undefined) patch.ends_at = body.endsAt || null;
+  if (body.active !== undefined) patch.active = Boolean(body.active);
+  return { patch };
+}
+
+app.get("/api/admin/coupons", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin.from("coupons").select("*").order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: "쿠폰 목록을 불러오지 못했습니다." });
+  res.json(data.map(toCouponDto));
+});
+
+app.post("/api/admin/coupons", requireAdmin, async (req, res) => {
+  const code = String(req.body?.code || "").trim().toUpperCase().slice(0, 40);
+  if (!/^[A-Z0-9_-]{3,40}$/.test(code)) {
+    return res.status(400).json({ error: "코드는 영문 대문자·숫자·하이픈·언더바 3~40자여야 합니다." });
+  }
+  const { patch, error: patchError } = couponPatchFromBody(req.body || {}, { forCreate: true });
+  if (patchError) return res.status(400).json({ error: patchError });
+
+  const { data, error } = await supabaseAdmin.from("coupons").insert({ code, ...patch }).select().single();
+  if (error) {
+    if (error.code === "23505") return res.status(409).json({ error: "이미 존재하는 쿠폰 코드입니다." });
+    return res.status(500).json({ error: "쿠폰 생성에 실패했습니다." });
+  }
+  logAdminAction(req, "coupon.create", "coupon", code, patch);
+  res.json(toCouponDto(data));
+});
+
+app.patch("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
+  const { patch, error: patchError } = couponPatchFromBody(req.body || {}, { forCreate: false });
+  if (patchError) return res.status(400).json({ error: patchError });
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
+
+  const { data, error } = await supabaseAdmin
+    .from("coupons")
+    .update(patch)
+    .eq("code", req.params.code.toUpperCase())
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: "쿠폰 수정에 실패했습니다." });
+  logAdminAction(req, "coupon.update", "coupon", req.params.code, patch);
+  res.json(toCouponDto(data));
+});
+
+app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
+  const { error } = await supabaseAdmin.from("coupons").delete().eq("code", req.params.code.toUpperCase());
+  if (error) return res.status(500).json({ error: "쿠폰 삭제에 실패했습니다." });
+  logAdminAction(req, "coupon.delete", "coupon", req.params.code);
+  res.json({ ok: true });
+});
+
+/* 고객 화면(장바구니)에서 코드를 입력했을 때 실시간으로 할인액을 미리 보여주기 위한 공개 엔드포인트.
+   실제 할인은 여기서 확정되는 게 아니라 /api/order·/api/payments/prepare가 다시 한번 resolveCoupon을
+   불러 서버에서 재계산한다 — 이 엔드포인트는 순전히 미리보기용이라 위·변조돼도 결제 금액엔 영향 없다. */
+app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
+  const { code, items: rawItems } = req.body || {};
+  if (!Array.isArray(rawItems) || !rawItems.length) {
+    return res.status(400).json({ error: "장바구니 항목이 없습니다." });
+  }
+  const products = await getActiveProducts();
+  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
+  if (items.some((it) => it === null)) {
+    return res.status(400).json({ error: "존재하지 않는 상품이 포함되어 있습니다." });
+  }
+  const subtotal = items.reduce((s, it) => s + it.sum, 0);
+
+  try {
+    const coupon = await resolveCoupon(code, { rawItems, items, subtotal });
+    res.json(coupon);
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
   }
 });
 
@@ -1835,6 +2186,59 @@ app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: "답변 저장에 실패했습니다." });
   logAdminAction(req, "qna.answer", "qna", req.params.id);
   res.json({ ok: true });
+});
+
+/* ---------- 미입금 주문 자동취소 ----------
+   고객 화면에는 "3일 내 미입금 시 자동 취소됩니다"라고 안내하지만, 실제로 이걸 수행하는
+   로직이 없었다 — 관리자가 매번 수동으로 걸러서 취소해야 했고, 그동안 재고는 계속 묶여 있었다.
+   매시 정각에 3일 넘게 "입금대기" 상태인 주문을 찾아 취소하고 재고를 되돌린다. */
+const PENDING_CANCEL_DAYS = 3;
+
+async function cancelStalePendingOrders() {
+  const cutoff = new Date(Date.now() - PENDING_CANCEL_DAYS * 24 * 3600 * 1000).toISOString();
+  const { data: stale, error } = await supabaseAdmin
+    .from("orders")
+    .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
+    .eq("status", "입금대기")
+    .lt("created_at", cutoff);
+
+  if (error) {
+    console.error("[auto-cancel] 미입금 주문 조회 실패:", error.message);
+    return;
+  }
+  if (!stale.length) return;
+
+  for (const order of stale) {
+    const { error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "취소", cancel_reason: `미입금 ${PENDING_CANCEL_DAYS}일 경과 자동 취소` })
+      .eq("id", order.id);
+    if (updateError) {
+      console.error("[auto-cancel] 주문 취소 실패:", order.order_no, updateError.message);
+      continue;
+    }
+
+    const restoreItems = (order.items || [])
+      .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
+      .map((it) => ({ productId: it.productId, size: it.size, qty: it.qty }));
+    if (restoreItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
+      if (restoreError) {
+        console.error("[auto-cancel] 재고 복원 실패:", order.order_no, restoreError.message);
+      } else {
+        logInventoryChange(
+          restoreItems.map((it) => ({ productId: it.productId, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
+        );
+      }
+    }
+
+    sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
+    console.log(`[auto-cancel] ${order.order_no} 미입금 자동 취소 처리 완료`);
+  }
+}
+
+cron.schedule("0 * * * *", () => {
+  cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
 });
 
 if (process.env.SENTRY_DSN) {

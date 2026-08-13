@@ -46,4 +46,22 @@ function shippingFor(subtotal, shippingCfg) {
   return subtotal >= shippingCfg.freeOver ? 0 : shippingCfg.fee;
 }
 
-module.exports = { orderNo, priceItem, shippingFor };
+/* 쿠폰 할인액 계산 — coupon row(coupons 테이블 형태)와 이미 계산된 items(rawItems와 같은 순서)를
+   받아 할인액만 계산하는 순수 함수. 쿠폰이 유효한지(활성·기간·사용횟수·최소금액)는 Supabase 조회가
+   필요해 server.js(resolveCoupon)에서 먼저 확인하고, 여기서는 "얼마를 깎을지"만 계산한다.
+   scope가 'products'면 쿠폰이 적용되는 상품의 합계(base)만 할인 대상으로 삼는다 — 배송비·다른
+   상품에는 영향이 없다. */
+function couponDiscount(coupon, { subtotal, items, rawItems }) {
+  let base = subtotal;
+  if (coupon.scope === "products") {
+    base = items.reduce((s, it, i) => {
+      const raw = rawItems[i];
+      return raw && it && coupon.product_ids.includes(raw.productId) ? s + it.sum : s;
+    }, 0);
+  }
+  if (base <= 0) return 0;
+  const raw = coupon.discount_type === "percent" ? Math.floor((base * coupon.discount_value) / 100) : coupon.discount_value;
+  return Math.max(0, Math.min(raw, base));
+}
+
+module.exports = { orderNo, priceItem, shippingFor, couponDiscount };
