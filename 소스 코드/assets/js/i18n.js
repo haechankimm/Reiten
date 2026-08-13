@@ -539,6 +539,7 @@ const I18N = {
   "상품 목록을 불러오는 중입니다…": { de: "Produktliste wird geladen…" },
   "쿠폰을 수정했습니다": { de: "Gutschein aktualisiert" },
   "쿠폰을 만들었습니다": { de: "Gutschein erstellt" },
+  "실제 페이지에서 보기": { de: "Auf der echten Seite ansehen" },
 
   "사이즈": { en: "Size", ja: "サイズ" },
   "총장": { en: "Length", ja: "着丈" },

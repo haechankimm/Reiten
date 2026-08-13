@@ -791,9 +791,10 @@
                 <label data-i18n="사진 (최대 4장)">사진 (최대 4장)</label>
                 <div id="pf-photos" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:12px"></div>
               </div>
-              <div style="grid-column:1/-1;display:flex;gap:8px">
+              <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
                 <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="편집 취소">취소</button>
+                <a class="btn btn--sm btn--ghost" id="pf-view-live" href="#" target="_blank" rel="noopener" hidden data-i18n="실제 페이지에서 보기">실제 페이지에서 보기</a>
               </div>
             </form>
           </div>
@@ -2339,6 +2340,7 @@
     el("pf-charmready").checked = false;
     el("pf-active").checked = true;
     el("pf-cancel").hidden = true;
+    el("pf-view-live").hidden = true;
     renderPfColors();
     renderPfPhotos();
   }
@@ -2365,6 +2367,8 @@
     el("pf-charmready").checked = !!p.charmReady;
     el("pf-active").checked = p.active !== false;
     el("pf-cancel").hidden = false;
+    el("pf-view-live").href = `/product.html?id=${encodeURIComponent(p.id)}`;
+    el("pf-view-live").hidden = false;
     renderPfColors();
     renderPfPhotos();
     el("product-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2411,7 +2415,12 @@
 
       if (!result) return;
       toast(t("상품을 저장했습니다"));
+      /* 관리자 미리보기와 실제 사이트가 다르게 보이는 걸(사진 비율 사고 같은) 저장한 그 자리에서
+         바로 확인할 수 있게, 실제 상품 페이지 링크를 새 탭으로 열 수 있게 켜둔다.
+         resetProductForm()이 폼을 새 상품 등록 상태로 되돌리므로, 이 링크는 그 뒤에 켜야 한다. */
       resetProductForm();
+      el("pf-view-live").href = `/product.html?id=${encodeURIComponent(result.id)}`;
+      el("pf-view-live").hidden = false;
       paintAdminProducts();
     } finally {
       btn.disabled = false;
