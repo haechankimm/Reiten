@@ -3012,21 +3012,52 @@
       }
     }
 
+    /* 로그인 자체는 브라우저가 Supabase를 직접 호출해서 이뤄지고 서버(server/)는 그 결과를
+       볼 수 없다 — 그래서 시도 전에는 지금 잠겨 있는지 물어보고, 시도 후에는 성공/실패를
+       서버에 보고해서 같은 이메일이 7번 연속 실패하면 잠기게 한다(server.js의
+       /api/admin/login-lock 참고). 이 보고 자체가 실패해도(네트워크 오류 등) 로그인 흐름을
+       막으면 안 되므로 항상 조용히 넘어간다. */
+    async function checkLoginLock(email) {
+      try {
+        const res = await fetch(`/api/admin/login-lock?email=${encodeURIComponent(email)}`);
+        if (!res.ok) return { locked: false };
+        return res.json();
+      } catch (e) {
+        return { locked: false };
+      }
+    }
+    function reportLoginAttempt(email, success) {
+      fetch("/api/admin/login-lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, success }),
+      }).catch(() => {});
+    }
+
     el("login-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = el("li-submit");
+      const email = el("li-email").value.trim();
       btn.disabled = true;
-      const { error } = await client.auth.signInWithPassword({
-        email: el("li-email").value.trim(),
-        password: el("li-pw").value,
-      });
+
+      const lock = await checkLoginLock(email);
+      if (lock.locked) {
+        const minutes = Math.max(1, Math.ceil((lock.retryAfterSeconds || 0) / 60));
+        el("li-err").textContent = t("로그인 실패가 너무 많아 {n}분간 잠겼습니다. 잠시 후 다시 시도해 주세요.", { n: minutes });
+        el("li-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+
+      const { error } = await client.auth.signInWithPassword({ email, password: el("li-pw").value });
+      reportLoginAttempt(email, !error);
       if (error) {
         el("li-err").textContent = t("이메일 또는 비밀번호가 올바르지 않습니다.");
         el("li-err").classList.add("on");
         btn.disabled = false;
         return;
       }
-      if (el("li-remember").checked) localStorage.setItem("works_saved_email", el("li-email").value.trim());
+      if (el("li-remember").checked) localStorage.setItem("works_saved_email", email);
       else localStorage.removeItem("works_saved_email");
       location.reload();
     });

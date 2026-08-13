@@ -242,6 +242,28 @@ async function sendAdminRefundFailed({ orderNo, amount, error }) {
   });
 }
 
+/* 관리자 로그인 잠금 알림(관리자용) — 같은 이메일로 로그인이 연속 실패해 잠긴 경우.
+   본인이 비밀번호를 잊어 여러 번 틀린 것일 수도 있지만, 무차별 대입 시도의 신호일 수도 있어
+   알려둔다. 실패해도 호출부에서 항상 catch할 것. */
+async function sendAdminLoginLocked({ email, failCount }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 로그인 잠금 알림을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] ⚠️ 관리자 로그인 ${failCount}회 연속 실패로 잠김 — ${email}`,
+    html: `
+      <h2 style="color:#c00">로그인이 연속으로 실패해 이 계정의 로그인 화면이 잠시 잠겼습니다.</h2>
+      <p><b>이메일</b> ${escHtml(email)}</p>
+      <p><b>연속 실패 횟수</b> ${failCount}회</p>
+      <p style="margin-top:16px;color:#666">본인이 비밀번호를 여러 번 잘못 입력한 것이라면 무시해도 됩니다. 짐작 가는 시도가 아니라면 비밀번호를 바꾸는 것을 권장합니다.</p>
+    `,
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -253,4 +275,5 @@ module.exports = {
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
   sendAdminRefundFailed,
+  sendAdminLoginLocked,
 };

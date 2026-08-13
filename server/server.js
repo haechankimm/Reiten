@@ -22,6 +22,7 @@ const {
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
   sendAdminRefundFailed,
+  sendAdminLoginLocked,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
@@ -142,6 +143,15 @@ function escapeHtmlAttr(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* 카카오톡·페이스북 링크 카드는 가로 1.91:1(1200x630) 기준으로 미리보기를 만든다. 상품 사진은
+   세로 4:5라 그대로 쓰면 위아래가 어색하게 잘린다 — Cloudinary의 c_fill,g_auto로 가로 1200x630에
+   맞춰 미리 잘라서 내려준다. g_auto는 사진에서 시선이 가는 영역(그래픽·인물 등)을 자동으로 찾아
+   그 부분이 잘리지 않도록 크롭 위치를 잡아주는 옵션이라, 그냥 가운데를 자르는 것보다 안전하다. */
+function cloudinaryOgImage(url) {
+  if (!url || !url.includes("res.cloudinary.com") || !url.includes("/upload/")) return url;
+  return url.replace("/upload/", "/upload/c_fill,g_auto,w_1200,h_630,q_auto,f_auto/");
+}
+
 /* product.html은 순수 정적 파일(내용은 브라우저에서 JS가 채운다) — 그래서 og:title/og:image를
    JS로 아무리 잘 넣어도, 카카오톡·페이스북 같은 링크 미리보기 봇에는 전혀 반영되지 않는다.
    그 봇들은 JS를 실행하지 않고 서버가 응답한 raw HTML만 그대로 읽기 때문이다("함께 보면 좋은 것"
@@ -172,7 +182,9 @@ app.get("/product.html", async (req, res, next) => {
   const title = `${product.nameKo} — REITEN`;
   const description = String(product.short || product.desc || "").slice(0, 150);
   const image = (product.images || []).find(Boolean);
-  const imageUrl = image ? new URL(image, `${req.protocol}://${req.get("host")}`).href : "https://reiten.kr/assets/img/og-image.png";
+  const imageUrl = image
+    ? cloudinaryOgImage(new URL(image, `${req.protocol}://${req.get("host")}`).href)
+    : "https://reiten.kr/assets/img/og-image.png";
   const pageUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
 
   const metaTags = [
@@ -677,6 +689,58 @@ app.get("/api/config", (req, res) => {
     portoneStoreId: process.env.PORTONE_STORE_ID || null,
     portoneChannelKey: process.env.PORTONE_CHANNEL_KEY || null,
   });
+});
+
+/* ---------- 관리자 로그인 실패 잠금 ----------
+   로그인 자체는 브라우저가 Supabase Auth를 직접 호출해서 이뤄진다(server/를 거치지 않음) —
+   그래서 이 서버가 로그인 성공·실패를 직접 볼 방법이 없다. works/index.html이 로그인 시도
+   전후로 이 두 엔드포인트에 결과를 "보고"하게 해서, 같은 이메일로 7번 연속 실패하면 일정 시간
+   로그인 버튼 자체를 막는다.
+   ⚠️ 이건 실제 로그인 화면을 통한 시도에 대한 보완장치일 뿐이다. Supabase Auth REST API는
+   공개 anon key로 누구나 직접 호출할 수 있어서(우리 서버를 거칠 필요가 없음), 이 엔드포인트를
+   아예 건드리지 않고 Supabase에 바로 비밀번호를 대입하는 공격은 막지 못한다 — 그건 Supabase
+   대시보드의 Authentication > Rate Limits(또는 Attack Protection)에서 별도로 설정해야
+   하는, 코드로는 우회할 수 없는 영역이다. */
+const LOGIN_FAIL_THRESHOLD = 7;
+const LOGIN_LOCK_MINUTES = 15;
+
+app.get("/api/admin/login-lock", writeLimiter, async (req, res) => {
+  const email = String(req.query.email || "").trim().toLowerCase().slice(0, 200);
+  if (!email) return res.json({ locked: false });
+
+  const { data, error } = await supabaseAdmin.from("login_attempts").select("locked_until").eq("email", email).maybeSingle();
+  if (error) console.error("[login-lock] 조회 실패(017_login_lockout.sql 미실행일 수 있음):", error.message);
+  const lockedUntil = data?.locked_until ? new Date(data.locked_until) : null;
+  if (lockedUntil && lockedUntil > new Date()) {
+    return res.json({ locked: true, retryAfterSeconds: Math.ceil((lockedUntil - new Date()) / 1000) });
+  }
+  res.json({ locked: false });
+});
+
+app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
+  const email = String((req.body || {}).email || "").trim().toLowerCase().slice(0, 200);
+  const success = !!(req.body || {}).success;
+  if (!email) return res.status(400).json({ error: "email이 필요합니다." });
+
+  if (success) {
+    await supabaseAdmin.from("login_attempts").delete().eq("email", email);
+    return res.json({ ok: true });
+  }
+
+  const { data: prev, error: selectError } = await supabaseAdmin.from("login_attempts").select("fail_count").eq("email", email).maybeSingle();
+  if (selectError) console.error("[login-lock] 조회 실패(017_login_lockout.sql 미실행일 수 있음):", selectError.message);
+  const failCount = (prev?.fail_count || 0) + 1;
+  const patch = { email, fail_count: failCount, updated_at: new Date().toISOString() };
+
+  if (failCount >= LOGIN_FAIL_THRESHOLD) {
+    patch.locked_until = new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000).toISOString();
+    patch.fail_count = 0; // 잠금이 풀리면 다시 처음부터 셀 수 있게 초기화
+    sendAdminLoginLocked({ email, failCount }).catch((err) => console.error("[mailer] 로그인 잠금 알림 메일 발송 실패:", err.message));
+  }
+
+  const { error: upsertError } = await supabaseAdmin.from("login_attempts").upsert(patch, { onConflict: "email" });
+  if (upsertError) console.error("[login-lock] 저장 실패:", upsertError.message);
+  res.json({ ok: true });
 });
 
 function normalizeTel(s) {

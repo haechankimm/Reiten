@@ -540,6 +540,7 @@ const I18N = {
   "쿠폰을 수정했습니다": { de: "Gutschein aktualisiert" },
   "쿠폰을 만들었습니다": { de: "Gutschein erstellt" },
   "실제 페이지에서 보기": { de: "Auf der echten Seite ansehen" },
+  "로그인 실패가 너무 많아 {n}분간 잠겼습니다. 잠시 후 다시 시도해 주세요.": { de: "Zu viele fehlgeschlagene Anmeldeversuche — für {n} Minuten gesperrt. Bitte später erneut versuchen." },
 
   "사이즈": { en: "Size", ja: "サイズ" },
   "총장": { en: "Length", ja: "着丈" },
