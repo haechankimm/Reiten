@@ -688,13 +688,26 @@ function logAdminAction(req, action, targetType, targetId, detail) {
     });
 }
 
+/* 필터: adminEmail(부분 일치) · action(정확히 일치) · dateFrom/dateTo(그 날짜의 KST 00:00~23:59:59
+   범위, YYYY-MM-DD). 날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정 근처 기록이 하루
+   어긋나 보일 수 있어 +09:00 오프셋을 명시해서 변환한다. */
 app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await supabaseAdmin
-    .from("admin_audit_log")
-    .select("*", { count: "exact" })
-    .order("at", { ascending: false })
-    .range(from, to);
+  const { adminEmail, action, dateFrom, dateTo } = req.query;
+
+  let query = supabaseAdmin.from("admin_audit_log").select("*", { count: "exact" }).order("at", { ascending: false });
+  if (adminEmail) query = query.ilike("admin_email", `%${adminEmail}%`);
+  if (action) query = query.eq("action", action);
+  if (dateFrom) {
+    const t = new Date(`${dateFrom}T00:00:00+09:00`);
+    if (!Number.isNaN(t.getTime())) query = query.gte("at", t.toISOString());
+  }
+  if (dateTo) {
+    const t = new Date(`${dateTo}T23:59:59.999+09:00`);
+    if (!Number.isNaN(t.getTime())) query = query.lte("at", t.toISOString());
+  }
+
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "감사 로그를 불러오지 못했습니다." });
   res.json({

@@ -16,7 +16,7 @@ const SITE = {
     holder: "김해찬",
     email: "Reiten.customersupport@gmail.com",
     kakao: "[카카오톡 채널 주소 입력]",
-    instagram: "[인스타그램 계정 입력]",
+    instagram: "reiten_korea",
 
     /* 주문서를 받을 엔드포인트 (선택).
        Formspree · Google Apps Script 웹앱 주소 등을 넣으면 주문서가 자동 전송됩니다.

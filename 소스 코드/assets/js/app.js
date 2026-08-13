@@ -323,8 +323,12 @@ function renderFooter() {
         <h4>Contact</h4>
         <ul>
           <li><a href="mailto:${esc(o.email)}">${esc(o.email)}</a></li>
-          <li><a href="#">Instagram ${esc(o.instagram)}</a></li>
-          <li><span class="small">${esc(o.kakao)}</span></li>
+          ${o.instagram && !o.instagram.startsWith("[")
+            ? `<li><a href="https://instagram.com/${esc(o.instagram)}" target="_blank" rel="noopener">Instagram @${esc(o.instagram)}</a></li>`
+            : ""}
+          ${o.kakao && !o.kakao.startsWith("[")
+            ? `<li><span class="small">${esc(o.kakao)}</span></li>`
+            : ""}
         </ul>
       </div>
     </div>
