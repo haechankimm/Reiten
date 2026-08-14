@@ -1736,6 +1736,72 @@ app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- 상품 일괄 처리 ----------
+   공개/비공개·컬러 추가·삭제처럼 여러 상품을 한 번에 매만지는 작업. 상품 하나씩 API를
+   반복 호출해도 되지만(클라이언트에서 루프), 그러면 활동 로그에 상품 수만큼 항목이
+   따로따로 쌓여 지저분해진다(재고 탭 일괄저장 때와 같은 이유) — 서버가 한 번에 처리하고
+   활동 로그도 한 줄만 남긴다. */
+function parseBulkIds(body) {
+  const ids = Array.isArray(body && body.ids) ? body.ids.filter((id) => typeof id === "string" && id) : [];
+  return [...new Set(ids)];
+}
+
+app.patch("/api/admin/products/bulk-active", requireAdmin, async (req, res) => {
+  const ids = parseBulkIds(req.body);
+  const active = !!(req.body && req.body.active);
+  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
+
+  const { error } = await supabaseAdmin.from("products").update({ active, updated_at: new Date().toISOString() }).in("id", ids);
+  if (error) {
+    console.error("[admin/products] 일괄 공개/비공개 실패:", error.message);
+    return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
+  }
+  logAdminAction(req, "product.bulk_active", "product", `${ids.length}건`, { ids, active });
+  res.json({ ok: true, count: ids.length });
+});
+
+app.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) => {
+  const ids = parseBulkIds(req.body);
+  const color = String((req.body && req.body.color) || "").trim();
+  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
+  const validColors = await getValidColorMap();
+  if (!color || !validColors[color]) return res.status(400).json({ error: "존재하지 않는 컬러입니다." });
+
+  const { data: rows, error: fetchError } = await supabaseAdmin.from("products").select("id, colors").in("id", ids);
+  if (fetchError) {
+    console.error("[admin/products] 일괄 컬러 추가 조회 실패:", fetchError.message);
+    return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
+  }
+
+  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 upsert.
+  const updates = rows
+    .filter((r) => !(r.colors || []).includes(color))
+    .map((r) => ({ id: r.id, colors: [...(r.colors || []), color] }));
+  if (updates.length) {
+    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    if (updateError) {
+      console.error("[admin/products] 일괄 컬러 추가 실패:", updateError.message);
+      return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
+    }
+  }
+  logAdminAction(req, "product.bulk_color", "product", `${ids.length}건`, { ids, color, updated: updates.length });
+  res.json({ ok: true, count: updates.length });
+});
+
+app.delete("/api/admin/products/bulk", requireAdmin, async (req, res) => {
+  const ids = parseBulkIds(req.body);
+  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
+
+  const { error } = await supabaseAdmin.from("products").delete().in("id", ids);
+  if (error) {
+    console.error("[admin/products] 일괄 삭제 실패:", error.message);
+    return res.status(500).json({ error: "일괄 삭제에 실패했습니다." });
+  }
+  await supabaseAdmin.from("inventory").delete().in("product_id", ids);
+  logAdminAction(req, "product.bulk_delete", "product", `${ids.length}건`, { ids });
+  res.json({ ok: true, count: ids.length });
+});
+
 const productUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },

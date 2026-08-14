@@ -218,6 +218,11 @@
   .grid-card-thumb { position: relative; aspect-ratio: 1; background: var(--bg-surface-2); }
   .grid-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .grid-card-badge { position: absolute; top: 6px; left: 6px; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--bg-canvas); color: var(--text-muted); border: 1px solid var(--border); }
+  /* "비공개" 배지가 좌상단을 쓰고 있어서 선택 체크박스는 우상단에 둔다. 배경 원판을 깔아서
+     사진이 밝은색이어도 체크박스가 묻히지 않게 한다. */
+  .grid-card-select { position: absolute; top: 6px; right: 6px; z-index: 2; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--bg-canvas); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .grid-card-select input { margin: 0; cursor: pointer; }
   .grid-card-body { padding: 8px 10px 2px; }
   .grid-card-body b { font-size: 12px; display: block; line-height: 1.35; }
   /* flex-wrap + min-width: 독일어처럼 버튼 글자가 길어지면 한 줄에 다 안 들어갈 수 있는데,
@@ -257,6 +262,10 @@
   .inv-color-chip-status--out { background: var(--danger); }
   .inv-color-chip-status--low { background: var(--status-pending-ink); }
   .inv-card-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* 재입고(전 사이즈 20개씩)나 완전 품절 처리(전 사이즈 0)처럼, 지금 고른 컬러의 사이즈를
+     전부 같은 수량으로 맞출 때 한 칸씩 입력하지 않아도 되게 하는 일괄 입력. */
+  .inv-bulk-qty { display: flex; gap: 6px; align-items: center; }
+  .inv-bulk-qty-input { width: 64px; height: 28px; padding: 0 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
   .inv-size { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 5px; border-radius: 6px; background: var(--bg-surface); min-width: 54px; }
   .inv-size-label { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
   .inv-size--low { background: var(--status-pending-bg); }
@@ -817,6 +826,18 @@
                 <a class="btn btn--sm btn--ghost" id="pf-view-live" href="#" target="_blank" rel="noopener" hidden data-i18n="실제 페이지에서 보기">실제 페이지에서 보기</a>
               </div>
             </form>
+          </div>
+
+          <div class="panel" id="products-bulk-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <label class="checkbox"><input type="checkbox" id="products-select-all"><span data-i18n="전체 선택">전체 선택</span></label>
+            <span class="small" id="products-selected-count" style="color:var(--text-muted)"></span>
+            <div id="products-bulk-actions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+              <button type="button" class="btn btn--sm" id="products-bulk-active" data-i18n="공개 처리">공개 처리</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="products-bulk-inactive" data-i18n="비공개 처리">비공개 처리</button>
+              <select id="products-bulk-color-select" style="height:30px;border-radius:6px;border:1px solid var(--border);background:var(--field);color:var(--text-primary);font-size:12.5px;padding:0 6px"></select>
+              <button type="button" class="btn btn--sm btn--ghost" id="products-bulk-color-add" data-i18n="컬러 추가">컬러 추가</button>
+              <button type="button" class="btn btn--sm btn--danger" id="products-bulk-delete" data-i18n="선택 삭제">선택 삭제</button>
+            </div>
           </div>
 
           <div id="products-list" class="grid-list"></div>
@@ -1577,6 +1598,10 @@
         </div>
         <div class="inv-color-chips">${colorChips}</div>
         <div class="inv-card-sizes" data-active-color="${esc(activeColor)}">${invSizeRowHTML(sizes, qtyByColorSize, activeColor)}</div>
+        <div class="inv-bulk-qty">
+          <input type="number" min="0" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
+          <button type="button" class="btn btn--sm btn--ghost inv-bulk-qty-apply">${esc(t("전체 적용"))}</button>
+        </div>
         <div class="inv-card-log" hidden></div>
       </div>`;
       })
@@ -1589,14 +1614,35 @@
        리스너를 다시 붙이는 대신 목록 컨테이너에서 이벤트 위임으로 처리한다. */
     el("admin-inventory-body").addEventListener("click", (e) => {
       const chip = e.target.closest(".inv-color-chip");
-      if (!chip) return;
-      const card = chip.closest("[data-product]");
-      const meta = productMeta.get(card.dataset.product);
-      const color = chip.dataset.color;
-      card.querySelectorAll(".inv-color-chip").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
-      const sizesBox = card.querySelector(".inv-card-sizes");
-      sizesBox.dataset.activeColor = color;
-      sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+      if (chip) {
+        const card = chip.closest("[data-product]");
+        const meta = productMeta.get(card.dataset.product);
+        const color = chip.dataset.color;
+        card.querySelectorAll(".inv-color-chip").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+        const sizesBox = card.querySelector(".inv-card-sizes");
+        sizesBox.dataset.activeColor = color;
+        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+        return;
+      }
+
+      /* 재입고·완전 품절 처리처럼 지금 고른 컬러의 모든 사이즈를 같은 수량으로 한 번에
+         맞추는 버튼 — 실제로는 각 입력칸에 값을 넣고 change 이벤트를 그대로 흘려보내서
+         (아래 change 위임 리스너가 하나씩 눌렀을 때와 똑같이 처리) 로직을 중복시키지 않는다. */
+      const bulkBtn = e.target.closest(".inv-bulk-qty-apply");
+      if (bulkBtn) {
+        const card = bulkBtn.closest("[data-product]");
+        const input = card.querySelector(".inv-bulk-qty-input");
+        const qty = Number(input.value);
+        if (!Number.isFinite(qty) || qty < 0) {
+          toast(t("0 이상의 숫자를 입력해 주세요."));
+          return;
+        }
+        card.querySelectorAll(".inv-card-sizes .admin-inv-qty").forEach((qtyInput) => {
+          qtyInput.value = qty;
+          qtyInput.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        input.value = "";
+      }
     });
 
     /* 칸을 고칠 때마다 바로 서버에 저장하면(이전 방식) 몇 칸만 고쳐도 토스트가 계속 뜨고
@@ -2588,11 +2634,20 @@
 
   const productsState = { page: 0, pageSize: 50, total: 0, items: [] };
 
+  /* 상품이 몇 개 안 될 땐 하나씩 눌러도 되지만, 상품을 여러 개 한꺼번에 공개/비공개로 돌리거나
+     (예: 카드사 심사 전 사진 없는 상품 몰아서 숨기기), 새 컬러를 여러 상품에 한 번에 추가하거나,
+     여러 개를 한꺼번에 정리해서 삭제하고 싶을 때는 하나씩 누르는 게 번거롭다는 피드백을 받아
+     체크박스 다중 선택 + 상단 일괄 처리 바를 추가했다. */
+  const selectedProductIds = new Set();
+
   function productRowHTML(p) {
     const img = p.images.find(Boolean);
     return `
       <div class="grid-card" data-id="${esc(p.id)}">
         <div class="grid-card-thumb">
+          <label class="grid-card-select" onclick="event.stopPropagation()">
+            <input type="checkbox" class="product-select" data-id="${esc(p.id)}" ${selectedProductIds.has(p.id) ? "checked" : ""}>
+          </label>
           ${img ? `<img src="${esc(img)}" alt="">` : ""}
           ${p.active ? "" : `<span class="grid-card-badge">${esc(t("비공개"))}</span>`}
         </div>
@@ -2607,12 +2662,33 @@
       </div>`;
   }
 
+  function updateProductsBulkBar() {
+    const n = selectedProductIds.size;
+    el("products-bulk-actions").hidden = n === 0;
+    el("products-selected-count").textContent = n ? t("{n}개 선택됨", { n }) : "";
+    const loadedIds = productsState.items.map((p) => p.id);
+    el("products-select-all").checked = loadedIds.length > 0 && loadedIds.every((id) => selectedProductIds.has(id));
+  }
+
   function renderAdminProducts() {
     productsState.items.forEach((p) => {
       if (p.category && !pfKnownCategories.includes(p.category)) pfKnownCategories.push(p.category);
     });
     const hasMore = productsState.items.length < productsState.total;
     el("products-list").innerHTML = productsState.items.map(productRowHTML).join("") + loadMoreHTML(hasMore, "products-list-more");
+
+    const colorSelect = el("products-bulk-color-select");
+    const prevColorValue = colorSelect.value;
+    colorSelect.innerHTML = Object.values(COLORS).map((c) => `<option value="${esc(c.key)}">${esc(t(c.label))}</option>`).join("");
+    if ([...colorSelect.options].some((o) => o.value === prevColorValue)) colorSelect.value = prevColorValue;
+
+    el("products-list").querySelectorAll(".product-select").forEach((cb) =>
+      cb.addEventListener("change", () => {
+        if (cb.checked) selectedProductIds.add(cb.dataset.id);
+        else selectedProductIds.delete(cb.dataset.id);
+        updateProductsBulkBar();
+      })
+    );
 
     el("products-list").querySelectorAll(".admin-product-edit").forEach((btn) =>
       btn.addEventListener("click", () => {
@@ -2633,7 +2709,60 @@
     );
 
     el("products-list-more")?.addEventListener("click", () => paintAdminProducts(true));
+    updateProductsBulkBar();
   }
+
+  /* 전체 선택은 "지금까지 불러온(더 보기 포함) 상품" 기준이다 — 검색 없이 전체 상품이 목록에
+     있을 때가 많아 실사용에는 무리 없지만, 페이지네이션 중 일부만 불러온 상태에서는 그만큼만
+     선택된다(더 보기를 눌러 마저 불러오면 그때 다시 전체 선택하면 됨). */
+  el("products-select-all").addEventListener("change", () => {
+    if (el("products-select-all").checked) productsState.items.forEach((p) => selectedProductIds.add(p.id));
+    else productsState.items.forEach((p) => selectedProductIds.delete(p.id));
+    renderAdminProducts();
+  });
+
+  async function runProductsBulkAction(fn) {
+    const ids = [...selectedProductIds];
+    if (!ids.length) return;
+    const result = await fn(ids);
+    if (!result) return; // adminFetch가 이미 실패 사유를 토스트로 띄움
+    selectedProductIds.clear();
+    paintAdminProducts();
+    return result;
+  }
+
+  el("products-bulk-active").addEventListener("click", () =>
+    runProductsBulkAction(async (ids) => {
+      const r = await adminFetch("/api/admin/products/bulk-active", { method: "PATCH", body: JSON.stringify({ ids, active: true }) });
+      if (r) toast(t("{n}개 상품을 공개 처리했습니다", { n: r.count }));
+      return r;
+    })
+  );
+  el("products-bulk-inactive").addEventListener("click", () =>
+    runProductsBulkAction(async (ids) => {
+      const r = await adminFetch("/api/admin/products/bulk-active", { method: "PATCH", body: JSON.stringify({ ids, active: false }) });
+      if (r) toast(t("{n}개 상품을 비공개 처리했습니다", { n: r.count }));
+      return r;
+    })
+  );
+  el("products-bulk-color-add").addEventListener("click", () =>
+    runProductsBulkAction(async (ids) => {
+      const color = el("products-bulk-color-select").value;
+      if (!color) { toast(t("추가할 컬러를 선택해 주세요.")); return null; }
+      const r = await adminFetch("/api/admin/products/bulk-color", { method: "PATCH", body: JSON.stringify({ ids, color }) });
+      if (r) toast(t("{n}개 상품에 컬러를 추가했습니다", { n: r.count }));
+      return r;
+    })
+  );
+  el("products-bulk-delete").addEventListener("click", () =>
+    runProductsBulkAction(async (ids) => {
+      if (!confirm(t("선택한 {n}개 상품을 정말 삭제하시겠습니까? 되돌릴 수 없습니다.", { n: ids.length }))) return null;
+      const r = await adminFetch("/api/admin/products/bulk", { method: "DELETE", body: JSON.stringify({ ids }) });
+      if (r && pfEditingId && ids.includes(pfEditingId)) resetProductForm();
+      if (r) toast(t("{n}개 상품을 삭제했습니다", { n: r.count }));
+      return r;
+    })
+  );
 
   async function paintAdminProducts(loadMore = false) {
     productsState.page = loadMore ? productsState.page + 1 : 1;
@@ -2956,6 +3085,9 @@
     "product.create": "상품 등록",
     "product.update": "상품 수정",
     "product.delete": "상품 삭제",
+    "product.bulk_active": "상품 일괄 공개/비공개",
+    "product.bulk_color": "상품 일괄 컬러 추가",
+    "product.bulk_delete": "상품 일괄 삭제",
     "lookbook.create": "룩북 칸 추가",
     "lookbook.update": "룩북 칸 수정",
     "lookbook.delete": "룩북 칸 삭제",
