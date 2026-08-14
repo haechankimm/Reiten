@@ -130,6 +130,26 @@ async function sendAdminLowStock(items) {
   });
 }
 
+/* 재입고 발주 알림(관리자용) — sendAdminLowStock은 "방금 0이 됐다"는 즉시 알림이고, 이건
+   그 상태가 며칠째 이어지고 있는지(daysSince) 매주 한 번 모아서 다시 알려주는 용도다.
+   품절 즉시 메일은 이미 가고 있으니 굳이 매일 또 보내면 스팸이 되므로 주간 다이제스트로 묶는다. */
+async function sendAdminRestockAlert(items, thresholdDays) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL || !items.length) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] 발주 필요 — ${items.length}개 조합이 장기 품절 상태입니다`,
+    html: `
+      <h2>${thresholdDays}일 이상 재고 소진 중인 상품이 있습니다</h2>
+      <p>재입고(발주)를 검토해 주세요.</p>
+      <ul>${items
+        .map((it) => `<li>${escHtml(it.name)} — ${escHtml(it.color || "(공통)")} / ${escHtml(it.size)} · ${it.daysSince}일째 품절</li>`)
+        .join("")}</ul>
+    `,
+  });
+}
+
 /* 카드결제 완료 알림(관리자용) — sendOrderNotification과 거의 같지만 무통장입금 전용인
    "입금자명" 줄 대신 결제수단을 보여준다. 카드결제는 접수 시점에 이미 결제가 끝난 상태라
    sendOrderNotification(접수만 알림)이 아니라 이 함수를 쓴다. */
@@ -270,6 +290,7 @@ module.exports = {
   sendCustomerPaymentConfirmed,
   sendCustomerShipped,
   sendAdminLowStock,
+  sendAdminRestockAlert,
   sendAdminCardPaid,
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,

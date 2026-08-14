@@ -17,6 +17,7 @@ const {
   sendCustomerPaymentConfirmed,
   sendCustomerShipped,
   sendAdminLowStock,
+  sendAdminRestockAlert,
   sendAdminCardPaid,
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,
@@ -2353,6 +2354,68 @@ async function cancelStalePendingOrders() {
 
 cron.schedule("0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
+});
+
+/* ---------- 재입고 발주 알림 ----------
+   재고가 0이 되는 "순간"은 이미 sendAdminLowStock으로 즉시 알리고 있다. 하지만 그 상태가
+   방치되는 경우(발주를 깜빡함)를 잡아주는 알림은 없었다. inventory_log(재고 변동 이력,
+   012_inventory_log.sql)를 거꾸로 훑어서 재고가 마지막으로 "0 이하로 떨어진" 시점을 역산하고,
+   그게 RESTOCK_ALERT_DAYS일 이상 지난 조합만 매주 한 번 모아서 알린다(매일 보내면 같은 품절
+   건이 몇 주씩 반복 발송되어 스팸이 되므로 주간 다이제스트로 묶는다). */
+const RESTOCK_ALERT_DAYS = 7;
+
+async function findOutOfStockSince(productId, color, size, currentQty) {
+  const { data: logs, error } = await supabaseAdmin
+    .from("inventory_log")
+    .select("delta, created_at")
+    .eq("product_id", productId)
+    .eq("color", color)
+    .eq("size", size)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error || !logs || !logs.length) return null; // 이력이 없으면 언제부터 품절인지 알 수 없어 건너뛴다
+
+  let running = currentQty;
+  for (const log of logs) {
+    const before = running - log.delta;
+    if (before > 0) return log.created_at; // 이 변동으로 재고가 0 이하로 떨어짐 — 그 시점이 "since"
+    running = before;
+  }
+  return logs[logs.length - 1].created_at; // 조회한 이력 전체 기간 동안 계속 품절
+}
+
+async function checkRestockNeeded() {
+  const { data: rows, error } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").lte("qty", 0);
+  if (error) {
+    console.error("[restock-alert] 재고 조회 실패:", error.message);
+    return;
+  }
+  if (!rows.length) return;
+
+  const cutoff = Date.now() - RESTOCK_ALERT_DAYS * 24 * 3600 * 1000;
+  const overdue = [];
+  for (const row of rows) {
+    const since = await findOutOfStockSince(row.product_id, row.color, row.size, row.qty);
+    if (since && new Date(since).getTime() <= cutoff) overdue.push({ ...row, since });
+  }
+  if (!overdue.length) return;
+
+  const ids = [...new Set(overdue.map((r) => r.product_id))];
+  const { data: products } = await supabaseAdmin.from("products").select("id, name_ko").in("id", ids);
+  const nameOf = (id) => products?.find((p) => p.id === id)?.name_ko || id;
+
+  const items = overdue.map((r) => ({
+    name: nameOf(r.product_id),
+    color: r.color,
+    size: r.size,
+    daysSince: Math.floor((Date.now() - new Date(r.since).getTime()) / (24 * 3600 * 1000)),
+  }));
+
+  sendAdminRestockAlert(items, RESTOCK_ALERT_DAYS).catch((err) => console.error("[mailer] 재입고 알림 메일 발송 실패:", err.message));
+}
+
+cron.schedule("0 9 * * 1", () => {
+  checkRestockNeeded().catch((err) => console.error("[restock-alert] 실행 실패:", err.message));
 });
 
 if (process.env.SENTRY_DSN) {
