@@ -196,7 +196,7 @@ async function sendCustomerCardPaid(order) {
   });
 }
 
-/* 미입금 자동취소 안내 메일(고객용) — 크론이 3일 지난 입금대기 주문을 취소하는 순간 1회 발송.
+/* 미입금 자동취소 안내 메일(고객용) — 크론이 24시간 지난 입금대기 주문을 취소하는 순간 1회 발송.
    재입금해서 다시 주문할 수 있다는 것도 함께 안내한다. */
 async function sendCustomerAutoCancelled(order) {
   if (!resend || !order.customer.email) return;
@@ -209,7 +209,7 @@ async function sendCustomerAutoCancelled(order) {
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 자동 취소되었습니다</h2>
       <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
-      <p style="margin-top:8px">입금 확인이 되지 않아 주문 접수 3일 경과 후 자동으로 취소되었습니다.</p>
+      <p style="margin-top:8px">입금 확인이 되지 않아 주문 접수 24시간 경과 후 자동으로 취소되었습니다.</p>
       <ul>${itemsHtml(order)}</ul>
       <p style="margin-top:16px;color:#666">다시 주문하고 싶으시면 사이트에서 새로 담아 주문해 주세요. 이미 입금하셨다면 회신 메일로 알려주세요 — 확인 후 복구해드립니다.</p>
     `,

@@ -320,7 +320,11 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
   }
 
   const total = subtotal - coupon.discount + shipping;
-  const paymentId = "reiten-" + crypto.randomUUID();
+  /* "reiten-" 접두어를 붙이면 43자가 되는데, NHN KCP V2 라이브 채널로 전환한 뒤 실제 결제를
+     시도해보니 "KCP V2의 경우 주문 번호는 최대 40자를 넘을 수 없습니다"로 결제창 자체가 안
+     열렸다(포트원 테스트 채널에서는 이 제약이 걸리지 않아 여태 못 보고 넘어갔던 문제).
+     UUID만 쓰면 36자라 여유 있게 들어간다. */
+  const paymentId = crypto.randomUUID();
   const normalizedCustomer = {
     name: String(customer.name).trim(),
     tel: String(customer.tel).trim(),
@@ -2360,13 +2364,12 @@ app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
 });
 
 /* ---------- 미입금 주문 자동취소 ----------
-   고객 화면에는 "3일 내 미입금 시 자동 취소됩니다"라고 안내하지만, 실제로 이걸 수행하는
-   로직이 없었다 — 관리자가 매번 수동으로 걸러서 취소해야 했고, 그동안 재고는 계속 묶여 있었다.
-   매시 정각에 3일 넘게 "입금대기" 상태인 주문을 찾아 취소하고 재고를 되돌린다. */
-const PENDING_CANCEL_DAYS = 3;
+   고객 화면에는 "24시간 내 미입금 시 자동 취소됩니다"라고 안내한다(2026-08-14부터 3일→24시간
+   으로 단축). 매시 정각에 24시간 넘게 "입금대기" 상태인 주문을 찾아 취소하고 재고를 되돌린다. */
+const PENDING_CANCEL_HOURS = 24;
 
 async function cancelStalePendingOrders() {
-  const cutoff = new Date(Date.now() - PENDING_CANCEL_DAYS * 24 * 3600 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - PENDING_CANCEL_HOURS * 3600 * 1000).toISOString();
   const { data: stale, error } = await supabaseAdmin
     .from("orders")
     .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
@@ -2382,7 +2385,7 @@ async function cancelStalePendingOrders() {
   for (const order of stale) {
     const { error: updateError } = await supabaseAdmin
       .from("orders")
-      .update({ status: "취소", cancel_reason: `미입금 ${PENDING_CANCEL_DAYS}일 경과 자동 취소` })
+      .update({ status: "취소", cancel_reason: `미입금 ${PENDING_CANCEL_HOURS}시간 경과 자동 취소` })
       .eq("id", order.id);
     if (updateError) {
       console.error("[auto-cancel] 주문 취소 실패:", order.order_no, updateError.message);

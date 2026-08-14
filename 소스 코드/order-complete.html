@@ -81,7 +81,7 @@
         <b>${t("입금 안내")}</b><br>
         ${esc(o.bankName)} ${esc(o.accountNo)} · ${t("예금주")} ${esc(o.holder)}<br>
         ${t("입금액")} <b class="tnum">${money(order.total)}</b> · ${t("입금자명")} <b>${esc(c.payer)}</b><br>
-        <span class="small">${t("3일 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
+        <span class="small">${t("24시간 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
       </div>`}
 
       ${order.sent ? `

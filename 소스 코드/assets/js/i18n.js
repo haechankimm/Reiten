@@ -294,7 +294,7 @@ const I18N = {
   "총 결제금액": { en: "Total", ja: "合計金額", de: "Gesamtbetrag" },
   "무통장 입금": { en: "Bank Transfer", ja: "銀行振込" },
   "예금주": { en: "Account holder", ja: "口座名義" },
-  "주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.": { en: "If payment isn't received within 3 days of submitting, the order is automatically cancelled.", ja: "注文送信後3日以内にご入金がない場合、自動的にキャンセルされます。" },
+  "주문서 제출 후 24시간 내 미입금 시 자동 취소됩니다.": { en: "If payment isn't received within 24 hours of submitting, the order is automatically cancelled.", ja: "注文送信後24時間以内にご入金がない場合、自動的にキャンセルされます。" },
   "무료": { en: "Free", ja: "無料" },
   "{amount} 더 담으면 배송비가 무료입니다.": { en: "Add {amount} more for free shipping.", ja: "あと{amount}で送料無料になります。" },
   "제출하면 주문서가 바로 전송됩니다.": { en: "Submitting sends your order form immediately.", ja: "送信すると注文フォームがすぐに送られます。" },
@@ -317,7 +317,7 @@ const I18N = {
   "입금 안내": { en: "Payment Instructions", ja: "お振込みのご案内" },
   "입금액": { en: "Amount", ja: "入金額" },
   "입금자명": { en: "Depositor", ja: "振込名義", de: "Einzahlername" },
-  "3일 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.": { en: "If payment isn't received within 3 days, the order is automatically cancelled. {leadTime}.", ja: "3日以内にご入金がない場合、注文は自動的にキャンセルされます。{leadTime}。" },
+  "24시간 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.": { en: "If payment isn't received within 24 hours, the order is automatically cancelled. {leadTime}.", ja: "24時間以内にご入金がない場合、注文は自動的にキャンセルされます。{leadTime}。" },
   "주문서가 정상적으로 전송되었습니다. 확인 후 개별 연락드리겠습니다.": { en: "Your order form was sent successfully. We'll be in touch individually after review.", ja: "注文書は正常に送信されました。確認後、個別にご連絡いたします。" },
   "주문서를 보내주세요": { en: "Please send us your order form", ja: "注文書をお送りください" },
   "아래 주문서를 복사해 이메일 또는 카카오톡으로 보내주시면 접수가 완료됩니다.": {

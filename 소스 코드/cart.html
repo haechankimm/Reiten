@@ -142,7 +142,7 @@
               <div class="notice" style="margin-top:20px" id="bank-notice">
                 <b data-i18n="무통장 입금">무통장 입금</b><br>
                 <span id="bank"></span><br>
-                <span class="small" data-i18n="주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.">주문서 제출 후 3일 내 미입금 시 자동 취소됩니다.</span>
+                <span class="small" data-i18n="주문서 제출 후 24시간 내 미입금 시 자동 취소됩니다.">주문서 제출 후 24시간 내 미입금 시 자동 취소됩니다.</span>
               </div>
 
               <div class="notice" style="margin-top:20px" id="card-notice" hidden>
@@ -277,7 +277,11 @@
 
     const o = SITE.order;
     el("bank").innerHTML = `${esc(o.bankName)} ${esc(o.accountNo)}<br>${t("예금주")} ${esc(o.holder)}`;
-    el("pay-note").textContent = o.formEndpoint
+    /* "복사해서 보내주세요" 안내는 server/도 formEndpoint도 없는 순수 정적 배포 전용 폴백이다.
+       이 사이트는 server/가 떠 있어서 /api/order가 실제로 주문을 받아 처리하는데도, 예전엔
+       formEndpoint 설정 여부만 보고 판단해서 고객에게 "네가 직접 복사해서 보내라"는 문구가
+       그대로 노출되고 있었다(실제로는 아무것도 안 해도 되는데). hasServer도 함께 확인한다. */
+    el("pay-note").textContent = o.formEndpoint || hasServer
       ? t("제출하면 주문서가 바로 전송됩니다.")
       : t("제출하면 주문번호와 함께 복사용 주문서가 만들어집니다. 이메일 또는 카카오톡으로 보내주세요.");
   }
@@ -383,16 +387,24 @@
      cardPaymentEnabled가 false면 결제 수단 선택란 자체를 안 보여주고 무통장입금만 남긴다
      (server/ 없는 정적 배포와 완전히 동일하게 동작). */
   let cardPaymentEnabled = false;
+  /* /api/config 응답 자체가 오면(카드결제 켜짐 여부와 무관하게) server/가 떠서 /api/order를
+     실제로 처리해준다는 뜻이다 — pay-note가 이 값을 보고 "복사해서 보내주세요" 문구를 끌지
+     말지 정한다. */
+  let hasServer = false;
   (async () => {
     try {
       const res = await fetch("/api/config");
       if (!res.ok) return;
+      hasServer = true;
       const cfg = await res.json();
       if (cfg.cardPaymentEnabled) {
         cardPaymentEnabled = true;
         el("pay-method-field").hidden = false;
       }
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      paint();
+    }
   })();
 
   function syncPayMethodUI() {
