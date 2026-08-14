@@ -35,6 +35,14 @@
           <button class="chip" type="button" data-tab="signup" aria-pressed="false" data-i18n="회원가입">회원가입</button>
         </div>
 
+        <div id="social-login" style="margin-top:24px;max-width:44ch">
+          <button class="btn btn--full btn--kakao" type="button" id="kakao-login">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#191919" d="M9 1.5C4.58 1.5 1 4.31 1 7.78c0 2.22 1.48 4.17 3.71 5.29-.16.6-.6 2.22-.69 2.57-.11.43.16.42.34.31.14-.09 2.24-1.52 3.15-2.15.48.07.97.1 1.49.1 4.42 0 8-2.81 8-6.28S13.42 1.5 9 1.5Z"/></svg>
+            <span data-i18n="카카오로 로그인">카카오로 로그인</span>
+          </button>
+          <div class="auth-divider"><span data-i18n="또는">또는</span></div>
+        </div>
+
         <form id="login-form" novalidate style="margin-top:24px;max-width:44ch">
           <div class="field">
             <label for="li-email" data-i18n="이메일">이메일</label>
@@ -175,6 +183,9 @@
   renderHeader("");
 
   const el = (id) => document.getElementById(id);
+  /* supabase-js가 client 생성 시점에 OAuth 콜백 해시를 자동으로 읽고 지워버리므로,
+     그보다 먼저(동기적으로) 원본 해시를 스냅샷해둔다 — 에러 메시지 표시용. */
+  const initialHash = location.hash;
 
   /* Supabase Auth 에러는 항상 영어 원문(error.message)이라 자주 나오는 것만 번역해 보여주고,
      모르는 메시지는 원문을 그대로 보여준다(안 보여주는 것보다는 낫다). */
@@ -290,6 +301,15 @@
     const isRecovery = /type=recovery/.test(location.hash);
     const profile = isRecovery ? null : await getCurrentProfile();
 
+    /* 카카오 등 OAuth 로그인이 실패하면(예: provider 설정 누락) Supabase가 콜백 URL 해시에
+       error/error_description을 담아 이 페이지로 돌려보낸다. 원문 그대로라도 보여주는 게
+       아무 반응 없는 것보다 낫다. */
+    const oauthErrorMatch = /[#&]error_description=([^&]+)/.exec(initialHash);
+    if (oauthErrorMatch) {
+      toast(decodeURIComponent(oauthErrorMatch[1].replace(/\+/g, " ")));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
     const savedEmail = localStorage.getItem("reiten_saved_email");
     if (savedEmail) {
       el("li-email").value = savedEmail;
@@ -299,6 +319,7 @@
     if (isRecovery) {
       el("auth-view").hidden = false;
       el("auth-tabs").hidden = true;
+      el("social-login").hidden = true;
       el("login-form").hidden = true;
       el("signup-form").hidden = true;
       el("reset-confirm-form").hidden = false;
@@ -343,13 +364,29 @@
       el("login-form").hidden = true;
       el("signup-form").hidden = true;
       el("auth-tabs").hidden = true;
+      el("social-login").hidden = true;
       el("reset-request-form").hidden = false;
     });
 
     el("rq-cancel")?.addEventListener("click", () => {
       el("reset-request-form").hidden = true;
       el("auth-tabs").hidden = false;
+      el("social-login").hidden = false;
       el("login-form").hidden = false;
+    });
+
+    el("kakao-login")?.addEventListener("click", async () => {
+      const btn = el("kakao-login");
+      btn.disabled = true;
+      const { error } = await client.auth.signInWithOAuth({
+        provider: "kakao",
+        options: { redirectTo: location.origin + "/account.html" },
+      });
+      if (error) {
+        toast(authErrorMessage(error));
+        btn.disabled = false;
+      }
+      /* 성공 시엔 카카오 로그인 화면으로 브라우저가 이동하므로 별도 처리 불필요 */
     });
 
     el("reset-request-form")?.addEventListener("submit", async (e) => {

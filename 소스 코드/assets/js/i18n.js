@@ -628,6 +628,8 @@ const I18N = {
   },
   "로그인": { en: "Log In", ja: "ログイン", de: "Anmelden" },
   "회원가입": { en: "Sign Up", ja: "会員登録", de: "Registrieren" },
+  "카카오로 로그인": { en: "Continue with Kakao", ja: "カカオでログイン", de: "Mit Kakao anmelden" },
+  "또는": { en: "or", ja: "または", de: "oder" },
   "비밀번호": { en: "Password", ja: "パスワード", de: "Passwort" },
   "비회원으로 주문하셨나요?": { en: "Ordered as a guest?", ja: "会員登録せずにご注文されましたか？", de: "Als Gast bestellt?" },
   "주문번호로 조회하기": { en: "Look up by order number", ja: "注文番号で照会する", de: "Mit Bestellnummer nachverfolgen" },

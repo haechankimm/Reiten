@@ -190,6 +190,11 @@ html[data-theme="night"] .sheen {
 .btn--sm { height: 40px; padding: 0 18px; font-size: 11px; }
 .btn--full { width: 100%; }
 .btn[disabled] { opacity: 0.35; pointer-events: none; }
+.btn--kakao { background: #FEE500; color: #191919; border-color: #FEE500; }
+.btn--kakao:hover { background: #FEE500; color: #191919; }
+
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .link-u {
   border-bottom: 1px solid currentColor;
