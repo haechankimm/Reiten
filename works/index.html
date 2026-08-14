@@ -240,11 +240,22 @@
   .inv-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .inv-card-name { flex: 1 1 150px; min-width: 130px; }
   .inv-card-name b { display: block; font-size: 13px; line-height: 1.3; }
-  .inv-card-colors { display: flex; flex-direction: column; gap: 8px; }
-  .inv-color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border-soft, var(--border)); }
-  .inv-color-row:first-child { border-top: none; padding-top: 0; }
-  .inv-color-swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
-  .inv-color-label { min-width: 64px; }
+  /* 카드마다 컬러 수가 달라서(1개~4개) 전부 펼쳐 보여주면 카드 높이가 제각각이라 그리드가
+     지저분해 보였다(사용자가 스크린샷으로 신고) — 컬러를 칩으로 골라서 그 컬러의 사이즈 한
+     줄만 보여주는 방식으로 바꿔 모든 카드가 비슷한 높이를 갖게 한다. 다만 "한눈에 훑어보기"가
+     아예 안 되면 안 되니, 칩 위에 그 컬러 안에 품절/재고부족 사이즈가 있는지 작은 점으로 표시. */
+  .inv-color-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .inv-color-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg-surface);
+    color: var(--text-secondary); font-size: 11.5px; cursor: pointer;
+  }
+  .inv-color-chip:hover { border-color: var(--text-muted); }
+  .inv-color-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--text-primary); background: var(--bg-surface-2); }
+  .inv-color-chip-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
+  .inv-color-chip-status { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .inv-color-chip-status--out { background: var(--danger); }
+  .inv-color-chip-status--low { background: var(--status-pending-ink); }
   .inv-card-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
   .inv-size { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 5px; border-radius: 6px; background: var(--bg-surface); min-width: 54px; }
   .inv-size-label { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
@@ -1451,6 +1462,46 @@
      입력하지 않은 조합은 inventory 테이블에 행 자체가 없으므로, 기존 행에서 사이즈를 뽑는 대신
      "상품 등록 폼"에 저장된 컬러·사이즈 목록을 기준으로 입력칸을 전부 만들고, 값이 있으면 채워
      넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
+  /* 컬러 하나의 사이즈 입력 한 줄(HTML 문자열) — 컬러 칩을 바꿀 때마다 이 한 줄만 다시
+     그려 넣는다(카드 전체를 다시 그리지 않음, 그래서 다른 컬러의 입력값도 그대로 유지됨). */
+  function invSizeRowHTML(sizes, qtyByColorSize, color) {
+    return sizes
+      .map((size) => {
+        const qty = qtyByColorSize.get(`${color}:${size}`) ?? 0;
+        return `
+        <div class="inv-size${invSizeClass(qty)}">
+          <span class="inv-size-label">${esc(size)}</span>
+          <input type="number" min="0" class="admin-inv-qty" data-color="${esc(color)}" data-size="${esc(size)}" value="${qty}">
+        </div>`;
+      })
+      .join("");
+  }
+
+  /* 컬러별로 하나라도 품절/재고부족 사이즈가 있으면 칩에 작은 점을 얹어준다 — 카드가 한 번에
+     한 컬러 줄만 보여줘도 "이 상품 어디 문제 있나"는 칩만 보고 훑을 수 있게 하기 위함. */
+  function invColorStatusClass(sizes, qtyByColorSize, color) {
+    let worst = "";
+    sizes.forEach((size) => {
+      const qty = qtyByColorSize.get(`${color}:${size}`) ?? 0;
+      if (qty <= 0) worst = "--out";
+      else if (qty <= 2 && worst !== "--out") worst = "--low";
+    });
+    return worst;
+  }
+
+  /* 재고는 원래 "상품코드 · 사이즈" 문자열만 한 줄씩 나열해서 8개 상품 x 5사이즈 = 40줄이
+     전부 똑같이 생겨 알아보기 힘들었다 — 상품 썸네일·이름으로 카드를 묶고, 그 안에 사이즈별
+     수량을 색으로 구분해서(품절=빨강, 2개 이하=주황) 한눈에 훑을 수 있게 바꿨다. 그런데
+     컬러 수가 상품마다 달라(1~4개) 전 컬러를 펼쳐 보여주면 카드 높이가 제각각이라 그리드가
+     지저분해 보인다는 피드백을 받아, 컬러는 칩으로 고르고 그 컬러의 사이즈 한 줄만 보이도록
+     다시 바꿨다(카드 높이가 상품마다 비슷해짐). 컬러 칩에 품절/재고부족 표시 점을 얹어서
+     칩을 눌러보지 않고도 문제 있는 컬러를 훑어볼 수 있게 했다.
+     이미 "상품" 탭에서 불러온 목록(productsState)이 있어도 재고 탭이 상품 탭보다 먼저
+     그려질 수 있어(둘 다 로그인 직후 동시에 fetch됨) 여기서 상품 목록을 다시 받아 매칭한다. */
+  /* 재고는 이제 상품 × 컬러 × 사이즈 단위다(014_inventory_by_color.sql). 아직 값을 한 번도
+     입력하지 않은 조합은 inventory 테이블에 행 자체가 없으므로, 기존 행에서 사이즈를 뽑는 대신
+     "상품 등록 폼"에 저장된 컬러·사이즈 목록을 기준으로 입력칸을 전부 만들고, 값이 있으면 채워
+     넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
   async function paintAdminInventory() {
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
@@ -1463,6 +1514,9 @@
       if (!qtyByProduct.has(r.productId)) qtyByProduct.set(r.productId, new Map());
       qtyByProduct.get(r.productId).set(`${r.color}:${r.size}`, r.qty);
     });
+
+    /* 클릭 핸들러(컬러 칩)가 상품별 sizes/qtyByColorSize를 다시 찾을 수 있도록 보관해둔다. */
+    const productMeta = new Map();
 
     const legend = `
       <div class="inv-legend">
@@ -1477,25 +1531,18 @@
         if (!colors.length || !sizes.length) return "";
         const qtyByColorSize = qtyByProduct.get(p.id) || new Map();
         const img = (p.images || []).find(Boolean);
+        productMeta.set(p.id, { sizes, qtyByColorSize });
 
-        const colorRows = colors
+        const activeColor = colors[0];
+        const colorChips = colors
           .map((c) => {
-            const sizeInputs = sizes
-              .map((size) => {
-                const qty = qtyByColorSize.get(`${c}:${size}`) ?? 0;
-                return `
-              <div class="inv-size${invSizeClass(qty)}">
-                <span class="inv-size-label">${esc(size)}</span>
-                <input type="number" min="0" class="admin-inv-qty" data-color="${esc(c)}" data-size="${esc(size)}" value="${qty}">
-              </div>`;
-              })
-              .join("");
+            const statusCls = invColorStatusClass(sizes, qtyByColorSize, c);
             return `
-          <div class="inv-color-row">
-            <span class="inv-color-swatch" style="background:${esc(COLORS[c].hex)}" title="${esc(t(COLORS[c].label))}"></span>
-            <span class="small inv-color-label">${esc(t(COLORS[c].label))}</span>
-            <div class="inv-card-sizes">${sizeInputs}</div>
-          </div>`;
+          <button type="button" class="inv-color-chip" data-color="${esc(c)}" aria-pressed="${c === activeColor}">
+            <span class="inv-color-chip-dot" style="background:${esc(COLORS[c].hex)}"></span>
+            <span>${esc(t(COLORS[c].label))}</span>
+            ${statusCls ? `<span class="inv-color-chip-status inv-color-chip-status${statusCls}"></span>` : ""}
+          </button>`;
           })
           .join("");
 
@@ -1509,7 +1556,8 @@
           </div>
           <button type="button" class="btn btn--sm btn--ghost inv-log-toggle">${esc(t("이력 보기"))}</button>
         </div>
-        <div class="inv-card-colors">${colorRows}</div>
+        <div class="inv-color-chips">${colorChips}</div>
+        <div class="inv-card-sizes" data-active-color="${esc(activeColor)}">${invSizeRowHTML(sizes, qtyByColorSize, activeColor)}</div>
         <div class="inv-card-log" hidden></div>
       </div>`;
       })
@@ -1518,19 +1566,35 @@
     el("admin-inventory-body").innerHTML =
       legend + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-items:start">${cards}</div>`;
 
-    el("admin-inventory-body").querySelectorAll(".admin-inv-qty").forEach((input) =>
-      input.addEventListener("change", async () => {
-        const card = input.closest("[data-product]");
-        const box = input.closest(".inv-size");
-        const qty = Number(input.value);
-        await adminFetch("/api/admin/inventory", {
-          method: "PATCH",
-          body: JSON.stringify({ productId: card.dataset.product, color: input.dataset.color, size: input.dataset.size, qty }),
-        });
-        box.className = "inv-size" + invSizeClass(qty);
-        toast(t("재고를 저장했습니다"));
-      })
-    );
+    /* 사이즈 입력칸은 컬러 칩을 바꿀 때마다 통째로 새로 그려지므로, 카드 하나당 한 번씩
+       리스너를 다시 붙이는 대신 목록 컨테이너에서 이벤트 위임으로 처리한다. */
+    el("admin-inventory-body").addEventListener("click", (e) => {
+      const chip = e.target.closest(".inv-color-chip");
+      if (!chip) return;
+      const card = chip.closest("[data-product]");
+      const meta = productMeta.get(card.dataset.product);
+      const color = chip.dataset.color;
+      card.querySelectorAll(".inv-color-chip").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+      const sizesBox = card.querySelector(".inv-card-sizes");
+      sizesBox.dataset.activeColor = color;
+      sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+    });
+
+    el("admin-inventory-body").addEventListener("change", async (e) => {
+      const input = e.target.closest(".admin-inv-qty");
+      if (!input) return;
+      const card = input.closest("[data-product]");
+      const box = input.closest(".inv-size");
+      const qty = Number(input.value);
+      await adminFetch("/api/admin/inventory", {
+        method: "PATCH",
+        body: JSON.stringify({ productId: card.dataset.product, color: input.dataset.color, size: input.dataset.size, qty }),
+      });
+      const meta = productMeta.get(card.dataset.product);
+      meta.qtyByColorSize.set(`${input.dataset.color}:${input.dataset.size}`, qty);
+      box.className = "inv-size" + invSizeClass(qty);
+      toast(t("재고를 저장했습니다"));
+    });
 
     el("admin-inventory-body").querySelectorAll(".inv-log-toggle").forEach((btn) =>
       btn.addEventListener("click", () => toggleInventoryLog(btn))
