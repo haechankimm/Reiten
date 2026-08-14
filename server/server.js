@@ -1406,6 +1406,58 @@ app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* 재고 탭에서 칸마다 바로바로 저장하던 방식은 몇 칸만 고쳐도 토스트가 계속 뜨고 활동 로그도
+   항목 수만큼 따로 쌓여 지저분했다 — Works가 "고치고 나서 저장 버튼 한 번"으로 통일되면서
+   이 엔드포인트로 여러 항목을 한 번에 받아 한 번의 활동 로그로 남긴다(위 단일 항목용
+   PATCH /api/admin/inventory는 다른 소비자가 없어 그대로 남겨두되 이 탭에서는 더 이상 쓰지 않는다). */
+app.patch("/api/admin/inventory/bulk", requireAdmin, async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: "items가 필요합니다." });
+  if (items.length > 500) return res.status(400).json({ error: "한 번에 저장할 수 있는 항목이 너무 많습니다." });
+
+  const normalized = [];
+  for (const it of items) {
+    const productId = it && it.productId;
+    const colorStr = String((it && it.color) || "");
+    const size = it && it.size;
+    const qtyNum = Math.floor(Number(it && it.qty));
+    if (!productId || !colorStr || !size || !Number.isFinite(qtyNum) || qtyNum < 0) {
+      return res.status(400).json({ error: "각 항목은 productId, color, size, qty(0 이상)가 필요합니다." });
+    }
+    normalized.push({ productId, color: colorStr, size, qty: qtyNum });
+  }
+
+  const productIds = [...new Set(normalized.map((it) => it.productId))];
+  const { data: prevRows } = await supabaseAdmin
+    .from("inventory")
+    .select("product_id, color, size, qty")
+    .in("product_id", productIds);
+  const prevQty = new Map((prevRows || []).map((r) => [`${r.product_id}:${r.color}:${r.size}`, r.qty]));
+
+  const { error } = await supabaseAdmin
+    .from("inventory")
+    .upsert(
+      normalized.map((it) => ({ product_id: it.productId, color: it.color, size: it.size, qty: it.qty })),
+      { onConflict: "product_id,color,size" }
+    );
+  if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
+
+  const logRows = normalized
+    .map((it) => ({
+      productId: it.productId,
+      color: it.color,
+      size: it.size,
+      delta: it.qty - (prevQty.get(`${it.productId}:${it.color}:${it.size}`) || 0),
+      reason: "admin_adjust",
+      adminEmail: req.user.email,
+    }))
+    .filter((r) => r.delta !== 0);
+  if (logRows.length) logInventoryChange(logRows);
+
+  logAdminAction(req, "inventory.bulk_update", "inventory", `${normalized.length}건`, { count: normalized.length, productIds });
+  res.json({ ok: true, count: normalized.length });
+});
+
 /* 재고 변동 이력 조회 — productId로 좁혀서 최근 변동부터 보여준다(전체 상품을 한 번에 보여주기엔
    너무 많다). 재고 탭의 상품 카드에서 "이력 보기"를 눌렀을 때 쓴다. */
 app.get("/api/admin/inventory/log", requireAdmin, async (req, res) => {

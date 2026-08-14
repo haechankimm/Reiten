@@ -570,11 +570,14 @@
             <div>
               <div class="content-title" data-i18n="재고">재고</div>
             </div>
-            <div style="position:relative">
-              <button type="button" class="btn btn--sm btn--ghost" id="inv-export" data-i18n="내보내기">내보내기</button>
-              <div id="inv-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
-                <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
-                <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="button" class="btn btn--sm" id="inv-save-btn" disabled data-i18n="변경사항 저장">변경사항 저장</button>
+              <div style="position:relative">
+                <button type="button" class="btn btn--sm btn--ghost" id="inv-export" data-i18n="내보내기">내보내기</button>
+                <div id="inv-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1204,20 +1207,23 @@
     el("orders-detail").innerHTML = o ? orderDetailHTML(o) : `<p class="small" style="padding:4px">${esc(t("주문이 없습니다"))}</p>`;
 
     if (o) {
-      el("od-status").addEventListener("change", async () => {
-        const status = el("od-status").value;
-        await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, { method: "PATCH", body: JSON.stringify({ status }) });
-        o.status = status;
-        toast(t("상태를 저장했습니다"));
-        renderOrdersSplit();
-      });
+      /* 예전엔 상태 드롭다운이 고르는 즉시 저장돼서(배송정보 저장 버튼과 저장 방식이 서로 달라
+         헷갈렸고, 활동 로그에도 상태 변경과 배송정보 변경이 따로따로 쌓였다) — 이제 상태도
+         드롭다운만으로는 저장되지 않고, 배송정보와 함께 이 버튼 하나로만 저장된다(한 번의
+         저장 = 활동 로그 한 줄). */
       el("od-save").addEventListener("click", async () => {
+        const status = el("od-status").value;
         const courier = el("od-courier").value;
         const trackingNo = el("od-tracking").value.trim();
-        await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, { method: "PATCH", body: JSON.stringify({ courier, trackingNo }) });
+        const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, courier, trackingNo }),
+        });
+        if (!result) return;
+        o.status = status;
         o.courier = courier;
         o.trackingNo = trackingNo;
-        toast(t("배송정보를 저장했습니다"));
+        toast(t("주문 정보를 저장했습니다"));
         renderOrdersSplit();
       });
     }
@@ -1341,6 +1347,7 @@
         <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+          <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
           ${
             r.restocked
               ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>`
@@ -1358,13 +1365,19 @@
       ? returnsState.items.map(returnCardHTML).join("") + loadMoreHTML(hasMore, "admin-returns-more")
       : `<p class="small">${esc(t("조건에 맞는 신청이 없습니다"))}</p>`;
 
-    el("admin-returns-list").querySelectorAll(".admin-return-status").forEach((sel) =>
-      sel.addEventListener("change", async () => {
-        const id = sel.closest("[data-id]").dataset.id;
+    /* 상태 드롭다운을 고르는 즉시 저장하던 방식(다른 탭 만지다 실수로 스크롤하며 값이 바뀌어도
+       바로 저장돼버림) 대신, "저장" 버튼을 눌러야 반영되도록 바꿨다. */
+    el("admin-returns-list").querySelectorAll(".admin-return-save").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-id]");
+        const id = card.dataset.id;
+        const status = card.querySelector(".admin-return-status").value;
+        btn.disabled = true;
         const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
-          body: JSON.stringify({ status: sel.value }),
+          body: JSON.stringify({ status }),
         });
+        btn.disabled = false;
         if (!result) return;
 
         /* 카드결제 건이 "완료"로 바뀌면 서버가 포트원 환불을 같이 시도한다 — 그 결과를 그대로
@@ -1580,21 +1593,54 @@
       sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
     });
 
-    el("admin-inventory-body").addEventListener("change", async (e) => {
+    /* 칸을 고칠 때마다 바로 서버에 저장하면(이전 방식) 몇 칸만 고쳐도 토스트가 계속 뜨고
+       활동 로그도 항목 수만큼 따로따로 쌓여 지저분했다 — 이제는 입력은 전부 메모리에만
+       모아두고(pendingChanges), 상단 "변경사항 저장" 버튼을 눌러야 한 번에 저장하며,
+       활동 로그에도 이 저장 한 번이 한 줄로만 남는다(`inventory.bulk_update`). */
+    const pendingChanges = new Map();
+    const saveBtn = el("inv-save-btn");
+
+    function updateSaveBtn() {
+      const n = pendingChanges.size;
+      saveBtn.disabled = n === 0;
+      saveBtn.textContent = n ? t("변경사항 저장 ({n}건)", { n }) : t("변경사항 저장");
+    }
+    updateSaveBtn();
+
+    el("admin-inventory-body").addEventListener("change", (e) => {
       const input = e.target.closest(".admin-inv-qty");
       if (!input) return;
       const card = input.closest("[data-product]");
       const box = input.closest(".inv-size");
       const qty = Number(input.value);
-      await adminFetch("/api/admin/inventory", {
-        method: "PATCH",
-        body: JSON.stringify({ productId: card.dataset.product, color: input.dataset.color, size: input.dataset.size, qty }),
-      });
-      const meta = productMeta.get(card.dataset.product);
-      meta.qtyByColorSize.set(`${input.dataset.color}:${input.dataset.size}`, qty);
+      const productId = card.dataset.product;
+      const color = input.dataset.color;
+      const size = input.dataset.size;
+      pendingChanges.set(`${productId}:${color}:${size}`, { productId, color, size, qty });
       box.className = "inv-size" + invSizeClass(qty);
-      toast(t("재고를 저장했습니다"));
+      updateSaveBtn();
     });
+
+    saveBtn.onclick = async () => {
+      if (!pendingChanges.size) return;
+      const items = [...pendingChanges.values()];
+      saveBtn.disabled = true;
+      const result = await adminFetch("/api/admin/inventory/bulk", {
+        method: "PATCH",
+        body: JSON.stringify({ items }),
+      });
+      if (!result) {
+        updateSaveBtn(); // 실패 시(세션 만료 등) 변경사항을 지우지 않고 다시 시도할 수 있게 둔다
+        return;
+      }
+      items.forEach((it) => {
+        const meta = productMeta.get(it.productId);
+        if (meta) meta.qtyByColorSize.set(`${it.color}:${it.size}`, it.qty);
+      });
+      pendingChanges.clear();
+      updateSaveBtn();
+      toast(t("재고 {n}건을 저장했습니다", { n: items.length }));
+    };
 
     el("admin-inventory-body").querySelectorAll(".inv-log-toggle").forEach((btn) =>
       btn.addEventListener("click", () => toggleInventoryLog(btn))
@@ -2856,6 +2902,7 @@
     "return.restock": "반품 재고 복원",
     "return.refund": "반품 환불",
     "inventory.update": "재고 수정",
+    "inventory.bulk_update": "재고 일괄 저장",
     "inventory.export": "재고 목록 내보내기",
     "dashboard.export": "대시보드 내보내기",
     "coupon.create": "쿠폰 생성",
