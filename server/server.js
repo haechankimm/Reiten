@@ -1884,11 +1884,15 @@ app.patch("/api/admin/colors/:key", requireAdmin, async (req, res) => {
    (COLORS[key]가 undefined가 됨), 삭제 전에 반드시 사용 여부를 먼저 확인한다. */
 app.delete("/api/admin/colors/:key", requireAdmin, async (req, res) => {
   const key = req.params.key;
+  /* supabase-js의 .contains(col, [값])은 값이 JS 배열이면 Postgres 배열 리터럴({값} 형태)로
+     직렬화한다 — colors는 실제 Postgres 배열이 아니라 jsonb라서 그 형태를 그대로 받으면
+     "invalid input syntax for type json"으로 매번 실패했다(예: "clay" 색상 삭제 시도 시 실제
+     재현됨). jsonb 컬럼에서 포함 여부(@>)를 확인하려면 JSON 문자열 그대로 넘겨야 한다. */
   const { data: inUse, error: checkError } = await supabaseAdmin
     .from("products")
     .select("id")
     .eq("active", true)
-    .contains("colors", [key]);
+    .filter("colors", "cs", JSON.stringify([key]));
   if (checkError) {
     console.error("[admin/colors] 사용 여부 확인 실패:", checkError.message);
     return res.status(500).json({ error: "삭제 가능 여부를 확인하지 못했습니다." });

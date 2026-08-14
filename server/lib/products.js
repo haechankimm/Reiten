@@ -11,6 +11,7 @@ function toProductDto(row) {
     price: row.price,
     badge: row.badge || undefined,
     images: row.images || [],
+    imageColors: row.image_colors || [],
     colors: row.colors || [],
     sizes: row.sizes || [],
     soldOut: row.sold_out || [],
@@ -57,6 +58,13 @@ function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
   if (b.badge !== undefined) patch.badge = String(b.badge || "").trim().slice(0, 40) || null;
   if (b.images !== undefined) {
     patch.images = Array.isArray(b.images) ? b.images.slice(0, 6).map((u) => (u ? String(u).slice(0, 500) : null)) : [];
+  }
+  if (b.imageColors !== undefined) {
+    /* images와 같은 인덱스로 짝을 맞추는 배열이라 필터링하면 안 되고(칸이 밀림), 유효하지 않은
+       값만 null로 바꿔치기한다. */
+    patch.image_colors = Array.isArray(b.imageColors)
+      ? b.imageColors.slice(0, 6).map((c) => (c && validColors[c] ? c : null))
+      : [];
   }
   if (b.colors !== undefined) {
     patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => validColors[c]) : [];

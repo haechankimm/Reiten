@@ -212,6 +212,13 @@
         if (p.soldOut.includes(state.size) || outSizes.includes(state.size)) {
           state.size = p.sizes.find(s => !p.soldOut.includes(s) && !outSizes.includes(s)) || state.size;
         }
+        /* 관리자가 이 컬러로 태그해둔 사진이 있으면 그 사진으로 바꾼다(Works 상품 등록 폼의
+           "이 사진의 컬러" 설정). 태그된 사진이 없으면 지금 보던 사진을 그대로 둔다 —
+           예전엔 컬러 순서와 사진 순서가 그냥 같다고 가정했다가 순서가 안 맞으면 엉뚱한
+           사진으로 바뀌는 문제가 있어서 뺐던 기능인데, 이번엔 명시적으로 태그된 경우에만
+           바꾸는 방식이라 그 문제가 없다. */
+        const taggedIndex = (p.imageColors || []).findIndex((c) => c === state.color);
+        if (taggedIndex >= 0 && p.images[taggedIndex]) state.img = taggedIndex;
         render();
       }));
 

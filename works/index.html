@@ -265,8 +265,14 @@
   .inv-size--out .inv-size-label { color: var(--danger); }
   .admin-inv-qty { width: 48px; height: 30px; padding: 0 4px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
   .inv-card-log { padding-top: 10px; border-top: 1px solid var(--border); }
-  .inv-log-list { display: flex; flex-direction: column; gap: 6px; }
-  .inv-log-row { display: grid; grid-template-columns: 120px 70px 40px 50px 1fr; gap: 10px; align-items: center; }
+  /* 이력이 최대 50건까지 한 번에 펼쳐질 수 있어(서버가 상품당 50건으로 제한), 제한 없이
+     쌓이면 카드가 한없이 길어져서 같은 줄의 다른 카드들과 높이가 안 맞아 보인다 — 목록
+     자체에 높이 제한 + 스크롤을 줘서 카드 높이는 늘 일정하게 유지한다. */
+  .inv-log-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+  .inv-log-row { display: grid; grid-template-columns: 76px 56px 34px 40px 1fr; gap: 8px; align-items: center; }
+  /* 그리드 트랙은 기본적으로 내용의 고유 너비 밑으로는 안 줄어들어서(min-width:auto),
+     관리자 이메일처럼 긴 텍스트가 카드 테두리를 밀고 나가 넘쳐 보이는 원인이 됐다. */
+  .inv-log-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---------- 룩북: 실제 배치를 그대로 흉내 낸 클릭형 미리보기 ---------- */
   .look-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
@@ -990,7 +996,7 @@
         <button type="button" class="icon-btn" id="pe-rotate-right" aria-label="Rotate right" data-i18n-attr="aria-label:오른쪽으로 회전">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 1 0 6.5 9.7"/></svg>
         </button>
-        <input type="range" id="pe-zoom" min="100" max="300" value="100" step="1" aria-label="Zoom" data-i18n-attr="aria-label:확대">
+        <input type="range" id="pe-zoom" min="40" max="300" value="100" step="1" aria-label="Zoom" data-i18n-attr="aria-label:확대">
       </div>
       <div class="pe-row" style="justify-content:flex-end">
         <button type="button" class="btn btn--ghost" id="pe-cancel" data-i18n="닫기">닫기</button>
@@ -1671,12 +1677,14 @@
       ? `<div class="inv-log-list">${rows
           .map(
             (r) => `
-        <div class="inv-log-row small">
+        <div class="inv-log-row small" title="${esc(
+          [fmtDate(r.at), t(INVENTORY_LOG_REASON_LABELS[r.reason] || r.reason), r.ref, r.adminEmail].filter(Boolean).join(" · ")
+        )}">
           <span class="tnum">${fmtDate(r.at)}</span>
           <span>${r.color ? esc(t(COLORS[r.color]?.label || r.color)) : ""}</span>
           <span>${esc(r.size)}</span>
           <span class="tnum" style="color:${r.delta < 0 ? "var(--danger)" : "var(--ok)"}">${r.delta > 0 ? "+" : ""}${r.delta}</span>
-          <span>${esc(t(INVENTORY_LOG_REASON_LABELS[r.reason] || r.reason))}${r.ref ? ` · ${esc(r.ref)}` : ""}${r.adminEmail ? ` · ${esc(r.adminEmail)}` : ""}</span>
+          <span>${esc(t(INVENTORY_LOG_REASON_LABELS[r.reason] || r.reason))}${r.ref ? ` · ${esc(r.ref)}` : ""}${r.adminEmail ? ` · ${esc(emailName(r.adminEmail))}` : ""}</span>
         </div>`
           )
           .join("")}</div>`
@@ -2064,6 +2072,10 @@
   /* ---------- 상품 관리 ---------- */
   let pfEditingId = null;
   let pfImages = [null, null, null, null];
+  /* 사진 슬롯마다 "이 사진은 어떤 컬러냐"를 골라둘 수 있게 하는 병렬 배열(같은 인덱스로
+     pfImages와 짝을 맞춘다). 비워두면(null) 컬러 무관 공통 사진으로 취급된다 — product.html이
+     컬러를 클릭했을 때 이 값이 있는 사진으로만 바꿔치기하고, 없으면 지금 보던 사진을 그대로 둔다. */
+  let pfImageColors = [null, null, null, null];
   let pfSelectedColors = [];
   const PF_SIZE_OPTIONS = ["XS", "S", "M", "L", "XL"];
   const CATEGORY_BASE = ["후드티", "후드집업", "크롭 후드티", "티셔츠"];
@@ -2095,7 +2107,11 @@
       b.addEventListener("click", () => {
         const k = b.dataset.c;
         pfSelectedColors = pfSelectedColors.includes(k) ? pfSelectedColors.filter((x) => x !== k) : [...pfSelectedColors, k];
+        /* 컬러를 방금 뺐는데 어떤 사진 슬롯이 그 컬러를 물고 있으면(선택지에서 사라져야 하므로)
+           공통(null)으로 되돌린다. */
+        pfImageColors = pfImageColors.map((c) => (c && pfSelectedColors.includes(c) ? c : null));
         renderPfColors();
+        renderPfPhotos();
       })
     );
     renderColorManager();
@@ -2218,6 +2234,9 @@
   function renderPfPhotos() {
     el("pf-photos").innerHTML = pfImages.map((url, i) => {
       const photoLabel = t("상품사진 {n}", { n: i + 1 });
+      const colorOptions = pfSelectedColors
+        .map((c) => `<option value="${esc(c)}" ${pfImageColors[i] === c ? "selected" : ""}>${esc(t(COLORS[c]?.label || c))}</option>`)
+        .join("");
       return `
       <div>
         <div class="small" style="margin-bottom:6px;font-weight:600">${esc(photoLabel)}</div>
@@ -2231,12 +2250,30 @@
             <input type="file" accept="image/*" class="upload-input pf-photo-input" data-i="${i}">
           </label>
           ${url ? `<button type="button" class="btn btn--sm btn--ghost pf-photo-remove" data-i="${i}">${esc(t("제거"))}</button>` : ""}
+          ${
+            url && pfSelectedColors.length
+              ? `<select class="pf-photo-color" data-i="${i}" title="${esc(t("이 사진의 컬러 (고르면 그 컬러 클릭 시 이 사진으로 바뀜)"))}">
+                   <option value="">${esc(t("공통 (컬러 무관)"))}</option>
+                   ${colorOptions}
+                 </select>`
+              : ""
+          }
         </div>
       </div>`;
     }).join("");
     el("pf-photos").querySelectorAll(".pf-photo-input").forEach((inp) => inp.addEventListener("change", () => onPfPhotoChange(inp)));
     el("pf-photos").querySelectorAll(".pf-photo-remove").forEach((btn) =>
-      btn.addEventListener("click", () => { pfImages[Number(btn.dataset.i)] = null; renderPfPhotos(); })
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.i);
+        pfImages[i] = null;
+        pfImageColors[i] = null;
+        renderPfPhotos();
+      })
+    );
+    el("pf-photos").querySelectorAll(".pf-photo-color").forEach((sel) =>
+      sel.addEventListener("change", () => {
+        pfImageColors[Number(sel.dataset.i)] = sel.value || null;
+      })
     );
   }
 
@@ -2265,6 +2302,11 @@
 
   function peDraw(ctx, w, h, outputScale) {
     ctx.clearRect(0, 0, w, h);
+    /* 100% 미만으로 축소하면(원본 비율을 살리려고 프레임보다 작게 줄이는 경우) 사진이 프레임을
+       다 못 채워 빈 자리가 생긴다 — 채워두지 않으면 JPEG로 저장할 때 투명 영역이 검은색으로
+       바뀌어버리므로 흰 배경을 먼저 깔아둔다. */
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
     ctx.save();
     ctx.translate(w / 2 + peState.offsetX * outputScale, h / 2 + peState.offsetY * outputScale);
     ctx.rotate((peState.rotation * Math.PI) / 180);
@@ -2433,6 +2475,7 @@
   function resetProductForm() {
     pfEditingId = null;
     pfImages = [null, null, null, null];
+    pfImageColors = [null, null, null, null];
     pfSelectedColors = [];
     el("product-form-title").textContent = t("새 상품 추가");
     el("pf-id").value = "";
@@ -2459,6 +2502,7 @@
   function fillProductForm(p) {
     pfEditingId = p.id;
     pfImages = [0, 1, 2, 3].map((i) => p.images[i] || null);
+    pfImageColors = [0, 1, 2, 3].map((i) => (p.imageColors && p.imageColors[i]) || null);
     pfSelectedColors = [...(p.colors || [])];
     el("product-form-title").textContent = t("상품 수정") + " — " + p.id;
     el("pf-id").value = p.id;
@@ -2515,6 +2559,7 @@
       charmReady: el("pf-charmready").checked,
       active: el("pf-active").checked,
       images: pfImages,
+      imageColors: pfImageColors,
     };
 
     const btn = el("pf-submit");
