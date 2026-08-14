@@ -135,17 +135,17 @@
       b.addEventListener("click", () => { activeSort = b.dataset.sort; paint(); }));
   }
 
-  function productName(id) {
+  function productLabel(id) {
     if (id === "general") return t("전체 상품");
     const p = getProduct(id);
-    return p ? t(p.nameKo) : id;
+    return p ? productName(p) : id;
   }
 
   function paintFilters() {
     const cats = ["all", "general", ...PRODUCTS.map(p => p.id)];
     el("filters").innerHTML = cats.map(id => `
       <button class="chip" type="button" data-id="${id}" aria-pressed="${id === activeFilter}">
-        ${id === "all" ? esc(t("전체")) : esc(productName(id))}
+        ${id === "all" ? esc(t("전체")) : esc(productLabel(id))}
       </button>`).join("");
     el("filters").querySelectorAll(".chip").forEach(b =>
       b.addEventListener("click", () => { activeFilter = b.dataset.id; paint(); }));
@@ -166,7 +166,7 @@
           <span class="small tnum">${new Date(r.at).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US")}</span>
         </div>
         <div style="margin-top:6px;color:var(--ink);letter-spacing:.05em">${stars(r.rating)}</div>
-        <div class="small" style="margin-top:6px">${esc(productName(r.productId))}</div>
+        <div class="small" style="margin-top:6px">${esc(productLabel(r.productId))}</div>
         <p style="margin-top:10px">${esc(r.comment)}</p>
         ${r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="" loading="lazy" style="margin-top:12px;max-width:220px;border-radius:8px;display:block">` : ""}
         ${r.instagramHandle ? `
@@ -222,7 +222,7 @@
   }
 
   el("r-product").innerHTML = ["general", ...PRODUCTS.map(p => p.id)]
-    .map(id => `<option value="${id}">${esc(productName(id))}</option>`).join("");
+    .map(id => `<option value="${id}">${esc(productLabel(id))}</option>`).join("");
   if (filterProduct && PRODUCTS.some(p => p.id === filterProduct)) el("r-product").value = filterProduct;
   paintRatingChips();
 

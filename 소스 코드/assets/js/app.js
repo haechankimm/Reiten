@@ -462,6 +462,16 @@ function rideGuideHTML(key) {
 <p class="small" style="margin-top:10px">${esc(t("가슴단면 여유분은 실제 프로텍터를 착용시켜 계측한 뒤 업데이트될 예정입니다."))}</p>`;
 }
 
+/* 상품명은 nameKo(한글)·name(영문) 두 필드로 따로 저장된다. 예전엔 t(p.nameKo)로 "번역"을
+   시도했는데, t()는 미리 정해둔 정적 UI 문구 사전에서만 찾기 때문에 상품마다 계속 바뀌는
+   상품명은 절대 사전에 없어서 언어를 영어·일본어로 바꿔도 한글 원문이 그대로 나왔다(실제로
+   사용자가 재현해서 신고함). 일본어 전용 이름 칸은 없어서, 한국어가 아니면 상품 등록 시
+   이미 필수로 입력받는 영문명(name)으로 대신한다 — 관리자가 상품마다 번역을 따로 입력할
+   필요가 없다. */
+function productName(p) {
+  return getLang() === "ko" ? p.nameKo : (p.name || p.nameKo);
+}
+
 /* =========================================================
    상품 카드
    ========================================================= */
@@ -469,7 +479,7 @@ const CARD_IMG_WIDTHS = [400, 600, 900];
 
 function productCard(p, delay = 0) {
   const img = p.images.find(Boolean);
-  const name = t(p.nameKo);
+  const name = productName(p);
   const srcset = cloudinarySrcset(img, CARD_IMG_WIDTHS);
   const media = img
     ? `<div class="card__media beamable">

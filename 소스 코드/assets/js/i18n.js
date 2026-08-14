@@ -293,6 +293,19 @@ const I18N = {
   "총 결제금액": { en: "Total", ja: "合計金額", de: "Gesamtbetrag" },
   "무통장 입금": { en: "Bank Transfer", ja: "銀行振込" },
   "신용카드": { en: "Credit Card", ja: "クレジットカード" },
+  "결제 수단": { en: "Payment method", ja: "支払い方法" },
+  "결제 버튼을 누르면 결제창이 열립니다. 결제가 끝나면 바로 주문이 접수됩니다.": {
+    en: "Clicking the payment button opens the payment window. Once payment is complete, your order is placed immediately.",
+    ja: "決済ボタンを押すと決済ウィンドウが開きます。決済が完了すると、すぐに注文が受け付けられます。",
+  },
+  "결제 준비에 실패했습니다": { en: "Failed to prepare payment", ja: "決済の準備に失敗しました" },
+  "결제가 취소되었습니다": { en: "Payment was cancelled", ja: "決済がキャンセルされました" },
+  "결제 확인에 실패했습니다": { en: "Payment confirmation failed", ja: "決済の確認に失敗しました" },
+  "{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다": {
+    en: "{name} — size {size} is out of stock, so the payment was automatically cancelled",
+    ja: "{name} {size}サイズの在庫が不足しているため、決済は自動的にキャンセルされました",
+  },
+  "결제 중 오류가 발생했습니다": { en: "An error occurred during payment", ja: "決済中にエラーが発生しました" },
   "예금주": { en: "Account holder", ja: "口座名義" },
   "주문서 제출 후 24시간 내 미입금 시 자동 취소됩니다.": { en: "If payment isn't received within 24 hours of submitting, the order is automatically cancelled.", ja: "注文送信後24時間以内にご入金がない場合、自動的にキャンセルされます。" },
   "무료": { en: "Free", ja: "無料" },
@@ -310,6 +323,8 @@ const I18N = {
   "{name} {size} 사이즈 재고가 소진되었습니다": { en: "{name} — size {size} is now out of stock", ja: "{name} {size}サイズの在庫がなくなりました" },
 
   /* ---------- Order complete ---------- */
+  "결제 완료": { en: "Payment Complete", ja: "決済完了" },
+  "결제금액": { en: "Payment amount", ja: "決済金額" },
   "표시할 주문 내역이 없습니다.": { en: "There's no order to show.", ja: "表示できる注文内容がありません。" },
   "주문이 접수되었습니다": { en: "Your order has been received", ja: "ご注文を承りました" },
   "주문번호": { en: "Order No.", ja: "注文番号" },
@@ -707,7 +722,7 @@ const I18N = {
      폼 닫기 버튼(상품·룩북·정보 등록 폼의 "취소")은 이 별도 키로 연결한다 — 화면에 보이는
      한글 글자는 그대로 "취소"이고 data-i18n 속성만 이 키를 가리킨다(ko 모드는 딕셔너리를
      안 거치므로 화면엔 영향 없음). */
-  "편집 취소": { de: "Abbrechen" },
+  "편집 취소": { en: "Cancel", ja: "キャンセル", de: "Abbrechen" },
 
   /* ---------- 주문 · 반품 상태 (고객 주문내역 + 관리자 패널 공용) ---------- */
   "입금대기": { en: "Awaiting Payment", ja: "入金待ち", de: "Zahlung ausstehend" },
@@ -797,7 +812,11 @@ const I18N = {
   "저장했습니다": { de: "Gespeichert" },
   "이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다.": { de: "Diese Lookbook-Kachel löschen? Das kann nicht rückgängig gemacht werden." },
   "삭제했습니다": { de: "Gelöscht" },
-  "로그인이 만료되었습니다. 다시 로그인해 주세요.": { de: "Anmeldung abgelaufen. Bitte melden Sie sich erneut an." },
+  "로그인이 만료되었습니다. 다시 로그인해 주세요.": {
+    en: "Your session has expired. Please log in again.",
+    ja: "ログインの有効期限が切れました。もう一度ログインしてください。",
+    de: "Anmeldung abgelaufen. Bitte melden Sie sich erneut an.",
+  },
   "요청이 실패했습니다": { en: "The request failed", ja: "リクエストに失敗しました", de: "Anfrage fehlgeschlagen" },
 
   /* Works 2026-08-13 추가분 — 사이드바/로그인/주문 상세/정보/대시보드/활동 로그 탭에서
@@ -817,7 +836,7 @@ const I18N = {
   "상태": { de: "Status" },
   "관리자 계정으로만 접속할 수 있습니다.": { de: "Zugriff nur mit Administratorkonto." },
   "서버(server/)가 꺼져 있어 로그인할 수 없습니다.": { de: "Anmeldung nicht möglich — der Server ist nicht erreichbar." },
-  "이메일 저장": { de: "E-Mail merken" },
+  "이메일 저장": { en: "Remember email", ja: "メールアドレスを保存", de: "E-Mail merken" },
   "새 정보 추가": { de: "Neue Information hinzufügen" },
   "정보 수정": { de: "Information bearbeiten" },
   "이름 (예: Supabase, Render, 사업자등록번호)": { de: "Name (z. B. Supabase, Render, Handelsregisternummer)" },

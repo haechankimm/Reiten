@@ -77,7 +77,7 @@
               <div class="field" id="pay-method-field" hidden>
                 <label data-i18n="결제 수단">결제 수단</label>
                 <div style="display:flex;gap:10px;margin-top:8px">
-                  <button type="button" class="chip pay-method-chip" data-pay-method="bank" aria-pressed="true" style="flex:1;height:52px;font-size:15px;font-weight:650" data-i18n="무통장입금">무통장입금</button>
+                  <button type="button" class="chip pay-method-chip" data-pay-method="bank" aria-pressed="true" style="flex:1;height:52px;font-size:15px;font-weight:650" data-i18n="무통장 입금">무통장 입금</button>
                   <button type="button" class="chip pay-method-chip" data-pay-method="card" aria-pressed="false" style="flex:1;height:52px;font-size:15px;font-weight:650" data-i18n="신용카드">신용카드</button>
                 </div>
               </div>
@@ -212,7 +212,7 @@
         value: it.extras.map((k) => t(EXTRAS.find((x) => x.key === k).label)).join(", "),
       });
     }
-    return { name: t(product.nameKo), opts };
+    return { name: productName(product), opts };
   }
 
   function paint() {

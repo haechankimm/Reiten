@@ -48,7 +48,7 @@
   await Promise.all([loadProducts(), loadColors()]);
 
   const p = getProduct(qs("id")) || PRODUCTS[0];
-  document.title = t(p.nameKo) + " — REITEN";
+  document.title = productName(p) + " — REITEN";
 
   /* soldOut(상품.sizes 전체, 관리자가 손으로 체크)과 별개로, outOfStockByColor는 실제 재고(컬러별)가
      0인 사이즈를 서버가 계산해 붙여준다(server.js withRealSoldOut). 지금 고른 컬러 기준으로만
@@ -82,7 +82,7 @@
     const st = SIZE_TABLES[p.sizeTable];
     const outForColor = outSizesForColor(state.color);
     const soldAll = p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s));
-    const name = t(p.nameKo);
+    const name = productName(p);
 
     root.innerHTML = `
     <nav class="small" style="margin-bottom:26px">
@@ -259,7 +259,7 @@
     const item = () => ({
       sig: [p.id, state.color, state.size].join("|"),
       productId: p.id,
-      name: t(p.nameKo),
+      name: productName(p),
       image: p.images.find(Boolean) || null,
       color: state.color,
       size: state.size,
@@ -273,7 +273,7 @@
 
     document.getElementById("add")?.addEventListener("click", () => {
       Cart.add(item());
-      toast(t("{name} · {size} 담았습니다", { name: t(p.nameKo), size: state.size }));
+      toast(t("{name} · {size} 담았습니다", { name: productName(p), size: state.size }));
     });
     document.getElementById("buy")?.addEventListener("click", () => {
       Cart.add(item());
@@ -293,7 +293,7 @@
   const ld = {
     "@context": "https://schema.org/",
     "@type": "Product",
-    name: t(p.nameKo),
+    name: productName(p),
     image: p.images.filter(Boolean).map((src) => new URL(src, location.href).href),
     description: t(p.desc || p.short || ""),
     sku: p.id,
