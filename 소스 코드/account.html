@@ -309,8 +309,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     }
 
     /* 비밀번호 재설정 이메일의 링크를 타고 들어오면 URL 해시에 type=recovery가 붙어서 온다.
-       이 경우 로그인 세션이 이미 잡혀 있어도 내 계정 화면 대신 새 비밀번호 설정 폼을 먼저 보여준다. */
-    const isRecovery = /type=recovery/.test(location.hash);
+       이 경우 로그인 세션이 이미 잡혀 있어도 내 계정 화면 대신 새 비밀번호 설정 폼을 먼저 보여준다.
+       Works에서 새 관리자를 초대(inviteUserByEmail)했을 때 오는 링크는 type=invite인데, 이것도
+       "아직 비밀번호가 없으니 지금 정해야 하는" 같은 상황이라 recovery와 동일하게 처리한다. */
+    const isRecovery = /type=(recovery|invite)/.test(location.hash);
     const profile = isRecovery ? null : await getCurrentProfile();
 
     /* 카카오 등 OAuth 로그인이 실패하면(예: provider 설정 누락) Supabase가 콜백 URL 해시에

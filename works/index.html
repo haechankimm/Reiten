@@ -111,6 +111,11 @@
   .nav-item:hover { background: var(--bg-surface-2); color: var(--text-primary); }
   .nav-item.is-active { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); }
   .nav-item.is-active svg { opacity: 1; }
+  .nav-badge {
+    margin-left: auto; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+    background: var(--danger); color: #fff; font-size: 10px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; line-height: 1; flex-shrink: 0;
+  }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -407,18 +412,22 @@
     <button type="button" class="nav-item is-active" data-tab="orders">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M8 9h8M8 13h5"/></svg>
       <span data-i18n="전체 주문">전체 주문</span>
+      <span class="nav-badge" id="nav-badge-orders" hidden></span>
     </button>
     <button type="button" class="nav-item" data-tab="returns">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h11a4 4 0 0 1 0 8h-3"/><path d="M9 4 4 8l5 4"/></svg>
       <span data-i18n="반품·교환 신청">반품·교환 신청</span>
+      <span class="nav-badge" id="nav-badge-returns" hidden></span>
     </button>
     <button type="button" class="nav-item" data-tab="inventory">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7 12 3l8 4-8 4-8-4Z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
       <span data-i18n="재고">재고</span>
+      <span class="nav-badge" id="nav-badge-inventory" hidden></span>
     </button>
     <button type="button" class="nav-item" data-tab="qna">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h16v11H8l-4 4V5Z"/><path d="M11 10.2c0-1.2 1-1.7 1.9-1.7 1 0 1.8.6 1.8 1.5 0 1.4-1.8 1.3-1.8 2.7"/><circle cx="12" cy="14.6" r=".2"/></svg>
       <span>Q&amp;A</span>
+      <span class="nav-badge" id="nav-badge-qna" hidden></span>
     </button>
     <button type="button" class="nav-item" data-tab="products">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/></svg>
@@ -951,6 +960,23 @@
 
         <div id="admin-settings" style="display:grid;gap:24px" hidden>
           <div class="panel">
+            <b data-i18n="관리자 계정 관리">관리자 계정 관리</b>
+            <p class="small" style="margin-top:6px" data-i18n="이메일로 초대하면 본인이 메일의 링크에서 직접 비밀번호를 정합니다.">이메일로 초대하면 본인이 메일의 링크에서 직접 비밀번호를 정합니다.</p>
+            <form id="admin-invite-form" novalidate style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+              <div class="field" style="flex:1;min-width:180px">
+                <label for="ai-email" data-i18n="이메일">이메일</label>
+                <input id="ai-email" type="email" required>
+              </div>
+              <div class="field" style="flex:1;min-width:140px">
+                <label for="ai-name" data-i18n="이름 (선택)">이름 (선택)</label>
+                <input id="ai-name">
+              </div>
+              <button class="btn" type="submit" id="ai-submit" data-i18n="초대 보내기">초대 보내기</button>
+            </form>
+            <div id="admin-list" style="margin-top:16px;display:grid;gap:8px"></div>
+          </div>
+
+          <div class="panel">
             <b id="settings-form-title" data-i18n="새 정보 추가">새 정보 추가</b>
             <p class="small" style="margin-top:6px" data-i18n="비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.">비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.</p>
             <form id="settings-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:end">
@@ -1195,6 +1221,15 @@
     el("notif-list").innerHTML = rows || `<div class="notif-empty">${esc(t("확인할 알림이 없습니다"))}</div>`;
     el("notif-badge").hidden = result.total === 0;
     el("notif-badge").textContent = result.total > 99 ? "99+" : result.total;
+
+    /* 벨 드롭다운을 열어봐야만 알 수 있으면 눈에 잘 안 띈다는 피드백 — 같은 데이터를 왼쪽
+       사이드바의 해당 탭에도 작은 빨간 배지로 바로 보이게 중복 표시한다. */
+    result.items.forEach((it) => {
+      const badge = el(`nav-badge-${it.tab}`);
+      if (!badge) return;
+      badge.hidden = it.count === 0;
+      badge.textContent = it.count > 99 ? "99+" : it.count;
+    });
   }
 
   el("notif-toggle").addEventListener("click", (e) => {
@@ -3169,6 +3204,55 @@
     return /^https?:\/\//i.test(v);
   }
 
+  /* ---------- 관리자 계정 관리 ----------
+     예전엔 "고객 페이지에서 회원가입 → Supabase SQL로 role 수동 승격"을 거쳐야 했다. 이제
+     이메일만 넣으면 서버가 Supabase Admin API로 초대 메일을 보내고, 그 메일의 링크를 타고
+     들어간 account.html에서 본인이 직접 비밀번호를 정하면 끝난다(관리자가 임시 비밀번호를
+     만들어 전달할 필요 없음). */
+  let currentAdminId = null;
+
+  function adminRowHTML(a) {
+    const isSelf = a.id === currentAdminId;
+    return `
+      <div class="panel" data-id="${esc(a.id)}" style="display:flex;gap:12px;align-items:center">
+        <div style="flex:1;min-width:0">
+          <b>${esc(a.name || a.email)}</b>${isSelf ? ` <span class="small" style="color:var(--text-muted)">(${esc(t("나"))})</span>` : ""}
+          <div class="small tnum" style="color:var(--text-muted)">${esc(a.email)}</div>
+        </div>
+        ${isSelf ? "" : `<button type="button" class="btn btn--sm btn--danger admin-revoke">${esc(t("권한 해제"))}</button>`}
+      </div>`;
+  }
+
+  async function paintAdminAccounts() {
+    const result = await adminFetch("/api/admin/admins");
+    if (!result) return;
+    el("admin-list").innerHTML = result.items.map(adminRowHTML).join("");
+    el("admin-list").querySelectorAll(".admin-revoke").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        if (!confirm(t("이 계정의 관리자 권한을 해제할까요? (계정 자체는 남고, 일반 고객으로 전환됩니다)"))) return;
+        const result = await adminFetch(`/api/admin/admins/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!result) return;
+        toast(t("관리자 권한을 해제했습니다"));
+        paintAdminAccounts();
+      })
+    );
+  }
+
+  el("admin-invite-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = el("ai-submit");
+    btn.disabled = true;
+    const email = el("ai-email").value.trim();
+    const name = el("ai-name").value.trim();
+    const result = await adminFetch("/api/admin/admins", { method: "POST", body: JSON.stringify({ email, name }) });
+    btn.disabled = false;
+    if (!result) return;
+    toast(t("초대 메일을 보냈습니다"));
+    el("admin-invite-form").reset();
+    paintAdminAccounts();
+  });
+
   function settingRowHTML(item) {
     return `
       <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
@@ -3425,7 +3509,9 @@
     const name = profile.name || profile.email;
     el("admin-name").textContent = name;
     el("admin-avatar").textContent = name.slice(0, 1).toUpperCase();
+    currentAdminId = profile.id;
     paintNotifications();
+    paintAdminAccounts();
     paintAdminOrders();
     paintAdminReturns();
     paintAdminInventory();
