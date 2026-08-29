@@ -25,6 +25,7 @@ const {
   sendAdminRefundFailed,
   sendAdminLoginLocked,
   sendAdminSettlementReport,
+  sendCustomerOrderCancelled,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
@@ -1014,6 +1015,27 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
   res.json(stats);
 });
 
+/* ---------- 알림센터 ----------
+   "확인이 필요한 것들"을 한눈에 모아 보여주는 용도 — 별도 읽음/안읽음 상태를 DB에 저장하지
+   않고, 그때그때 조건에 맞는 건수를 센다(입금대기 주문 = 아직 확인 안 한 신규 주문으로 취급,
+   입금확인 등으로 상태를 바꾸면 자연히 카운트에서 빠짐). 4개 쿼리를 병렬로 돌린다. */
+app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
+  const [orders, inventory, qna, returns] = await Promise.all([
+    supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
+    supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0),
+    supabaseAdmin.from("qna").select("id", { count: "exact", head: true }).is("answer", null),
+    supabaseAdmin.from("return_requests").select("id", { count: "exact", head: true }).eq("status", "접수"),
+  ]);
+
+  const items = [
+    { key: "pendingOrders", label: "입금 확인 대기 주문", count: orders.count || 0, tab: "orders" },
+    { key: "outOfStock", label: "품절된 재고 조합", count: inventory.count || 0, tab: "inventory" },
+    { key: "unansweredQna", label: "답변 대기 Q&A", count: qna.count || 0, tab: "qna" },
+    { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns" },
+  ];
+  res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
+});
+
 /* GA4 방문자 통계(선택) — 설정 안 돼 있으면 lib/analytics.js가 null을 반환하고, 조회 자체가
    실패해도(권한 미부여 등) 대시보드 전체를 막지 않도록 500 대신 stats:null로 내려준다. */
 app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
@@ -1184,9 +1206,12 @@ app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
 });
 
 /* status만 바꾸면 상태만, courier/trackingNo를 함께 보내면 배송정보도 같이 저장한다.
-   status가 "입금확인"으로 바뀌는 순간에만 고객에게 입금 확인 메일을 보낸다(접수 메일은 /api/order에서 이미 발송됨). */
+   status가 "입금확인"으로 바뀌는 순간에만 고객에게 입금 확인 메일을 보낸다(접수 메일은 /api/order에서 이미 발송됨).
+   status가 (처음으로) "취소"가 되는 순간에는 미입금 자동취소·반품승인환불과 같은 원칙으로
+   ① 재고 복원 ② 카드결제 건이면 포트원 환불 자동 시도 ③ 고객 안내 메일까지 한 번에 처리한다
+   (cancelReason은 선택 — 입력하면 사유가 저장되고 고객 메일에도 그대로 노출됨). */
 app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
-  const { status, courier, trackingNo } = req.body || {};
+  const { status, courier, trackingNo, cancelReason } = req.body || {};
 
   const patch = {};
   if (status !== undefined) {
@@ -1208,13 +1233,17 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "변경할 값이 없습니다." });
   }
 
-  /* 이번 변경으로 운송장번호가 "처음" 채워지는 건지 알아야 배송 시작 메일을 중복 없이 보낼 수 있어
-     update 직전에 이전 값을 한 번 조회해둔다. */
+  /* 이번 변경으로 운송장번호가 "처음" 채워지는지, 취소 상태가 "처음" 되는지 판단하려면
+     update 직전의 이전 상태가 필요하다. */
   const { data: prev } = await supabaseAdmin
     .from("orders")
-    .select("tracking_no")
+    .select("status, tracking_no")
     .eq("order_no", req.params.no)
     .single();
+
+  const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
+  const isNewCancel = patch.status === "취소" && prev?.status !== "취소";
+  if (isNewCancel && cancelReasonStr) patch.cancel_reason = cancelReasonStr;
 
   const { data: saved, error } = await supabaseAdmin
     .from("orders")
@@ -1240,8 +1269,44 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
       .catch(() => {});
   }
 
+  let cancelResult = null;
+  if (isNewCancel) {
+    const restoreItems = (saved.items || [])
+      .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
+      .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
+    if (restoreItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
+      if (restoreError) {
+        console.error("[admin/orders] 취소 시 재고 복원 실패:", saved.order_no, restoreError.message);
+      } else {
+        logInventoryChange(
+          restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "admin_cancel", ref: saved.order_no }))
+        );
+      }
+    }
+
+    if (saved.payment_method === "card" && saved.payment_id) {
+      try {
+        await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소");
+        cancelResult = { refund: "card", ok: true };
+      } catch (refundErr) {
+        console.error("[admin/orders] ⚠️ 취소 시 환불 실패 — 수동 확인 필요:", saved.order_no, refundErr.message);
+        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: refundErr.message }).catch((err) =>
+          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
+        );
+        cancelResult = { refund: "card", ok: false };
+      }
+    } else if (saved.payment_method === "bank_transfer") {
+      cancelResult = { refund: "bank_manual", ok: false };
+    }
+
+    sendCustomerOrderCancelled(saved, cancelReasonStr).catch((err) =>
+      console.error("[mailer] 주문취소 안내 메일 발송 실패:", err.message)
+    );
+  }
+
   logAdminAction(req, "order.update", "order", req.params.no, patch);
-  res.json({ ok: true });
+  res.json({ ok: true, cancel: cancelResult });
 });
 
 /* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */

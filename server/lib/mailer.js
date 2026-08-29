@@ -216,6 +216,27 @@ async function sendCustomerAutoCancelled(order) {
   });
 }
 
+/* 관리자가 직접 주문을 취소했을 때(고객용) — 미입금 자동취소(sendCustomerAutoCancelled)와는
+   달리 사유가 매번 다를 수 있어 관리자가 입력한 사유를 그대로 보여준다. 사유를 안 남겼으면
+   문구를 생략(빈 칸을 그대로 보여주지 않는다). */
+async function sendCustomerOrderCancelled(order, reason) {
+  if (!resend || !order.customer.email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.email,
+    subject: `[REITEN] 주문이 취소되었습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 주문이 취소되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      ${reason ? `<p style="margin-top:8px"><b>취소 사유</b> ${escHtml(reason)}</p>` : ""}
+      <ul>${itemsHtml(order)}</ul>
+      <p style="margin-top:16px;color:#666">카드로 결제하셨다면 결제 취소가 함께 처리되었습니다(카드사에 따라 승인 취소 반영까지 며칠 걸릴 수 있습니다). 문의사항은 이 메일에 회신해 주세요.</p>
+    `,
+  });
+}
+
 /* 카드결제 재고부족 취소 실패 긴급 알림(관리자용) — "결제는 됐는데 물건은 없고, 그 결제 취소마저
    실패한" 최악의 이중 실패 상황. 지금까지는 서버 로그에만 남고 관리자가 못 볼 수 있었다.
    실패해도(이메일조차 안 나가도) 호출부에서 항상 catch할 것 — 그래도 로그는 남아 있다. */
@@ -322,4 +343,5 @@ module.exports = {
   sendAdminRefundFailed,
   sendAdminLoginLocked,
   sendAdminSettlementReport,
+  sendCustomerOrderCancelled,
 };
