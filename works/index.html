@@ -359,9 +359,15 @@
       display: block; position: fixed; inset: 0; z-index: 55;
       background: rgba(0,0,0,.4);
     }
-    .topbar { padding: 0 12px; gap: 10px; }
+    .topbar {
+      padding: 8px 12px; gap: 10px;
+      height: auto; min-height: 48px; flex-wrap: wrap; row-gap: 8px;
+    }
+    .topbar-right { flex-wrap: wrap; row-gap: 8px; }
     .brand-word { display: none; }
+    .brand-badge { display: none; }
     .admin-chip .admin-name, .admin-chip .admin-role { display: none; }
+    #logout { white-space: nowrap; }
     .content { padding: 14px 12px 32px; }
     .detail-grid { grid-template-columns: 1fr; }
   }

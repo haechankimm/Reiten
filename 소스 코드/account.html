@@ -35,14 +35,6 @@
           <button class="chip" type="button" data-tab="signup" aria-pressed="false" data-i18n="회원가입">회원가입</button>
         </div>
 
-        <div id="social-login" style="margin-top:24px;max-width:44ch">
-          <button class="btn btn--full btn--kakao" type="button" id="kakao-login">
-            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#191919" d="M9 1.5C4.58 1.5 1 4.31 1 7.78c0 2.22 1.48 4.17 3.71 5.29-.16.6-.6 2.22-.69 2.57-.11.43.16.42.34.31.14-.09 2.24-1.52 3.15-2.15.48.07.97.1 1.49.1 4.42 0 8-2.81 8-6.28S13.42 1.5 9 1.5Z"/></svg>
-            <span data-i18n="카카오로 로그인">카카오로 로그인</span>
-          </button>
-          <div class="auth-divider"><span data-i18n="또는">또는</span></div>
-        </div>
-
         <form id="login-form" novalidate style="margin-top:24px;max-width:44ch">
           <div class="field">
             <label for="li-email" data-i18n="이메일">이메일</label>
@@ -57,6 +49,13 @@
             <label class="checkbox"><input type="checkbox" id="li-remember"><span data-i18n="이메일 저장">이메일 저장</span></label>
           </div>
           <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+
+          <div class="auth-divider"><span data-i18n="또는">또는</span></div>
+          <button class="btn btn--full btn--kakao" type="button" id="kakao-login">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#191919" d="M9 1.5C4.58 1.5 1 4.31 1 7.78c0 2.22 1.48 4.17 3.71 5.29-.16.6-.6 2.22-.69 2.57-.11.43.16.42.34.31.14-.09 2.24-1.52 3.15-2.15.48.07.97.1 1.49.1 4.42 0 8-2.81 8-6.28S13.42 1.5 9 1.5Z"/></svg>
+            <span data-i18n="카카오로 로그인">카카오로 로그인</span>
+          </button>
+
           <p class="small" style="margin-top:10px">
             <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
           </p>
@@ -319,7 +318,6 @@
     if (isRecovery) {
       el("auth-view").hidden = false;
       el("auth-tabs").hidden = true;
-      el("social-login").hidden = true;
       el("login-form").hidden = true;
       el("signup-form").hidden = true;
       el("reset-confirm-form").hidden = false;
@@ -364,14 +362,12 @@
       el("login-form").hidden = true;
       el("signup-form").hidden = true;
       el("auth-tabs").hidden = true;
-      el("social-login").hidden = true;
       el("reset-request-form").hidden = false;
     });
 
     el("rq-cancel")?.addEventListener("click", () => {
       el("reset-request-form").hidden = true;
       el("auth-tabs").hidden = false;
-      el("social-login").hidden = false;
       el("login-form").hidden = false;
     });
 
