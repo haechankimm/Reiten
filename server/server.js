@@ -24,6 +24,7 @@ const {
   sendAdminCardCancelFailed,
   sendAdminRefundFailed,
   sendAdminLoginLocked,
+  sendAdminSettlementReport,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
@@ -32,7 +33,7 @@ const { resolveCoupon } = require("./lib/coupons");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
 const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
-const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric } = require("./lib/orderExport");
+const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
 const portone = require("./lib/portone");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -2541,6 +2542,130 @@ async function checkRestockNeeded() {
 
 cron.schedule("0 9 * * 1", () => {
   checkRestockNeeded().catch((err) => console.error("[restock-alert] 실행 실패:", err.message));
+});
+
+/* ---------- 월간 정산 리포트 ----------
+   매달 1일 09:00에 "지난달"(KST 기준) 주문·쿠폰·환불 내역을 모아 엑셀(요약/주문상세/쿠폰/환불
+   4개 시트)로 정리해 관리자에게 첨부 메일로 보낸다. 세무사에게 그대로 전달하는 용도 —
+   신고를 대신하지 않는 원본 데이터 정리이므로 메일 본문에도 그렇게 명시한다(mailer.js 참고). */
+async function sendMonthlySettlement() {
+  const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+  const y = kstNow.getUTCFullYear();
+  const m = kstNow.getUTCMonth(); // 0-indexed, 이번 달 → m-1이 지난달
+  const startKst = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+  const endKst = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+  const start = new Date(startKst.getTime() - 9 * 3600 * 1000).toISOString();
+  const end = new Date(endKst.getTime() - 9 * 3600 * 1000).toISOString();
+  const monthKey = `${startKst.getUTCFullYear()}-${String(startKst.getUTCMonth() + 1).padStart(2, "0")}`;
+  const monthLabel = `${startKst.getUTCFullYear()}년 ${startKst.getUTCMonth() + 1}월`;
+
+  const { data: orders, error: ordersError } = await supabaseAdmin
+    .from("orders")
+    .select("order_no, customer, items, subtotal, shipping, total, status, coupon_code, discount, created_at")
+    .gte("created_at", start)
+    .lt("created_at", end)
+    .order("created_at", { ascending: true });
+  if (ordersError) {
+    console.error("[settlement] 주문 조회 실패:", ordersError.message);
+    return;
+  }
+
+  const { data: returns, error: returnsError } = await supabaseAdmin
+    .from("return_requests")
+    .select("order_no, refunded, reason, created_at")
+    .gte("created_at", start)
+    .lt("created_at", end);
+  if (returnsError) {
+    console.error("[settlement] 반품 조회 실패:", returnsError.message);
+    return;
+  }
+
+  const totalByOrderNo = new Map(orders.map((o) => [o.order_no, o.total]));
+  const refunded = returns.filter((r) => r.refunded);
+  const refundTotal = refunded.reduce((sum, r) => sum + (totalByOrderNo.get(r.order_no) || 0), 0);
+  const revenue = orders.filter((o) => o.status !== "취소").reduce((sum, o) => sum + o.total, 0);
+  const couponOrders = orders.filter((o) => o.coupon_code);
+  const couponDiscount = couponOrders.reduce((sum, o) => sum + (o.discount || 0), 0);
+
+  const summary = {
+    monthKey,
+    totalOrders: orders.length,
+    revenue,
+    couponOrders: couponOrders.length,
+    couponDiscount,
+    refundCount: refunded.length,
+    refundTotal,
+    netRevenue: revenue - refundTotal,
+  };
+
+  const won = (n) => Number(n || 0).toLocaleString("ko-KR") + "원";
+  const sheets = [
+    {
+      name: "요약",
+      columns: [{ key: "label", label: "항목" }, { key: "value", label: "값" }],
+      rows: [
+        { label: "기간", value: monthLabel },
+        { label: "총 주문 건수", value: `${summary.totalOrders}건` },
+        { label: "매출(취소 제외)", value: won(summary.revenue) },
+        { label: "쿠폰 사용 건수", value: `${summary.couponOrders}건` },
+        { label: "쿠폰 할인 합계", value: won(summary.couponDiscount) },
+        { label: "환불 건수", value: `${summary.refundCount}건` },
+        { label: "환불 합계", value: won(summary.refundTotal) },
+        { label: "순매출(매출-환불)", value: won(summary.netRevenue) },
+      ],
+    },
+    {
+      name: "주문상세",
+      columns: [
+        { key: "orderNo", label: "주문번호" }, { key: "at", label: "주문일시" }, { key: "name", label: "주문자" },
+        { key: "itemsText", label: "주문상품" }, { key: "subtotal", label: "소계" }, { key: "shipping", label: "배송비" },
+        { key: "couponCode", label: "쿠폰코드" }, { key: "discount", label: "할인액" }, { key: "total", label: "합계" },
+        { key: "status", label: "상태" },
+      ],
+      rows: orders.map((o) => ({
+        orderNo: o.order_no,
+        at: fmtExportDate(o.created_at),
+        name: (o.customer || {}).name || "",
+        itemsText: (o.items || []).map((it) => `${it.name} x${it.qty}`).join(", "),
+        subtotal: o.subtotal,
+        shipping: o.shipping,
+        couponCode: o.coupon_code || "",
+        discount: o.discount || 0,
+        total: o.total,
+        status: o.status,
+      })),
+    },
+    {
+      name: "쿠폰 사용 내역",
+      columns: [
+        { key: "couponCode", label: "쿠폰코드" }, { key: "orderNo", label: "주문번호" },
+        { key: "discount", label: "할인액" }, { key: "at", label: "주문일시" },
+      ],
+      rows: couponOrders.map((o) => ({ couponCode: o.coupon_code, orderNo: o.order_no, discount: o.discount || 0, at: fmtExportDate(o.created_at) })),
+    },
+    {
+      name: "환불 내역",
+      columns: [
+        { key: "orderNo", label: "주문번호" }, { key: "refundAmount", label: "환불액" },
+        { key: "reason", label: "사유" }, { key: "at", label: "처리일시" },
+      ],
+      rows: refunded.map((r) => ({
+        orderNo: r.order_no,
+        refundAmount: totalByOrderNo.get(r.order_no) || 0,
+        reason: r.reason || "",
+        at: fmtExportDate(r.created_at),
+      })),
+    },
+  ];
+
+  const buffer = await toXlsxBufferGeneric(sheets);
+  sendAdminSettlementReport({ monthLabel, summary, buffer }).catch((err) =>
+    console.error("[mailer] 정산 리포트 메일 발송 실패:", err.message)
+  );
+}
+
+cron.schedule("0 9 1 * *", () => {
+  sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
 });
 
 if (process.env.SENTRY_DSN) {

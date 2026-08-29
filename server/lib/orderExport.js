@@ -188,4 +188,4 @@ async function toXlsxBufferGeneric(sheets) {
   return wb.xlsx.writeBuffer();
 }
 
-module.exports = { EXPORT_COLUMNS, toExportRow, toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric };
+module.exports = { EXPORT_COLUMNS, toExportRow, toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate };

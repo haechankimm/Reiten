@@ -284,6 +284,30 @@ async function sendAdminLoginLocked({ email, failCount }) {
   });
 }
 
+/* 월간 정산 리포트(관리자/세무사 전달용) — 매달 1일 지난달 매출·쿠폰·환불 내역을 정리한
+   엑셀을 첨부해 보낸다. 세무 신고를 대신하지 않는 원본 데이터 정리이므로 본문에도 명시한다. */
+async function sendAdminSettlementReport({ monthLabel, summary, buffer }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 정산 리포트 메일을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] ${monthLabel} 정산 리포트`,
+    html: `
+      <h2>${escHtml(monthLabel)} 정산 리포트</h2>
+      <p><b>총 주문</b> ${summary.totalOrders}건 · <b>매출(취소 제외)</b> ${won(summary.revenue)}</p>
+      <p><b>쿠폰 할인</b> ${won(summary.couponDiscount)} (${summary.couponOrders}건) · <b>환불</b> ${won(summary.refundTotal)} (${summary.refundCount}건)</p>
+      <p><b>순매출(매출 − 환불)</b> ${won(summary.netRevenue)}</p>
+      <p style="margin-top:16px;color:#666">첨부된 엑셀에 주문 상세 · 쿠폰 사용 내역 · 환불 내역이 시트별로 정리돼 있습니다.
+      이 리포트는 원본 데이터를 정리한 것으로 세무 자문이 아니니, 실제 신고는 세무사 확인을 거쳐 주세요.</p>
+    `,
+    attachments: [{ filename: `reiten-settlement-${summary.monthKey}.xlsx`, content: buffer }],
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -297,4 +321,5 @@ module.exports = {
   sendAdminCardCancelFailed,
   sendAdminRefundFailed,
   sendAdminLoginLocked,
+  sendAdminSettlementReport,
 };
