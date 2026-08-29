@@ -35,6 +35,7 @@ const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
 const portone = require("./lib/portone");
+const { getVisitorStats } = require("./lib/analytics");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -1011,6 +1012,18 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
   const stats = await computeDashboardStats();
   if (stats.error) return res.status(500).json({ error: "집계에 실패했습니다." });
   res.json(stats);
+});
+
+/* GA4 방문자 통계(선택) — 설정 안 돼 있으면 lib/analytics.js가 null을 반환하고, 조회 자체가
+   실패해도(권한 미부여 등) 대시보드 전체를 막지 않도록 500 대신 stats:null로 내려준다. */
+app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
+  try {
+    const stats = await getVisitorStats(30);
+    res.json({ stats });
+  } catch (err) {
+    console.error("[analytics] 조회 실패:", err.message);
+    res.json({ stats: null });
+  }
 });
 
 /* 대시보드 내보내기 — 화면에 없는 표 형태 데이터라 CSV는 요약/일별 매출/베스트셀러 세 구간을

@@ -963,6 +963,19 @@
             <b data-i18n="베스트셀러 (수량 기준)">베스트셀러 (수량 기준)</b>
             <div id="dashboard-bestsellers" style="margin-top:10px"></div>
           </div>
+          <div class="panel" id="dashboard-visitors" hidden>
+            <b data-i18n="방문자 분석 (최근 30일, Google Analytics)">방문자 분석 (최근 30일, Google Analytics)</b>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:10px">
+              <div>
+                <div class="small" style="color:var(--text-muted)" data-i18n="기기별">기기별</div>
+                <div id="dashboard-devices" style="margin-top:8px"></div>
+              </div>
+              <div>
+                <div class="small" style="color:var(--text-muted)" data-i18n="유입 경로">유입 경로</div>
+                <div id="dashboard-sources" style="margin-top:8px"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="admin-auditlog" style="display:grid;gap:12px" hidden>
@@ -3237,10 +3250,48 @@
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
   }
 
+  const DEVICE_LABEL = { mobile: "모바일", desktop: "PC", tablet: "태블릿" };
+  const CHANNEL_LABEL = {
+    Direct: "직접 접속", "Organic Search": "검색(자연)", "Paid Search": "검색(광고)",
+    Referral: "다른 사이트 링크", "Organic Social": "SNS(자연)", "Paid Social": "SNS(광고)",
+    Email: "이메일", Display: "디스플레이 광고", Unassigned: "미분류",
+  };
+
+  /* GA4 방문자 통계(선택 기능) — server/.env에 GA4_SERVICE_ACCOUNT_JSON/GA4_PROPERTY_ID가
+     설정 안 돼 있으면 서버가 stats:null을 내려주고, 이때는 섹션 자체를 숨긴다. */
+  function barRows(rows, labelMap, valueKey, labelKey) {
+    if (!rows.length) return `<p class="small" style="color:var(--text-muted)">${esc(t("데이터가 아직 없습니다"))}</p>`;
+    const max = Math.max(1, ...rows.map((r) => r[valueKey]));
+    return rows
+      .map(
+        (r) => `
+        <div class="best-row">
+          <span></span>
+          <span>${esc(labelMap[r[labelKey]] || r[labelKey])}</span>
+          <span class="tnum">${r[valueKey].toLocaleString("ko-KR")}</span>
+          <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((r[valueKey] / max) * 100)}%"></div></div>
+        </div>`
+      )
+      .join("");
+  }
+
+  function renderVisitorStats(stats) {
+    if (!stats) {
+      el("dashboard-visitors").hidden = true;
+      return;
+    }
+    el("dashboard-visitors").hidden = false;
+    el("dashboard-devices").innerHTML = barRows(stats.byDevice, DEVICE_LABEL, "users", "device");
+    el("dashboard-sources").innerHTML = barRows(stats.bySource, CHANNEL_LABEL, "sessions", "source");
+  }
+
   async function paintAdminDashboard() {
     const result = await adminFetch("/api/admin/dashboard");
     if (!result) return;
     renderDashboard(result);
+
+    const analytics = await adminFetch("/api/admin/analytics");
+    renderVisitorStats(analytics && analytics.stats);
   }
 
   function downloadDashboardExport(format) {
