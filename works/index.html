@@ -180,6 +180,24 @@
     color: var(--danger); font-weight: 800; font-size: 11.5px; display: flex; align-items: center; justify-content: center;
   }
   .notif-empty { padding: 18px 14px; text-align: center; font-size: 12.5px; color: var(--text-muted); }
+  .notif-panel--wide { width: 320px; }
+  .notif-back {
+    display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 14px; border: none;
+    background: transparent; cursor: pointer; font-size: 12px; color: var(--text-muted);
+    border-bottom: 1px solid var(--border); text-align: left;
+  }
+  .notif-back:hover { background: var(--bg-surface-2); }
+  .notif-error-item { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .notif-error-item:last-child { border-bottom: none; }
+  .notif-error-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .notif-error-type { font-weight: 700; color: var(--danger); }
+  .notif-error-at { color: var(--text-muted); font-size: 10.5px; }
+  .notif-error-detail { color: var(--text-muted); font-size: 11px; word-break: break-all; margin-bottom: 6px; }
+  .notif-error-resolve {
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface-2); color: var(--text-primary);
+    font-size: 11px; padding: 4px 8px; cursor: pointer;
+  }
+  .notif-error-resolve:hover { background: var(--bg-surface-3, var(--bg-surface-2)); }
 
   /* style.css의 .btn 기본값은 --ink/--paper를 쓰는데, 다크 테마에서는 --ink가 밝은 색으로
      뒤집혀서 저장 버튼이 흰색 알약처럼 보인다. 사이드바·세그먼트와 같은 포인트 컬러(--accent)로
@@ -1215,6 +1233,7 @@
   }
 
   async function paintNotifications() {
+    el("notif-panel").classList.remove("notif-panel--wide");
     const result = await adminFetch("/api/admin/notifications");
     if (!result) return;
     const rows = result.items.map(notifRowHTML).join("");
@@ -1238,9 +1257,52 @@
     el("notif-panel").hidden = !willOpen;
     if (willOpen) paintNotifications(); // 열 때마다 최신 건수로 갱신
   });
-  el("notif-list").addEventListener("click", (e) => {
+  /* "시스템 오류"는 사이드바에 전용 탭이 없다 — 카드결제 이중실패·환불 실패처럼 지금까지
+     관리자 이메일로만 가서 놓치기 쉬웠던 이벤트를, 탭 이동 없이 알림 패널 안에서 바로
+     펼쳐 보여주고 그 자리에서 "해결" 처리까지 할 수 있게 한다. */
+  function notifErrorItemHTML(it) {
+    const detail = it.detail ? esc(JSON.stringify(it.detail)) : "";
+    const at = new Date(it.at).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR");
+    return `<div class="notif-error-item" data-id="${esc(it.id)}">
+      <div class="notif-error-item-head">
+        <span class="notif-error-type">${esc(t(it.label))}</span>
+        <span class="notif-error-at">${esc(at)}</span>
+      </div>
+      ${detail ? `<div class="notif-error-detail">${detail}</div>` : ""}
+      <button type="button" class="notif-error-resolve" data-id="${esc(it.id)}">${esc(t("해결됨으로 표시"))}</button>
+    </div>`;
+  }
+
+  async function showSystemErrors() {
+    el("notif-panel").classList.add("notif-panel--wide");
+    el("notif-list").innerHTML = `<div class="notif-empty">${esc(t("불러오는 중"))}…</div>`;
+    const result = await adminFetch("/api/admin/system-errors");
+    const items = (result && result.items) || [];
+    const back = `<button type="button" class="notif-back" id="notif-back">← ${esc(t("알림 목록"))}</button>`;
+    const rows = items.map(notifErrorItemHTML).join("");
+    el("notif-list").innerHTML = back + (rows || `<div class="notif-empty">${esc(t("확인할 알림이 없습니다"))}</div>`);
+  }
+
+  el("notif-list").addEventListener("click", async (e) => {
+    if (e.target.closest("#notif-back")) {
+      el("notif-panel").classList.remove("notif-panel--wide");
+      paintNotifications();
+      return;
+    }
+    const resolveBtn = e.target.closest(".notif-error-resolve");
+    if (resolveBtn) {
+      resolveBtn.disabled = true;
+      const ok = await adminFetch(`/api/admin/system-errors/${resolveBtn.dataset.id}/resolve`, { method: "POST" });
+      if (ok) showSystemErrors();
+      else resolveBtn.disabled = false;
+      return;
+    }
     const row = e.target.closest(".notif-row");
     if (!row) return;
+    if (row.dataset.tab === "systemErrors") {
+      showSystemErrors();
+      return;
+    }
     el("notif-panel").hidden = true;
     document.querySelector(`.nav-item[data-tab="${row.dataset.tab}"]`)?.click();
   });
@@ -3237,6 +3299,7 @@
      들어간 account.html에서 본인이 직접 비밀번호를 정하면 끝난다(관리자가 임시 비밀번호를
      만들어 전달할 필요 없음). */
   let currentAdminId = null;
+  let notifPollTimer = null;
 
   function adminRowHTML(a) {
     const isSelf = a.id === currentAdminId;
@@ -3538,6 +3601,9 @@
     el("admin-avatar").textContent = name.slice(0, 1).toUpperCase();
     currentAdminId = profile.id;
     paintNotifications();
+    /* 로그인 시점 조회만으로는 Works를 계속 켜둔 사이 들어온 신규 알림을 새로고침 전까지
+       모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */
+    if (!notifPollTimer) notifPollTimer = setInterval(paintNotifications, 60000);
     paintAdminAccounts();
     paintAdminOrders();
     paintAdminReturns();

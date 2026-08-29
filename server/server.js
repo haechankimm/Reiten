@@ -63,9 +63,63 @@ const app = express();
    한 명이 많이 요청하면 전체 방문자가 같이 차단될 수 있다. 로컬 직접 실행 시에는 영향 없음. */
 app.set("trust proxy", 1);
 
-/* 정적 페이지가 인라인 <script>와 jsDelivr(Pretendard 폰트, Supabase JS)에 의존하므로
-   CSP는 켜지 않는다 — 나머지 보안 헤더(X-Frame-Options, X-Content-Type-Options 등)만 적용 */
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+/* CSP — 빌드 도구 없는 정적 사이트라 인라인 <script>/<style>에 크게 의존하므로 'unsafe-inline'을
+   허용한다(nonce 기반으로 바꾸려면 전 페이지에 빌드 단계가 필요해져 지금 구조와 안 맞음).
+   완벽한 XSS 차단은 아니지만, 그래도 아래 두 가지는 확실히 막는다: ① 스크립트가 주입되더라도
+   여기 허용목록에 없는 임의의 외부 도메인으로 데이터를 빼돌리는 것(connect-src/img-src) ②
+   <object>/<embed> 삽입. 실제 쓰는 외부 도메인만 최소로 나열 — GA4(googletagmanager/
+   google-analytics), 채널톡(channel.io), 포트원 결제 SDK(portone.io), Pretendard 폰트
+   (jsDelivr), 다음 우편번호 검색(daumcdn), Cloudinary(상품 사진), Supabase(로그인·API).
+   카카오 로그인(Supabase OAuth 리다이렉트)·포트원 카드 인증 팝업은 전부 새 창/최상위 이동이라
+   CSP 대상이 아님. */
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://www.googletagmanager.com",
+          "https://cdn.channel.io",
+          "https://cdn.portone.io",
+          "https://cdn.jsdelivr.net",
+          "https://t1.daumcdn.net",
+        ],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.channel.io"],
+        fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://cdn.channel.io"],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "blob:",
+          "https://res.cloudinary.com",
+          "https://www.google-analytics.com",
+          "https://*.google-analytics.com",
+          "https://*.channel.io",
+          "https://*.kakaocdn.net",
+        ],
+        connectSrc: [
+          "'self'",
+          "https://*.supabase.co",
+          "wss://*.supabase.co",
+          "https://www.google-analytics.com",
+          "https://*.google-analytics.com",
+          "https://*.analytics.google.com",
+          "https://*.channel.io",
+          "wss://*.channel.io",
+          "https://*.portone.io",
+          "https://t1.daumcdn.net",
+        ],
+        frameSrc: ["https://*.channel.io"],
+        mediaSrc: ["'self'", "https://*.channel.io"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  })
+);
 
 // 전체 API 남용 방지 (기본): IP당 15분에 300회
 app.use("/api/", rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
@@ -412,6 +466,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           sendAdminCardCancelFailed({ paymentId, productId, size, cancelError: cancelErr.message }).catch((err) =>
             console.error("[mailer] 결제취소 실패 긴급 알림 메일 발송 실패:", err.message)
           );
+          logSystemError("card_cancel_failed", { paymentId, productId, size, error: cancelErr.message });
         }
         const product = products.find((p) => p.id === productId);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name: product ? product.nameKo : productId } };
@@ -912,6 +967,20 @@ function logInventoryChange(rows) {
     });
 }
 
+/* ---------- 시스템 오류 로그 ----------
+   카드결제 이중실패·환불 실패처럼 지금까지 관리자 이메일로만 가서 놓치기 쉬웠던 긴급 이벤트를
+   Works 알림센터(/api/admin/notifications)에서도 바로 보이게 한다(019_system_error_log.sql).
+   메일 발송과 같은 fire-and-forget 원칙 — 로그 적재 실패가 본작업(결제취소·환불 시도)을 막아서는
+   안 된다. 마이그레이션 미실행 시에도 조용히 실패해 사이트 동작에는 지장이 없다. */
+function logSystemError(type, detail) {
+  supabaseAdmin
+    .from("system_error_log")
+    .insert({ type, detail: detail || null })
+    .then(({ error }) => {
+      if (error) console.error("[system-error-log] 적재 실패:", error.message);
+    });
+}
+
 /* 필터: adminEmail(부분 일치) · action(정확히 일치) · dateFrom/dateTo(그 날짜의 KST 00:00~23:59:59
    범위, YYYY-MM-DD). 날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정 근처 기록이 하루
    어긋나 보일 수 있어 +09:00 오프셋을 명시해서 변환한다. */
@@ -1018,13 +1087,18 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
 /* ---------- 알림센터 ----------
    "확인이 필요한 것들"을 한눈에 모아 보여주는 용도 — 별도 읽음/안읽음 상태를 DB에 저장하지
    않고, 그때그때 조건에 맞는 건수를 센다(입금대기 주문 = 아직 확인 안 한 신규 주문으로 취급,
-   입금확인 등으로 상태를 바꾸면 자연히 카운트에서 빠짐). 4개 쿼리를 병렬로 돌린다. */
+   입금확인 등으로 상태를 바꾸면 자연히 카운트에서 빠짐). 5개 쿼리를 병렬로 돌린다.
+   시스템 오류(카드결제 이중실패·환불 실패)만 예외 — 별도 사이드바 탭이 없어 tab을
+   "systemErrors"로 두고, 클릭하면 works/index.html이 탭 이동 대신 같은 자리에서 목록을
+   펼쳐 보여준다(아래 /api/admin/system-errors 참고). system_error_log 테이블이 아직
+   없으면(019 미실행) 조회가 실패하는데, 다른 마이그레이션과 같은 원칙으로 조용히 0건 취급한다. */
 app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
-  const [orders, inventory, qna, returns] = await Promise.all([
+  const [orders, inventory, qna, returns, systemErrors] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
     supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0),
     supabaseAdmin.from("qna").select("id", { count: "exact", head: true }).is("answer", null),
     supabaseAdmin.from("return_requests").select("id", { count: "exact", head: true }).eq("status", "접수"),
+    supabaseAdmin.from("system_error_log").select("id", { count: "exact", head: true }).eq("resolved", false),
   ]);
 
   const items = [
@@ -1032,8 +1106,33 @@ app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "outOfStock", label: "품절된 재고 조합", count: inventory.count || 0, tab: "inventory" },
     { key: "unansweredQna", label: "답변 대기 Q&A", count: qna.count || 0, tab: "qna" },
     { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns" },
+    { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
+});
+
+const SYSTEM_ERROR_LABEL = { card_cancel_failed: "카드결제 취소 실패(이중실패)", refund_failed: "환불 실패" };
+
+/* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
+   해결 처리는 DB에서 지우지 않고 resolved=true로만 표시한다(감사 로그와 같은 원칙 — 무슨 일이
+   있었는지는 남겨둔다). */
+app.get("/api/admin/system-errors", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from("system_error_log")
+    .select("*")
+    .eq("resolved", false)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) return res.status(500).json({ error: "시스템 오류 로그를 불러오지 못했습니다." });
+  res.json({
+    items: data.map((r) => ({ id: r.id, type: r.type, label: SYSTEM_ERROR_LABEL[r.type] || r.type, detail: r.detail, at: r.created_at })),
+  });
+});
+
+app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) => {
+  const { error } = await supabaseAdmin.from("system_error_log").update({ resolved: true }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: "처리에 실패했습니다." });
+  res.json({ ok: true });
 });
 
 /* ---------- 관리자 계정 관리 ----------
@@ -1354,6 +1453,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
         sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: refundErr.message }).catch((err) =>
           console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
         );
+        logSystemError("refund_failed", { orderNo: saved.order_no, amount: saved.total, error: refundErr.message, source: "order_cancel" });
         cancelResult = { refund: "card", ok: false };
       }
     } else if (saved.payment_method === "bank_transfer") {
@@ -1459,6 +1559,7 @@ app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
         sendAdminRefundFailed({ orderNo: prev.order_no, amount: order.total, error: refundErr.message }).catch((err) =>
           console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
         );
+        logSystemError("refund_failed", { orderNo: prev.order_no, amount: order.total, error: refundErr.message, source: "return_approval" });
         refund = { method: "card", ok: false };
       }
     } else if (order && order.payment_method === "bank_transfer") {
