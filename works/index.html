@@ -1675,6 +1675,19 @@
     return worst;
   }
 
+  /* meta.qtyByColorSize가 바뀔 때마다(재고 저장 성공 직후) 그 상품 카드의 컬러 칩 점을
+     다시 계산해서 실제 DOM에 반영한다 — 재고를 채웠는데도 빨간 점이 안 사라지던 버그 수정. */
+  function refreshColorChipStatuses(card, meta) {
+    card.querySelectorAll(".inv-color-chip").forEach((chip) => {
+      const color = chip.dataset.color;
+      const statusEl = chip.querySelector(".inv-color-chip-status");
+      if (!statusEl) return;
+      const cls = invColorStatusClass(meta.sizes, meta.qtyByColorSize, color);
+      statusEl.className = "inv-color-chip-status" + (cls ? ` inv-color-chip-status${cls}` : "");
+      statusEl.hidden = !cls;
+    });
+  }
+
   /* 재고는 원래 "상품코드 · 사이즈" 문자열만 한 줄씩 나열해서 8개 상품 x 5사이즈 = 40줄이
      전부 똑같이 생겨 알아보기 힘들었다 — 상품 썸네일·이름으로 카드를 묶고, 그 안에 사이즈별
      수량을 색으로 구분해서(품절=빨강, 2개 이하=주황) 한눈에 훑을 수 있게 바꿨다. 그런데
@@ -1720,16 +1733,17 @@
         productMeta.set(p.id, { sizes, qtyByColorSize });
 
         const activeColor = colors[0];
+        /* 컬러 칩의 품절/부족 표시 점은 처음 그릴 때만 계산하면, 이후 재고를 채워도(전체 적용·
+           개별 저장) 칩은 다시 그려지지 않는 사이즈 입력칸과 달리 갱신할 방법이 없어 점이 계속
+           남아있는 버그가 있었다. 항상 점(span) 자체는 만들어두고 hidden/클래스만 나중에 JS로
+           갱신하는 방식으로 바꿔(아래 refreshColorChipStatuses), 재고를 채우면 점도 같이 사라지게 한다. */
         const colorChips = colors
-          .map((c) => {
-            const statusCls = invColorStatusClass(sizes, qtyByColorSize, c);
-            return `
+          .map((c) => `
           <button type="button" class="inv-color-chip" data-color="${esc(c)}" aria-pressed="${c === activeColor}">
             <span class="inv-color-chip-dot" style="background:${esc(COLORS[c].hex)}"></span>
             <span>${esc(t(COLORS[c].label))}</span>
-            ${statusCls ? `<span class="inv-color-chip-status inv-color-chip-status${statusCls}"></span>` : ""}
-          </button>`;
-          })
+            <span class="inv-color-chip-status" hidden></span>
+          </button>`)
           .join("");
 
         return `
@@ -1755,6 +1769,11 @@
 
     el("admin-inventory-body").innerHTML =
       legend + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-items:start">${cards}</div>`;
+
+    productMeta.forEach((meta, productId) => {
+      const card = el("admin-inventory-body").querySelector(`[data-product="${productId}"]`);
+      if (card) refreshColorChipStatuses(card, meta);
+    });
 
     /* 사이즈 입력칸은 컬러 칩을 바꿀 때마다 통째로 새로 그려지므로, 카드 하나당 한 번씩
        리스너를 다시 붙이는 대신 목록 컨테이너에서 이벤트 위임으로 처리한다. */
@@ -1806,6 +1825,7 @@
           pendingChanges.delete(`${it.productId}:${it.color}:${it.size}`);
         });
         sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+        refreshColorChipStatuses(card, meta);
         updateSaveBtn();
         input.value = "";
         toast(t("{color} 전체 사이즈를 {n}개로 저장했습니다", { color: t(COLORS[color]?.label || color), n: qty }));
@@ -1852,9 +1872,16 @@
         updateSaveBtn(); // 실패 시(세션 만료 등) 변경사항을 지우지 않고 다시 시도할 수 있게 둔다
         return;
       }
+      const touchedProducts = new Set();
       items.forEach((it) => {
         const meta = productMeta.get(it.productId);
         if (meta) meta.qtyByColorSize.set(`${it.color}:${it.size}`, it.qty);
+        touchedProducts.add(it.productId);
+      });
+      touchedProducts.forEach((productId) => {
+        const card = el("admin-inventory-body").querySelector(`[data-product="${productId}"]`);
+        const meta = productMeta.get(productId);
+        if (card && meta) refreshColorChipStatuses(card, meta);
       });
       pendingChanges.clear();
       updateSaveBtn();
