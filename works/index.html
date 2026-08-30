@@ -215,7 +215,10 @@
   .content-title { font-size: 15px; font-weight: 700; }
   .content-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
 
-  .status-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .status-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; transition: box-shadow .2s ease; }
+  /* 저장 직후 "정말 반영됐다"는 걸 눈으로 바로 알 수 있게 뱃지에 잠깐 테두리를 준다(반품·교환
+     신청 탭에서 저장해도 화면이 안 바뀌는 것처럼 보인다는 피드백으로 추가). */
+  .status-chip--saved { box-shadow: 0 0 0 3px var(--accent-soft, rgba(90,110,220,.25)); }
   .status-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   .st-pending { color: var(--status-pending-ink); background: var(--status-pending-bg); }
   .st-confirmed { color: var(--status-confirmed-ink); background: var(--status-confirmed-bg); }
@@ -1217,6 +1220,7 @@
   const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
   const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
   const ORDER_STATUS_CLASS = { "입금대기": "st-pending", "입금확인": "st-confirmed", "배송중": "st-shipping", "완료": "st-done", "취소": "st-neutral" };
+  const RETURN_STATUS_CLASS = { "접수": "st-pending", "처리중": "st-confirmed", "완료": "st-done", "반려": "st-neutral" };
 
   /* 날짜만으로는 "오늘 들어온 주문 중 어느 게 먼저인지" 구분이 안 된다는 피드백 — 시:분까지
      함께 보여준다(초 단위는 목록에서 불필요한 정보라 뺌). */
@@ -1636,6 +1640,7 @@
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
         <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
           <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
           ${
@@ -1670,19 +1675,30 @@
         btn.disabled = false;
         if (!result) return;
 
-        /* 카드결제 건이 "완료"로 바뀌면 서버가 포트원 환불을 같이 시도한다 — 그 결과를 그대로
-           토스트로 보여준다(성공/실패/무통장입금이라 자동환불 대상이 아님, 세 가지). */
+        /* 저장 버튼을 눌러도 화면이 그대로라 "정말 반영됐는지 알기 어렵다"는 피드백 — 토스트
+           문구만 다르고 정작 카드의 상태 뱃지(item.status)는 갱신 안 하던 버그였다. 환불 결과와
+           무관하게 상태는 항상 저장된 것이므로, 네 분기 전부 item.status를 갱신하고 다시 그린다. */
+        const item = returnsState.items.find((x) => x.id === id);
+        if (item) item.status = status;
+
         if (result.refund?.method === "card" && result.refund.ok) {
-          const item = returnsState.items.find((x) => x.id === id);
           if (item) item.refunded = true;
           toast(t("상태를 저장하고 환불까지 완료했습니다"));
-          renderAdminReturns();
         } else if (result.refund?.method === "card" && !result.refund.ok) {
           toast(t("상태는 저장했지만 환불에 실패했습니다. 포트원에서 직접 확인해 주세요."));
         } else if (result.refund?.method === "bank_manual") {
           toast(t("상태를 저장했습니다. 무통장입금 건이라 계좌로 직접 환불해 주세요."));
         } else {
           toast(t("상태를 저장했습니다"));
+        }
+        renderAdminReturns();
+
+        /* 다시 그린 뒤 방금 저장한 카드의 뱃지에 잠깐 테두리를 줘서 "여기가 바뀌었다"를
+           명확히 보여준다(1.2초 후 자동으로 사라짐). */
+        const chip = el("admin-returns-list").querySelector(`[data-id="${CSS.escape(id)}"] .admin-return-status-chip`);
+        if (chip) {
+          chip.classList.add("status-chip--saved");
+          setTimeout(() => chip.classList.remove("status-chip--saved"), 1200);
         }
       })
     );
