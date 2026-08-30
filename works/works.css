@@ -1,0 +1,414 @@
+  /* =========================================================
+     Works 전용 대시보드 스킨. style.css는 계속 불러와서 .panel/.field/.btn/
+     .chip/.checkbox/.upload-btn 같은 컴포넌트는 그대로 재사용하되, 그 컴포넌트가
+     참조하는 토큰(--paper/--ink/--line 등)을 여기서 재정의해서 색만 새로 입힌다
+     (컴포넌트 CSS 자체는 안 건드림 — 상품/룩북 폼을 다시 짤 필요가 없어짐).
+     ========================================================= */
+  :root {
+    --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
+    --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
+    --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
+    --danger: #b3261e; --ok: #1f8a4c;
+    --radius: 6px;
+    color-scheme: light;
+
+    --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
+    --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
+    --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
+    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark;
+      --paper: #313338; --paper-2: #2b2d31; --paper-3: #26282c;
+      --ink: #dbdee1; --ink-soft: #c3c7cc; --muted: #84898f;
+      --line: #3f4147; --line-soft: #35373c; --field: #26282c; --shade: #3a3c42;
+      --danger: #f3897e; --ok: #79e0a0;
+
+      --bg-canvas: #313338; --bg-surface: #2b2d31; --bg-surface-2: #3a3c42;
+      --text-primary: #dbdee1; --text-secondary: #b5bac1; --text-muted: #84898f;
+      --border: #3f4147; --accent: #8398ee; --accent-soft: rgba(131,152,238,0.14); --accent-contrast: #10142a;
+      --status-pending-ink: #e3b25c;   --status-pending-bg: rgba(227,178,92,0.14);
+      --status-confirmed-ink: #55d6cb; --status-confirmed-bg: rgba(85,214,203,0.14);
+      --status-shipping-ink: #bba8f7;  --status-shipping-bg: rgba(187,168,247,0.14);
+      --status-done-ink: #79e0a0;      --status-done-bg: rgba(121,224,160,0.14);
+      --status-neutral-ink: #adb3bc;   --status-neutral-bg: rgba(173,179,188,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #313338; --paper-2: #2b2d31; --paper-3: #26282c;
+    --ink: #dbdee1; --ink-soft: #c3c7cc; --muted: #84898f;
+    --line: #3f4147; --line-soft: #35373c; --field: #26282c; --shade: #3a3c42;
+    --danger: #f3897e; --ok: #79e0a0;
+
+    --bg-canvas: #313338; --bg-surface: #2b2d31; --bg-surface-2: #3a3c42;
+    --text-primary: #dbdee1; --text-secondary: #b5bac1; --text-muted: #84898f;
+    --border: #3f4147; --accent: #8398ee; --accent-soft: rgba(131,152,238,0.14); --accent-contrast: #10142a;
+    --status-pending-ink: #e3b25c;   --status-pending-bg: rgba(227,178,92,0.14);
+    --status-confirmed-ink: #55d6cb; --status-confirmed-bg: rgba(85,214,203,0.14);
+    --status-shipping-ink: #bba8f7;  --status-shipping-bg: rgba(187,168,247,0.14);
+    --status-done-ink: #79e0a0;      --status-done-bg: rgba(121,224,160,0.14);
+    --status-neutral-ink: #adb3bc;   --status-neutral-bg: rgba(173,179,188,0.12);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
+    --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
+    --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
+    --danger: #b3261e; --ok: #1f8a4c;
+
+    --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
+    --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
+    --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
+    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
+  }
+
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg-canvas); color: var(--text-primary); font-size: 13px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* .sidebar/.admin-chip/.btn 등 여기저기서 display:flex를 지정하는 클래스와 hidden 속성이
+     같이 붙으면, 브라우저 기본 스타일시트([hidden]{display:none})보다 이 파일의 클래스 규칙이
+     우선 적용돼(둘 다 저작자 스타일시트가 아니라 오리진이 달라서) 오히려 보여버린다.
+     hidden이 항상 이기도록 한 줄로 강제한다. */
+  [hidden] { display: none !important; }
+
+  .shell { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 208px; flex-shrink: 0;
+    background: var(--bg-surface); border-right: 1px solid var(--border);
+    padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-heading { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); padding: 6px 10px 8px; }
+  .nav-item {
+    appearance: none; border: none; background: transparent; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    text-align: left; width: 100%; font-size: 12.5px; font-weight: 500; border-left: 2px solid transparent;
+    transition: background-color .12s ease, color .12s ease;
+  }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: .85; }
+  .nav-item:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .nav-item.is-active { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item.is-active svg { opacity: 1; }
+  .nav-badge {
+    margin-left: auto; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+    background: var(--danger); color: #fff; font-size: 10px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; line-height: 1; flex-shrink: 0;
+  }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px;
+    background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand-mark-img { height: 20px; width: auto; display: block; }
+  :root[data-theme="dark"] .brand-mark-img { filter: invert(1); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand-mark-img { filter: invert(1); } }
+  .brand-word { font-weight: 800; font-size: 14.5px; letter-spacing: -.01em; color: var(--text-primary); }
+  .brand-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .admin-chip { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border-radius: 999px; background: var(--bg-surface-2); }
+  .admin-avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast);
+    display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; flex-shrink: 0; }
+  .admin-name { font-size: 12px; font-weight: 600; }
+  .admin-role { font-size: 10.5px; color: var(--text-muted); }
+
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { appearance: none; border: none; background: var(--bg-canvas); color: var(--text-secondary);
+    padding: 5px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+
+  .icon-btn { appearance: none; border: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-secondary);
+    width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: background-color .12s ease, color .12s ease; }
+  .icon-btn:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .icon-btn .i-moon { display: none; }
+  :root[data-theme="dark"] .icon-btn .i-sun { display: none; }
+  :root[data-theme="dark"] .icon-btn .i-moon { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .icon-btn .i-sun { display: none; }
+    :root:not([data-theme="light"]) .icon-btn .i-moon { display: block; }
+  }
+
+  .notif-wrap { position: relative; }
+  .notif-badge {
+    position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; padding: 0 3px;
+    border-radius: 999px; background: var(--danger); color: #fff; font-size: 9.5px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .notif-panel {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 280px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface);
+    box-shadow: 0 10px 28px rgba(0,0,0,.18); overflow: hidden;
+  }
+  .notif-panel-head { padding: 10px 14px; font-weight: 700; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+  .notif-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; padding: 10px 14px; border: none; background: transparent; cursor: pointer;
+    font-size: 12.5px; color: var(--text-primary); text-align: left;
+    border-bottom: 1px solid var(--border); transition: background-color .12s ease;
+  }
+  .notif-row:last-child { border-bottom: none; }
+  .notif-row:hover { background: var(--bg-surface-2); }
+  .notif-row-count {
+    min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--danger-soft, rgba(220,60,60,.14));
+    color: var(--danger); font-weight: 800; font-size: 11.5px; display: flex; align-items: center; justify-content: center;
+  }
+  .notif-empty { padding: 18px 14px; text-align: center; font-size: 12.5px; color: var(--text-muted); }
+  .notif-panel--wide { width: 320px; }
+  .notif-back {
+    display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 14px; border: none;
+    background: transparent; cursor: pointer; font-size: 12px; color: var(--text-muted);
+    border-bottom: 1px solid var(--border); text-align: left;
+  }
+  .notif-back:hover { background: var(--bg-surface-2); }
+  .notif-error-item { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .notif-error-item:last-child { border-bottom: none; }
+  .notif-error-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .notif-error-type { font-weight: 700; color: var(--danger); }
+  .notif-error-at { color: var(--text-muted); font-size: 10.5px; }
+  .notif-error-detail { color: var(--text-muted); font-size: 11px; word-break: break-all; margin-bottom: 6px; }
+  .notif-error-resolve {
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface-2); color: var(--text-primary);
+    font-size: 11px; padding: 4px 8px; cursor: pointer;
+  }
+  .notif-error-resolve:hover { background: var(--bg-surface-3, var(--bg-surface-2)); }
+
+  /* style.css의 .btn 기본값은 --ink/--paper를 쓰는데, 다크 테마에서는 --ink가 밝은 색으로
+     뒤집혀서 저장 버튼이 흰색 알약처럼 보인다. 사이드바·세그먼트와 같은 포인트 컬러(--accent)로
+     통일하고, 삭제류 액션만 --danger로 분리해 취소/제거와 구분한다. */
+  .btn { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+  .btn:hover { opacity: .9; }
+  .btn--ghost { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+  .btn--ghost:hover { background: var(--bg-surface-2); color: var(--text-primary); border-color: var(--border); opacity: 1; }
+  .btn--danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+  .btn--danger:hover { background: var(--danger); color: var(--accent-contrast); opacity: 1; }
+  .btn[disabled] { opacity: .35; }
+
+  .content { flex: 1; overflow: auto; padding: 18px 20px 40px; }
+  .content-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .content-title { font-size: 15px; font-weight: 700; }
+  .content-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+
+  .status-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; transition: box-shadow .2s ease; }
+  /* 저장 직후 "정말 반영됐다"는 걸 눈으로 바로 알 수 있게 뱃지에 잠깐 테두리를 준다(반품·교환
+     신청 탭에서 저장해도 화면이 안 바뀌는 것처럼 보인다는 피드백으로 추가). */
+  .status-chip--saved { box-shadow: 0 0 0 3px var(--accent-soft, rgba(90,110,220,.25)); }
+  .status-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .st-pending { color: var(--status-pending-ink); background: var(--status-pending-bg); }
+  .st-confirmed { color: var(--status-confirmed-ink); background: var(--status-confirmed-bg); }
+  .st-shipping { color: var(--status-shipping-ink); background: var(--status-shipping-bg); }
+  .st-done { color: var(--status-done-ink); background: var(--status-done-bg); }
+  .st-neutral { color: var(--status-neutral-ink); background: var(--status-neutral-bg); }
+  .st-overdue { color: var(--danger); background: var(--danger-soft, rgba(220,60,60,.14)); }
+
+  .split { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
+  .split-rev { display: grid; grid-template-columns: 1.3fr 380px; gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .split-rev { grid-template-columns: 1fr; } }
+  .plist { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%;
+    appearance: none; border: none; border-bottom: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
+    padding: 10px 12px; cursor: pointer; text-align: left; border-left: 2px solid transparent; }
+  .plist > .prow:last-of-type { border-bottom: none; }
+  .prow:hover { background: var(--bg-surface); }
+  .prow.is-selected { background: var(--accent-soft); border-left-color: var(--accent); }
+  .prow-id { font-weight: 700; font-size: 12px; }
+  .prow-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .prow-amount { font-size: 12px; font-weight: 700; }
+
+  .detail { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--bg-canvas); }
+  .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .detail-title { font-size: 14px; font-weight: 800; }
+  .detail-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .detail-field label { display: block; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .detail-field div { font-size: 12.5px; }
+  .detail-items { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .detail-item { display: flex; justify-content: space-between; font-size: 12px; gap: 12px; }
+  .detail-total { display: flex; justify-content: space-between; font-size: 13px; font-weight: 800; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .detail-ship { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .detail-ship select, .detail-ship input, .mini-select { border: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
+    border-radius: 6px; padding: 6px 9px; font-size: 12px; }
+  .detail-ship select { min-width: 120px; }
+  .detail-ship input { flex: 1; min-width: 140px; }
+  .primary-btn { appearance: none; border: none; background: var(--accent); color: var(--accent-contrast); border-radius: 6px;
+    padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+  .auth-wrap { display: flex; justify-content: center; padding-top: 8vh; }
+  .auth-card { width: 100%; max-width: 360px; border: 1px solid var(--border); border-radius: 10px; padding: 24px; background: var(--bg-canvas); }
+  .remember-row { display: flex; align-items: center; margin: 10px 0 16px; }
+  .remember-row .checkbox { font-size: 12px; }
+
+  /* ---------- 상품: 한눈에 보이는 카드 그리드 ---------- */
+  .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+  .grid-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-canvas); display: flex; flex-direction: column; }
+  .grid-card-thumb { position: relative; aspect-ratio: 1; background: var(--bg-surface-2); }
+  .grid-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .grid-card-badge { position: absolute; top: 6px; left: 6px; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--bg-canvas); color: var(--text-muted); border: 1px solid var(--border); }
+  /* "비공개" 배지가 좌상단을 쓰고 있어서 선택 체크박스는 우상단에 둔다. 배경 원판을 깔아서
+     사진이 밝은색이어도 체크박스가 묻히지 않게 한다. */
+  .grid-card-select { position: absolute; top: 6px; right: 6px; z-index: 2; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--bg-canvas); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .grid-card-select input { margin: 0; cursor: pointer; }
+  .grid-card-body { padding: 8px 10px 2px; }
+  .grid-card-body b { font-size: 12px; display: block; line-height: 1.35; }
+  /* flex-wrap + min-width: 독일어처럼 버튼 글자가 길어지면 한 줄에 다 안 들어갈 수 있는데,
+     그때는 잘리는 대신 버튼이 다음 줄로 자연스럽게 넘어가게 한다(ellipsis는 최후의 안전장치). */
+  .grid-card-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 10px; margin-top: auto; }
+  .grid-card-actions .btn { flex: 1 1 auto; min-width: 64px; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- 재고: 상품 썸네일 + 이름 + 사이즈별 수량 카드 ---------- */
+  .inv-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+  .inv-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+  .inv-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  /* 상품 등록 폼의 컬러 선택 칩 — 팔레트 관리 목록처럼 이름 앞에 색 동그라미를 붙여
+     글자를 읽지 않고도 어떤 색인지 바로 알아볼 수 있게 한다. */
+  .pf-color { display: inline-flex; align-items: center; gap: 7px; }
+  .pf-color-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
+  .inv-card { display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-canvas); }
+  .inv-card-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .inv-card-thumb { width: 48px; height: 48px; flex: none; border-radius: 6px; overflow: hidden; background: var(--bg-surface-2); }
+  .inv-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .inv-card-name { flex: 1 1 150px; min-width: 130px; }
+  .inv-card-name b { display: block; font-size: 13px; line-height: 1.3; }
+  /* 카드마다 컬러 수가 달라서(1개~4개) 전부 펼쳐 보여주면 카드 높이가 제각각이라 그리드가
+     지저분해 보였다(사용자가 스크린샷으로 신고) — 컬러를 칩으로 골라서 그 컬러의 사이즈 한
+     줄만 보여주는 방식으로 바꿔 모든 카드가 비슷한 높이를 갖게 한다. 다만 "한눈에 훑어보기"가
+     아예 안 되면 안 되니, 칩 위에 그 컬러 안에 품절/재고부족 사이즈가 있는지 작은 점으로 표시. */
+  .inv-color-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .inv-color-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg-surface);
+    color: var(--text-secondary); font-size: 11.5px; cursor: pointer;
+  }
+  .inv-color-chip:hover { border-color: var(--text-muted); }
+  .inv-color-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--text-primary); background: var(--bg-surface-2); }
+  .inv-color-chip-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid var(--border); }
+  .inv-color-chip-status { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .inv-color-chip-status--out { background: var(--danger); }
+  .inv-color-chip-status--low { background: var(--status-pending-ink); }
+  .inv-card-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* 재입고(전 사이즈 20개씩)나 완전 품절 처리(전 사이즈 0)처럼, 지금 고른 컬러의 사이즈를
+     전부 같은 수량으로 맞출 때 한 칸씩 입력하지 않아도 되게 하는 일괄 입력. */
+  .inv-bulk-qty { display: flex; gap: 6px; align-items: center; }
+  .inv-bulk-qty-input { width: 64px; height: 28px; padding: 0 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
+  .inv-size { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 5px; border-radius: 6px; background: var(--bg-surface); min-width: 54px; }
+  .inv-size-label { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
+  .inv-size--low { background: var(--status-pending-bg); }
+  .inv-size--low .inv-size-label { color: var(--status-pending-ink); }
+  .inv-size--out { background: color-mix(in srgb, var(--danger) 16%, var(--bg-surface)); }
+  .inv-size--out .inv-size-label { color: var(--danger); }
+  .admin-inv-qty { width: 48px; height: 30px; padding: 0 4px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-primary); font-size: 12.5px; }
+  .inv-card-log { padding-top: 10px; border-top: 1px solid var(--border); }
+  /* 이력이 최대 50건까지 한 번에 펼쳐질 수 있어(서버가 상품당 50건으로 제한), 제한 없이
+     쌓이면 카드가 한없이 길어져서 같은 줄의 다른 카드들과 높이가 안 맞아 보인다 — 목록
+     자체에 높이 제한 + 스크롤을 줘서 카드 높이는 늘 일정하게 유지한다. */
+  .inv-log-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+  .inv-log-row { display: grid; grid-template-columns: 76px 56px 34px 40px 1fr; gap: 8px; align-items: center; }
+  /* 그리드 트랙은 기본적으로 내용의 고유 너비 밑으로는 안 줄어들어서(min-width:auto),
+     관리자 이메일처럼 긴 텍스트가 카드 테두리를 밀고 나가 넘쳐 보이는 원인이 됐다. */
+  .inv-log-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- 룩북: 실제 배치를 그대로 흉내 낸 클릭형 미리보기 ---------- */
+  .look-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
+  .look-tile { position: relative; grid-column: span 4; border: 2px solid var(--border); border-radius: 6px; overflow: hidden;
+    padding: 0; cursor: pointer; background: var(--bg-surface-2); min-height: 64px; }
+  .look-tile.w6 { grid-column: span 6; }
+  .look-tile.w8 { grid-column: span 8; }
+  .look-tile.w12 { grid-column: span 12; }
+  .look-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .look-tile-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--text-muted); text-align: center; padding: 4px; }
+  .look-tile-label { position: absolute; left: 7px; bottom: 6px; font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+  .look-tile-hidden { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; }
+  .look-tile:hover { border-color: var(--accent); }
+  .look-tile.is-editing { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .look-tile-add { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted);
+    border-style: dashed; background: transparent; }
+  .look-tile-add:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ---------- 감사 로그 ---------- */
+  .logrow { display: grid; grid-template-columns: 148px 190px 150px 1fr; gap: 10px; padding: 9px 12px;
+    border-bottom: 1px solid var(--border); font-size: 12px; align-items: baseline; }
+  .logrow:last-child { border-bottom: none; }
+  .logrow-head { color: var(--text-muted); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700; }
+  .logrow-action { font-weight: 700; }
+  .logrow-detail { color: var(--text-secondary); font-size: 11px; margin-top: 2px; }
+  @media (max-width: 720px) { .logrow { grid-template-columns: 1fr; gap: 2px; } }
+
+  /* ---------- 대시보드 ---------- */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .stat-tile { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg-canvas); }
+  .stat-tile-label { font-size: 11px; color: var(--text-muted); letter-spacing: .03em; }
+  .stat-tile-value { font-size: 22px; font-weight: 800; margin-top: 6px; }
+  .stat-tile-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; margin-top: 14px; }
+  .chart-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+  .chart-bar { width: 100%; max-width: 28px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .chart-bar-label { font-size: 9.5px; color: var(--text-muted); white-space: nowrap; }
+  .best-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .best-row:last-child { border-bottom: none; }
+  .best-rank { color: var(--text-muted); font-weight: 700; font-size: 11px; }
+  .best-bar-track { grid-column: 1/-1; height: 5px; border-radius: 3px; background: var(--bg-surface-2); overflow: hidden; margin-top: 2px; }
+  .best-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
+  /* ---------- 사진 편집(자르기/회전/확대) ---------- */
+  .pe-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+  .pe-panel { background: var(--bg-canvas); border-radius: 10px; padding: 20px; width: min(92vw, 480px); }
+  .pe-stage-wrap { display: flex; justify-content: center; margin: 14px 0; }
+  .pe-stage { position: relative; overflow: hidden; background: #111; border-radius: 6px; touch-action: none; cursor: grab; max-width: 100%; }
+  .pe-stage.is-dragging { cursor: grabbing; }
+  .pe-stage canvas { display: block; }
+  .pe-controls { display: flex; flex-direction: column; gap: 10px; }
+  .pe-row { display: flex; gap: 8px; align-items: center; }
+  .pe-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* ---------- 모바일 화면 대응 ----------
+     사이드바가 폭 고정(208px)이라 좁은 화면에서는 서랍(drawer)처럼 평소엔 화면 밖에 숨겨두고,
+     햄버거 버튼으로 열고 닫는다. 데스크톱(넓은 화면)에서는 이 규칙들이 전혀 적용되지 않는다. */
+  .sidebar-toggle { display: none; }
+  .sidebar-backdrop { display: none; }
+  @media (max-width: 860px) {
+    .sidebar-toggle {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg-surface); color: var(--text-primary); flex-shrink: 0;
+    }
+    .sidebar-toggle svg { width: 18px; height: 18px; }
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 236px;
+      transform: translateX(-100%); transition: transform .22s ease; box-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+    .sidebar.is-open { transform: translateX(0); box-shadow: 8px 0 24px rgba(0,0,0,.25); }
+    .sidebar-backdrop.is-open {
+      display: block; position: fixed; inset: 0; z-index: 55;
+      background: rgba(0,0,0,.4);
+    }
+    .topbar {
+      padding: 8px 12px; gap: 10px;
+      height: auto; min-height: 48px; flex-wrap: wrap; row-gap: 8px;
+    }
+    .topbar-right { flex-wrap: wrap; row-gap: 8px; }
+    .brand-word { display: none; }
+    .brand-badge { display: none; }
+    .admin-chip .admin-name, .admin-chip .admin-role { display: none; }
+    #logout { white-space: nowrap; }
+    .content { padding: 14px 12px 32px; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
