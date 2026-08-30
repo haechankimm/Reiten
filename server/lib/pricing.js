@@ -1,15 +1,15 @@
 /* 가격·주문번호 계산 — 순수 함수만 모아둔다(테스트하기 쉽도록 Supabase/Express에 의존하지 않음). */
 
-function orderNo(date = new Date()) {
+/* seq는 Postgres 시퀀스(020_order_seq.sql의 next_order_seq())에서 발급받은, 하루 리셋 없이
+   계속 증가하는 정수다 — 날짜가 같아도 시퀀스 값이 절대 겹치지 않으므로 이 함수가 만드는
+   주문번호도 원천적으로 충돌 불가능하다(예전의 "임의 4자리" 방식은 하루 9,000개 슬롯이라
+   주문이 몰리면 겹칠 수 있었음). seq를 못 받았을 때만 예전 방식으로 폴백한다(마이그레이션
+   020 미실행 등 — 충돌 가능성은 남지만 사이트가 완전히 멈추는 것보다는 낫다). */
+function orderNo(seq, date = new Date()) {
   const p = (n) => String(n).padStart(2, "0");
-  return (
-    "R" +
-    String(date.getFullYear()).slice(2) +
-    p(date.getMonth() + 1) +
-    p(date.getDate()) +
-    "-" +
-    String(Math.floor(Math.random() * 9000) + 1000)
-  );
+  const prefix = "R" + String(date.getFullYear()).slice(2) + p(date.getMonth() + 1) + p(date.getDate());
+  const suffix = Number.isFinite(seq) ? String(seq).padStart(6, "0") : String(Math.floor(Math.random() * 9000) + 1000);
+  return prefix + "-" + suffix;
 }
 
 /* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.

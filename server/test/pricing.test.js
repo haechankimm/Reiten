@@ -9,9 +9,19 @@ const PRODUCTS = [
 const EXTRAS = [{ key: "flower-doll" }, { key: "bead-bracelet" }];
 const PRICE_OPTS = { extras: EXTRAS, charmPrice: 5900, extraPrice: 9000 };
 
-test("orderNo — R + YYMMDD + 4자리 숫자 형식", () => {
-  const no = orderNo(new Date("2026-08-05T00:00:00Z"));
+test("orderNo — seq가 있으면 R + YYMMDD + 6자리로 0채움", () => {
+  const no = orderNo(42, new Date("2026-08-05T00:00:00Z"));
+  assert.equal(no, "R260805-000042");
+});
+
+test("orderNo — seq가 없으면(마이그레이션 미실행 등) 임의 4자리로 폴백", () => {
+  const no = orderNo(undefined, new Date("2026-08-05T00:00:00Z"));
   assert.match(no, /^R260805-\d{4}$/);
+});
+
+test("orderNo — 서로 다른 seq는 항상 다른 주문번호를 만든다(충돌 불가능)", () => {
+  const date = new Date("2026-08-05T00:00:00Z");
+  assert.notEqual(orderNo(1, date), orderNo(2, date));
 });
 
 test("shippingFor — 소계 0이면 배송비 0 (빈 장바구니)", () => {

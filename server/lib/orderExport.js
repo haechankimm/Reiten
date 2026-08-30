@@ -3,6 +3,7 @@
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
 const path = require("path");
+const { kstDateTimeLabel } = require("./kst");
 
 const EXPORT_COLUMNS = [
   { key: "orderNo", label: "주문번호" },
@@ -25,12 +26,10 @@ const EXPORT_COLUMNS = [
 
 /* Supabase orders row(snake_case) → 내보내기용 평평한 객체(camelCase) */
 /* toLocaleString은 "오후 7:23:00"처럼 길어서 표(특히 PDF)에서 잘리기 쉬워, 정렬도 잘 되는
-   "YYYY-MM-DD HH:mm"(KST) 고정 포맷을 쓴다. */
+   "YYYY-MM-DD HH:mm"(KST) 고정 포맷을 쓴다(kst.js — server.js와 같은 KST 변환을 공유). */
 function fmtExportDate(iso) {
   if (!iso) return "";
-  const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
-  const p = (n) => String(n).padStart(2, "0");
-  return `${kst.getUTCFullYear()}-${p(kst.getUTCMonth() + 1)}-${p(kst.getUTCDate())} ${p(kst.getUTCHours())}:${p(kst.getUTCMinutes())}`;
+  return kstDateTimeLabel(iso);
 }
 
 function toExportRow(o) {

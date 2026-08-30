@@ -260,6 +260,29 @@ async function sendAdminCardCancelFailed({ paymentId, productId, size, cancelErr
   });
 }
 
+/* 카드결제 승인 "이후" 주문 확정(재고 차감 또는 orders 저장) 자체가 실패한 경우의 긴급 알림 —
+   재고부족(sendAdminCardCancelFailed)과는 다른 원인(DB 오류·주문번호 충돌 등)이라 문구를
+   분리했다. paymentCancelled로 결제 취소 성공 여부까지 같이 알려줘서, 실패했으면 관리자가
+   포트원 콘솔에서 직접 환불해야 한다는 걸 바로 알 수 있게 한다. */
+async function sendAdminOrderFinalizeFailed({ paymentId, stage, reason, paymentCancelled }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) {
+    console.warn("[mailer] RESEND_API_KEY 또는 ADMIN_NOTIFY_EMAIL이 설정되지 않아 주문 확정 실패 긴급 알림을 건너뜁니다.");
+    return;
+  }
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] ⚠️ 긴급 — 카드결제 후 주문 확정 실패`,
+    html: `
+      <h2 style="color:#c00">카드결제는 승인됐는데 주문을 확정하는 과정(${escHtml(stage)})에서 오류가 발생했습니다.</h2>
+      <p><b>결제 ID</b> ${escHtml(paymentId)}</p>
+      <p><b>오류 사유</b> ${escHtml(reason || "-")}</p>
+      <p><b>결제 자동 취소</b> ${paymentCancelled ? "성공 — 고객에게 돈이 청구되지 않았습니다." : "<span style=\"color:#c00\">실패 — 고객이 결제한 상태로 남아있습니다. 포트원 콘솔에서 직접 확인·환불해 주세요.</span>"}</p>
+    `,
+  });
+}
+
 /* 반품 승인 환불 실패 긴급 알림(관리자용) — 반품을 "완료"로 승인하면서 자동으로 포트원 환불을
    시도했는데 실패한 경우. 고객은 이미 반품 승인 처리됐다고 알고 있을 수 있어 빠르게 확인이
    필요하다. 실패해도 호출부에서 항상 catch할 것. */
@@ -340,6 +363,7 @@ module.exports = {
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
+  sendAdminOrderFinalizeFailed,
   sendAdminRefundFailed,
   sendAdminLoginLocked,
   sendAdminSettlementReport,

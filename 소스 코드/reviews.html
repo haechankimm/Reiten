@@ -51,6 +51,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <select id="r-product" name="product" required></select>
           </div>
           <div class="field">
+            <label for="r-order-no" data-i18n-html data-i18n='주문번호 <span class="req">*</span>'>주문번호 <span class="req">*</span></label>
+            <input id="r-order-no" name="orderNo" placeholder="R260801-6041" required>
+            <p class="err" data-i18n="주문번호를 입력해 주세요.">주문번호를 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="r-tel" data-i18n-html data-i18n='주문 시 연락처 <span class="req">*</span>'>주문 시 연락처 <span class="req">*</span></label>
+            <input id="r-tel" name="tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+            <p class="err" data-i18n="연락처를 입력해 주세요.">연락처를 입력해 주세요.</p>
+            <p class="small" style="margin-top:4px;color:var(--text-muted)" data-i18n="실제 구매하신 주문인지 확인하는 용도로만 사용하며 리뷰에는 표시되지 않습니다.">실제 구매하신 주문인지 확인하는 용도로만 사용하며 리뷰에는 표시되지 않습니다.</p>
+          </div>
+          <div class="field">
             <label data-i18n="별점">별점</label>
             <div class="chips" id="r-rating"></div>
           </div>
@@ -254,11 +265,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     e.preventDefault();
     const name = el("r-name");
     const comment = el("r-comment");
+    const orderNoEl = el("r-order-no");
+    const telEl = el("r-tel");
     let ok = true;
-    if (!name.value.trim()) { name.setAttribute("aria-invalid", "true"); name.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
-    else { name.setAttribute("aria-invalid", "false"); name.closest(".field").querySelector(".err").classList.remove("on"); }
-    if (!comment.value.trim()) { comment.setAttribute("aria-invalid", "true"); comment.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
-    else { comment.setAttribute("aria-invalid", "false"); comment.closest(".field").querySelector(".err").classList.remove("on"); }
+    const requireField = (input) => {
+      if (!input.value.trim()) { input.setAttribute("aria-invalid", "true"); input.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
+      else { input.setAttribute("aria-invalid", "false"); input.closest(".field").querySelector(".err").classList.remove("on"); }
+    };
+    requireField(name);
+    requireField(comment);
+    requireField(orderNoEl);
+    requireField(telEl);
     if (!ok) return;
 
     const btn = el("r-submit");
@@ -266,6 +283,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     try {
       const fd = new FormData();
       fd.append("productId", el("r-product").value);
+      fd.append("orderNo", orderNoEl.value.trim());
+      fd.append("tel", telEl.value.trim());
       fd.append("name", name.value.trim());
       fd.append("rating", rating);
       fd.append("comment", comment.value.trim());
@@ -274,11 +293,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       if (photoFile) fd.append("photo", photoFile);
 
       const res = await fetch("/api/reviews", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("failed");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 서버가 돌려주는 이유(주문 불일치·미결제·중복 리뷰 등)를 그대로 보여준다 — cart.html의
+        // 결제 오류 안내와 같은 방식(한국어 고정 문구지만, 어떤 언어 화면에서도 이유는 알 수 있어야 함).
+        toast(body.error || t("리뷰 등록에 실패했습니다"));
+        return;
+      }
       // 새 리뷰는 관리자 승인 전까지 공개 목록에 나오지 않으므로(스팸 방지) 화면에 바로 추가하지 않는다.
-      await res.json();
       name.value = "";
       comment.value = "";
+      orderNoEl.value = "";
+      telEl.value = "";
       el("r-photo").value = "";
       el("r-photo-name").textContent = t("선택된 파일 없음");
       el("r-photo-preview").hidden = true;

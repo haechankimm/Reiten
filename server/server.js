@@ -22,6 +22,7 @@ const {
   sendCustomerCardPaid,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
+  sendAdminOrderFinalizeFailed,
   sendAdminRefundFailed,
   sendAdminLoginLocked,
   sendAdminSettlementReport,
@@ -37,6 +38,8 @@ const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
 const portone = require("./lib/portone");
 const { getVisitorStats } = require("./lib/analytics");
+const { kstDateKey, kstMonthKey, kstDayRangeISO, kstMonthRangeISO } = require("./lib/kst");
+const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -427,6 +430,29 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
   });
 });
 
+/* 결제 취소 시도 헬퍼 — 성공/실패 여부만 boolean으로 돌려주고, 실패 시 로그만 남긴다(호출부가
+   결제취소 실패까지 감안해서 관리자 알림·시스템 오류 로그를 남기므로 여기서는 안 던짐). */
+async function tryCancelCardPayment(paymentId, reason) {
+  try {
+    await portone.cancelPayment(paymentId, reason);
+    return true;
+  } catch (e) {
+    console.error(`[order] ⚠️ ${reason} — 결제 자동 취소 실패:`, paymentId, e.message);
+    return false;
+  }
+}
+
+/* 020_order_seq.sql의 Postgres 시퀀스에서 절대 겹치지 않는 정수를 받아온다 — 실패하면(마이그레이션
+   미실행 등) undefined를 반환해 orderNo()가 예전 방식(임의 4자리)으로 조용히 폴백하게 한다. */
+async function nextOrderSeq() {
+  const { data, error } = await supabaseAdmin.rpc("next_order_seq");
+  if (error) {
+    console.error("[order] 주문번호 시퀀스 발급 실패, 임의값으로 폴백:", error.message);
+    return undefined;
+  }
+  return Number(data);
+}
+
 /* /api/order(카드결제 분기)와 웹훅(/api/payments/webhook) 양쪽에서 똑같이 필요한 "결제 확인 후
    주문 확정" 로직 — 재고 차감, 주문 저장, 알림 메일까지 한 번에 처리한다. 두 곳에 각각 복붙하면
    나중에 한쪽만 고치고 다른 쪽을 놓치기 쉬운, 돈이 걸린 로직이라 함수로 묶어 하나만 유지한다.
@@ -434,7 +460,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
 async function finalizeCardOrder({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount } = pending;
-  const orderNumber = orderNo();
+  const orderNumber = orderNo(await nextOrderSeq());
 
   const inventoryItems = [];
   rawItems.forEach((raw, i) => {
@@ -471,7 +497,15 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
         const product = products.find((p) => p.id === productId);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name: product ? product.nameKo : productId } };
       }
+      /* 재고부족(위 OUT_OF_STOCK)이 아닌 다른 이유(DB 오류 등)로 재고 차감 자체가 실패한
+         경우도 카드결제는 이미 승인된 뒤라 결제만 그대로 남는 사고가 나던 부분 — 위
+         OUT_OF_STOCK 분기와 같은 원칙으로 결제를 취소하고 관리자에게 알린다. */
       console.error("[order] 재고 차감 실패:", invError.message);
+      const cancelled = await tryCancelCardPayment(paymentId, "재고 차감 오류로 자동 취소");
+      sendAdminOrderFinalizeFailed({ paymentId, stage: "재고 차감", reason: invError.message, paymentCancelled: cancelled }).catch((err) =>
+        console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
+      );
+      logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: invError.message, paymentCancelled: cancelled });
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
 
@@ -519,7 +553,26 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     .single();
 
   if (saveError) {
+    /* 여기까지 오는 동안 재고는 이미 차감됐고 결제도 이미 승인된 상태다(주문번호 충돌 —
+       020_order_seq.sql로 사실상 불가능해졌지만 — 이나 그 밖의 일시적 DB 오류로 저장만
+       실패할 수 있음). 재고를 되돌리고 결제도 취소해서 "결제·재고차감은 됐는데 주문 기록이
+       없는" 상태로 남지 않게 한다. */
     console.error("[order] 주문 저장 실패:", saveError.message);
+    if (inventoryItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+      if (restoreError) {
+        console.error("[order] ⚠️ 주문 저장 실패 후 재고 복원도 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+      } else {
+        logInventoryChange(
+          inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_failed", ref: paymentId }))
+        );
+      }
+    }
+    const cancelled = await tryCancelCardPayment(paymentId, "주문 저장 오류로 자동 취소");
+    sendAdminOrderFinalizeFailed({ paymentId, stage: "주문 저장", reason: saveError.message, paymentCancelled: cancelled }).catch((err) =>
+      console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
+    );
+    logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message, paymentCancelled: cancelled });
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
   }
 
@@ -611,7 +664,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     return res.status(e.status || 400).json({ error: e.message });
   }
 
-  const orderNumber = orderNo();
+  const orderNumber = orderNo(await nextOrderSeq());
 
   /* 실물 재고가 있는(참/추가아이템이 아닌) 상품·사이즈 조합만 차감 대상으로 뽑는다.
      rawItems와 items는 map()으로 만들어져 인덱스가 그대로 대응된다. */
@@ -981,9 +1034,22 @@ function logSystemError(type, detail) {
     });
 }
 
-/* 필터: adminEmail(부분 일치) · action(정확히 일치) · dateFrom/dateTo(그 날짜의 KST 00:00~23:59:59
-   범위, YYYY-MM-DD). 날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정 근처 기록이 하루
-   어긋나 보일 수 있어 +09:00 오프셋을 명시해서 변환한다. */
+/* dateFrom/dateTo(YYYY-MM-DD, KST 기준 하루)를 쿼리에 적용하는 공통 헬퍼 — 감사로그·주문·
+   반품·리뷰·문의 필터 5곳에서 똑같이 반복되던 `T00:00:00+09:00` 패턴을 kst.js의
+   kstDayRangeISO 하나로 통일한다(날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정
+   근처 기록이 하루 어긋나 보일 수 있음). */
+function applyKstDateRangeFilter(query, column, dateFrom, dateTo) {
+  if (dateFrom) {
+    const range = kstDayRangeISO(dateFrom);
+    if (range) query = query.gte(column, range.startISO);
+  }
+  if (dateTo) {
+    const range = kstDayRangeISO(dateTo);
+    if (range) query = query.lte(column, range.endISO);
+  }
+  return query;
+}
+
 app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
   const { adminEmail, action, dateFrom, dateTo } = req.query;
@@ -991,14 +1057,7 @@ app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   let query = supabaseAdmin.from("admin_audit_log").select("*", { count: "exact" }).order("at", { ascending: false });
   if (adminEmail) query = query.ilike("admin_email", `%${adminEmail}%`);
   if (action) query = query.eq("action", action);
-  if (dateFrom) {
-    const t = new Date(`${dateFrom}T00:00:00+09:00`);
-    if (!Number.isNaN(t.getTime())) query = query.gte("at", t.toISOString());
-  }
-  if (dateTo) {
-    const t = new Date(`${dateTo}T23:59:59.999+09:00`);
-    if (!Number.isNaN(t.getTime())) query = query.lte("at", t.toISOString());
-  }
+  query = applyKstDateRangeFilter(query, "at", dateFrom, dateTo);
 
   const { data, error, count } = await query.range(from, to);
 
@@ -1035,26 +1094,28 @@ async function computeDashboardStats() {
 
   const isCancelled = (o) => o.status === "취소";
   const now = new Date();
-  const todayKey = now.toISOString().slice(0, 10);
-  const monthKey = now.toISOString().slice(0, 7);
+  /* 서버는 UTC로 도는데(Render), 관리자는 한국 시간 기준으로 "오늘"을 생각한다 — 자정~오전
+     9시(KST) 사이에 raw UTC 날짜로 자르면 그 시간대 주문이 "어제" 매출로 잘못 잡히는 버그가
+     있었다(kst.js 참고). kstDateKey/kstMonthKey로 통일해 해결. */
+  const todayKey = kstDateKey(now);
+  const monthKey = kstMonthKey(now);
 
   let todayRevenue = 0;
   let monthRevenue = 0;
   let pendingCount = 0;
   const revenueByDay = new Map();
   for (let i = 13; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    revenueByDay.set(d.toISOString().slice(0, 10), 0);
+    const d = new Date(now.getTime() - i * 86400000);
+    revenueByDay.set(kstDateKey(d), 0);
   }
 
   const qtyByName = new Map();
   for (const o of data) {
     if (o.status === "입금대기") pendingCount++;
     if (!isCancelled(o)) {
-      const dayKey = String(o.created_at).slice(0, 10);
+      const dayKey = kstDateKey(o.created_at);
       if (dayKey === todayKey) todayRevenue += o.total;
-      if (dayKey.slice(0, 7) === monthKey) monthRevenue += o.total;
+      if (kstMonthKey(o.created_at) === monthKey) monthRevenue += o.total;
       if (revenueByDay.has(dayKey)) revenueByDay.set(dayKey, revenueByDay.get(dayKey) + o.total);
 
       for (const item of o.items || []) {
@@ -1111,7 +1172,11 @@ app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
 });
 
-const SYSTEM_ERROR_LABEL = { card_cancel_failed: "카드결제 취소 실패(이중실패)", refund_failed: "환불 실패" };
+const SYSTEM_ERROR_LABEL = {
+  card_cancel_failed: "카드결제 취소 실패(이중실패)",
+  refund_failed: "환불 실패",
+  order_finalize_failed: "카드결제 후 주문 확정 실패",
+};
 
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
    해결 처리는 DB에서 지우지 않고 resolved=true로만 표시한다(감사 로그와 같은 원칙 — 무슨 일이
@@ -1197,9 +1262,14 @@ app.delete("/api/admin/admins/:id", requireAdmin, async (req, res) => {
 
 /* GA4 방문자 통계(선택) — 설정 안 돼 있으면 lib/analytics.js가 null을 반환하고, 조회 자체가
    실패해도(권한 미부여 등) 대시보드 전체를 막지 않도록 500 대신 stats:null로 내려준다. */
+/* Works 대시보드의 30일/3개월/6개월/누적 기간 선택 — "누적"은 GA4가 실제로 무한정 데이터를
+   보관하지 않으므로(속성 설정에 따라 보통 최대 14~18개월) 완전한 전체 기간은 아니고 그 안에서
+   가장 긴 범위(540일)로 대체한다. 허용된 값 밖이면 기본 30일로 조용히 폴백. */
+const VISITOR_STATS_ALLOWED_DAYS = [30, 90, 180, 540];
 app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
+  const days = VISITOR_STATS_ALLOWED_DAYS.includes(Number(req.query.days)) ? Number(req.query.days) : 30;
   try {
-    const stats = await getVisitorStats(30);
+    const stats = await getVisitorStats(days);
     res.json({ stats });
   } catch (err) {
     console.error("[analytics] 조회 실패:", err.message);
@@ -1278,14 +1348,7 @@ function applyOrderFilters(query, reqQuery) {
     if (v) query = query.or(`order_no.ilike.%${v}%,customer->>name.ilike.%${v}%,customer->>tel.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
-  if (dateFrom) {
-    const d = new Date(`${dateFrom}T00:00:00+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
-  }
-  if (dateTo) {
-    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
-  }
+  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
 
@@ -1430,9 +1493,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   let cancelResult = null;
   if (isNewCancel) {
-    const restoreItems = (saved.items || [])
-      .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
-      .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
+    const restoreItems = restoreItemsFromOrder(saved.items);
     if (restoreItems.length) {
       const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
       if (restoreError) {
@@ -1477,14 +1538,7 @@ function applyReturnFilters(query, reqQuery) {
     if (v) query = query.or(`order_no.ilike.%${v}%,contact_name.ilike.%${v}%,contact_tel.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
-  if (dateFrom) {
-    const d = new Date(`${dateFrom}T00:00:00+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
-  }
-  if (dateTo) {
-    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
-  }
+  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
 
@@ -1590,9 +1644,7 @@ app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
     .single();
   if (orderError || !order) return res.status(404).json({ error: "연결된 주문을 찾을 수 없습니다." });
 
-  const restoreItems = (order.items || [])
-    .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
-    .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
+  const restoreItems = restoreItemsFromOrder(order.items);
 
   if (!restoreItems.length) {
     return res.status(400).json({ error: "이 주문에는 자동으로 복원할 재고 정보가 없습니다(이전 방식으로 만들어진 주문). 재고 탭에서 직접 조정해 주세요." });
@@ -2436,11 +2488,39 @@ app.post("/api/reviews", writeLimiter, (req, res) => {
       return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
     }
 
-    const { productId, name, rating, comment, instagram } = req.body || {};
+    const { productId, name, rating, comment, instagram, orderNo: reqOrderNo, tel } = req.body || {};
 
     const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
     if (!validProduct) {
       return res.status(400).json({ error: "존재하지 않는 상품입니다." });
+    }
+
+    /* 실구매 인증 — 021_reviews_order_verification.sql. 주문번호+연락처는 이미 order-lookup/
+       반품신청에서 쓰는 것과 같은 조합(비회원도 자기 주문을 증명할 수 있는 유일한 방법이라
+       로그인 여부와 무관하게 통일). "general"(상품 무관 후기)은 어떤 주문이든 있으면 되고,
+       특정 상품 리뷰는 그 주문 items 안에 실제 그 productId가 있어야 한다. */
+    const orderNoStr = String(reqOrderNo || "").trim();
+    const telDigits = normalizeTel(tel);
+    if (!orderNoStr || !telDigits) {
+      return res.status(400).json({ error: "리뷰를 작성하려면 구매하신 주문번호와 연락처를 입력해 주세요." });
+    }
+    const { data: order, error: orderLookupError } = await supabaseAdmin
+      .from("orders")
+      .select("order_no, customer, items, status")
+      .eq("order_no", orderNoStr)
+      .maybeSingle();
+    if (orderLookupError) {
+      console.error("[reviews] 주문 조회 실패:", orderLookupError.message);
+      return res.status(500).json({ error: "주문 확인 중 오류가 발생했습니다." });
+    }
+    if (!order || normalizeTel(order.customer.tel) !== telDigits) {
+      return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
+    }
+    if (order.status === "입금대기" || order.status === "취소") {
+      return res.status(400).json({ error: "결제가 완료된 주문만 리뷰를 작성할 수 있습니다." });
+    }
+    if (productId !== "general" && !(order.items || []).some((it) => it.productId === productId)) {
+      return res.status(400).json({ error: "이 주문 내역에서 해당 상품을 찾을 수 없습니다." });
     }
 
     const ratingNum = Math.round(Number(rating));
@@ -2471,21 +2551,34 @@ app.post("/api/reviews", writeLimiter, (req, res) => {
       }
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("reviews")
-      .insert({
-        product_id: productId,
-        name: nameStr,
-        rating: ratingNum,
-        comment: commentStr,
-        photo_url: photoUrl,
-        instagram_handle: instaStr || null,
-        approved: false,
-      })
-      .select()
-      .single();
+    const reviewRow = {
+      product_id: productId,
+      order_no: orderNoStr,
+      name: nameStr,
+      rating: ratingNum,
+      comment: commentStr,
+      photo_url: photoUrl,
+      instagram_handle: instaStr || null,
+      approved: false,
+    };
+    let { data, error } = await supabaseAdmin.from("reviews").insert(reviewRow).select().single();
+
+    /* PGRST204 = PostgREST 스키마 캐시에 order_no 컬럼이 없음(021_reviews_order_verification.sql
+       미실행) — 위 구매인증 검증 자체는 이미 통과했으니(주문 존재·연락처 일치·상품 일치 확인
+       끝) 리뷰 작성 자체를 막을 이유는 없다. order_no 없이 다시 저장해 마이그레이션 전에도
+       리뷰 기능이 완전히 멈추지 않게 한다(다른 선택 기능과 같은 "미실행 시 조용히 저하" 원칙 —
+       다만 이 경우는 중복 리뷰 차단·구매인증 배지만 못 켜지고, 실구매 검증 자체는 그대로 됨). */
+    if (error && error.code === "PGRST204") {
+      console.warn("[reviews] reviews.order_no 컬럼 없음(마이그레이션 021 미실행) — order_no 없이 저장");
+      const { order_no, ...fallbackRow } = reviewRow;
+      ({ data, error } = await supabaseAdmin.from("reviews").insert(fallbackRow).select().single());
+    }
 
     if (error) {
+      // 23505 = reviews_order_product_uidx 위반 — 같은 주문으로 같은 상품에 이미 리뷰를 남긴 경우.
+      if (error.code === "23505") {
+        return res.status(409).json({ error: "이미 이 주문으로 작성한 리뷰가 있습니다." });
+      }
       console.error("[reviews] 저장 실패:", error.message);
       return res.status(500).json({ error: "리뷰 저장에 실패했습니다." });
     }
@@ -2514,14 +2607,7 @@ function applyReviewFilters(query, reqQuery) {
   }
   if (status === "approved") query = query.eq("approved", true);
   else if (status === "pending") query = query.eq("approved", false);
-  if (dateFrom) {
-    const d = new Date(`${dateFrom}T00:00:00+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
-  }
-  if (dateTo) {
-    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
-  }
+  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
 
@@ -2536,7 +2622,10 @@ app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
   const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "리뷰 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map(toReviewDto), page, pageSize, total: count ?? data.length });
+  /* orderNo는 공개 API(toReviewDto)에는 없다 — 다른 고객의 주문번호가 공개 리뷰 목록에
+     노출되면 안 되므로, 관리자 전용 응답에서만 따로 붙인다(실구매 인증 여부를 admin이
+     한눈에 볼 수 있도록 — 021_reviews_order_verification.sql 이전 리뷰는 null). */
+  res.json({ items: data.map((r) => ({ ...toReviewDto(r), orderNo: r.order_no || null })), page, pageSize, total: count ?? data.length });
 });
 
 app.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
@@ -2628,14 +2717,7 @@ function applyQnaFilters(query, reqQuery) {
     if (v) query = query.or(`name.ilike.%${v}%,question.ilike.%${v}%,product_id.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
-  if (dateFrom) {
-    const d = new Date(`${dateFrom}T00:00:00+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.gte("created_at", d.toISOString());
-  }
-  if (dateTo) {
-    const d = new Date(`${dateTo}T23:59:59.999+09:00`);
-    if (!Number.isNaN(d.getTime())) query = query.lte("created_at", d.toISOString());
-  }
+  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
 
@@ -2698,9 +2780,7 @@ async function cancelStalePendingOrders() {
       continue;
     }
 
-    const restoreItems = (order.items || [])
-      .filter((it) => it.productId && it.size && !String(it.productId).startsWith("charm-"))
-      .map((it) => ({ productId: it.productId, color: it.color || "", size: it.size, qty: it.qty }));
+    const restoreItems = restoreItemsFromOrder(order.items);
     if (restoreItems.length) {
       const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
       if (restoreError) {
@@ -2738,15 +2818,8 @@ async function findOutOfStockSince(productId, color, size, currentQty) {
     .eq("size", size)
     .order("created_at", { ascending: false })
     .limit(200);
-  if (error || !logs || !logs.length) return null; // 이력이 없으면 언제부터 품절인지 알 수 없어 건너뛴다
-
-  let running = currentQty;
-  for (const log of logs) {
-    const before = running - log.delta;
-    if (before > 0) return log.created_at; // 이 변동으로 재고가 0 이하로 떨어짐 — 그 시점이 "since"
-    running = before;
-  }
-  return logs[logs.length - 1].created_at; // 조회한 이력 전체 기간 동안 계속 품절
+  if (error || !logs) return null; // 이력이 없으면 언제부터 품절인지 알 수 없어 건너뛴다
+  return findOutOfStockSinceFromLogs(logs, currentQty);
 }
 
 async function checkRestockNeeded() {
@@ -2788,15 +2861,7 @@ cron.schedule("0 9 * * 1", () => {
    4개 시트)로 정리해 관리자에게 첨부 메일로 보낸다. 세무사에게 그대로 전달하는 용도 —
    신고를 대신하지 않는 원본 데이터 정리이므로 메일 본문에도 그렇게 명시한다(mailer.js 참고). */
 async function sendMonthlySettlement() {
-  const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
-  const y = kstNow.getUTCFullYear();
-  const m = kstNow.getUTCMonth(); // 0-indexed, 이번 달 → m-1이 지난달
-  const startKst = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
-  const endKst = new Date(Date.UTC(y, m, 1, 0, 0, 0));
-  const start = new Date(startKst.getTime() - 9 * 3600 * 1000).toISOString();
-  const end = new Date(endKst.getTime() - 9 * 3600 * 1000).toISOString();
-  const monthKey = `${startKst.getUTCFullYear()}-${String(startKst.getUTCMonth() + 1).padStart(2, "0")}`;
-  const monthLabel = `${startKst.getUTCFullYear()}년 ${startKst.getUTCMonth() + 1}월`;
+  const { startISO: start, endISO: end, monthKey, monthLabel } = kstMonthRangeISO(1);
 
   const { data: orders, error: ordersError } = await supabaseAdmin
     .from("orders")
