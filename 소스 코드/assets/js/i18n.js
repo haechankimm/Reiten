@@ -836,6 +836,7 @@ const I18N = {
   "답변 대기 Q&A": { de: "Unbeantwortete Q&A" },
   "처리 대기 반품·교환 신청": { de: "Offene Rücksendungen" },
   "시스템 오류": { de: "Systemfehler" },
+  "{h}시간 경과": { de: "{h} Std. überfällig" },
   "카드결제 취소 실패(이중실패)": { de: "Zahlungsstorno fehlgeschlagen" },
   "환불 실패": { de: "Rückerstattung fehlgeschlagen" },
   "해결됨으로 표시": { de: "Als erledigt markieren" },

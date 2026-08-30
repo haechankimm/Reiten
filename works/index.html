@@ -222,6 +222,7 @@
   .st-shipping { color: var(--status-shipping-ink); background: var(--status-shipping-bg); }
   .st-done { color: var(--status-done-ink); background: var(--status-done-bg); }
   .st-neutral { color: var(--status-neutral-ink); background: var(--status-neutral-bg); }
+  .st-overdue { color: var(--danger); background: var(--danger-soft, rgba(220,60,60,.14)); }
 
   .split { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
   @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
@@ -1183,8 +1184,12 @@
   const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
   const ORDER_STATUS_CLASS = { "입금대기": "st-pending", "입금확인": "st-confirmed", "배송중": "st-shipping", "완료": "st-done", "취소": "st-neutral" };
 
+  /* 날짜만으로는 "오늘 들어온 주문 중 어느 게 먼저인지" 구분이 안 된다는 피드백 — 시:분까지
+     함께 보여준다(초 단위는 목록에서 불필요한 정보라 뺌). */
   function fmtDate(iso) {
-    return new Date(iso).toLocaleDateString(getLang() === "de" ? "de-DE" : "ko-KR");
+    return new Date(iso).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR", {
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
   }
 
   /* ---------- 사이드바 탭 전환 ---------- */
@@ -1362,6 +1367,17 @@
     return `<span class="status-chip ${ORDER_STATUS_CLASS[status] || "st-neutral"}">${esc(t(status))}</span>`;
   }
 
+  /* 서버(server.js)가 미입금 주문을 24시간(PENDING_CANCEL_HOURS) 뒤 자동 취소하기까지 그
+     사이 며칠씩 방치돼도 목록만 봐서는 몰랐다는 피드백 — 아직 자동취소 크론이 안 도는
+     순간에도 "이미 24시간이 지났다"를 바로 알 수 있게 뱃지를 따로 붙인다. */
+  const PENDING_CANCEL_HOURS = 24;
+  function orderOverdueBadge(o) {
+    if (o.status !== "입금대기") return "";
+    const hours = (Date.now() - new Date(o.at).getTime()) / 3600000;
+    if (hours < PENDING_CANCEL_HOURS) return "";
+    return `<span class="status-chip st-overdue">${esc(t("{h}시간 경과", { h: PENDING_CANCEL_HOURS }))}</span>`;
+  }
+
   function orderListRowHTML(o) {
     return `
       <button type="button" class="prow ${o.no === selectedOrderNo ? "is-selected" : ""}" data-no="${esc(o.no)}">
@@ -1371,7 +1387,7 @@
         </span>
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
-          <div style="margin-top:3px">${orderStatusChip(o.status)}</div>
+          <div style="margin-top:3px;display:flex;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
         </span>
       </button>`;
   }
@@ -1383,7 +1399,7 @@
           <div class="detail-title tnum">${esc(o.no)}</div>
           <div class="detail-sub tnum">${fmtDate(o.at)}</div>
         </div>
-        ${orderStatusChip(o.status)}
+        <span style="display:flex;gap:4px">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</span>
       </div>
       <div class="detail-grid">
         <div class="detail-field"><label>${esc(t("주문자"))}</label><div>${esc(o.customer.name)} · ${esc(o.customer.tel)}</div></div>
@@ -1460,6 +1476,11 @@
           toast(t("주문 정보를 저장했습니다"));
         }
         renderOrdersSplit();
+        /* 매출 집계(computeDashboardStats)는 저장 시점마다 취소 건을 이미 제외하고 다시
+           계산하지만, 대시보드 탭 자체는 로그인 시점에 한 번만 그려서 방금 취소한 주문의
+           매출이 그대로 남아있는 것처럼 보인다는 피드백 — 주문을 저장할 때마다 대시보드도
+           같이 새로고침한다. */
+        paintAdminDashboard();
       });
     }
   }
