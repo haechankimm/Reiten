@@ -126,6 +126,17 @@ function initTheme() {
 }
 initTheme();
 
+/* Google Analytics(GA4)는 "몇 명이 방문했는지"만 알려주고 실제 결제 완료 여부는 모른다
+   (이커머스 이벤트를 따로 연동하지 않는 한). 이미 우리 DB에 있는 실제 주문 기록에 기기
+   종류만 하나 같이 저장해두면 "기기별 실제 매출·구매 전환"을 GA4 없이도 정확히 알 수 있다
+   — 쿠키 차단 확장 프로그램 등의 영향도 안 받음(server/migrations/022_order_device.sql). */
+function detectDeviceType() {
+  const ua = navigator.userAgent || "";
+  if (/iPad|Android(?!.*Mobile)|Tablet/i.test(ua)) return "tablet";
+  if (/Mobi|Android|iPhone|iPod/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
 /* =========================================================
    장바구니
    ========================================================= */

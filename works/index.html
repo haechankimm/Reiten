@@ -996,6 +996,23 @@
           </div>
 
           <div class="panel">
+            <b data-i18n="CS 빠른 답변 템플릿">CS 빠른 답변 템플릿</b>
+            <p class="small" style="margin-top:6px" data-i18n="Q&A 답변창에서 버튼 한 번으로 채워 넣을 수 있는 답변 문구입니다. 완전 자동응답이 아니라 답변 시간만 줄여주는 용도입니다.">Q&A 답변창에서 버튼 한 번으로 채워 넣을 수 있는 답변 문구입니다. 완전 자동응답이 아니라 답변 시간만 줄여주는 용도입니다.</p>
+            <form id="qna-template-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+              <div class="field">
+                <label for="qt-label" data-i18n="템플릿 이름">템플릿 이름</label>
+                <input id="qt-label" required placeholder="예: 배송 문의 답변" data-i18n-attr="placeholder:예: 배송 문의 답변" maxlength="60">
+              </div>
+              <div class="field">
+                <label for="qt-body" data-i18n="답변 내용">답변 내용</label>
+                <textarea id="qt-body" required maxlength="2000"></textarea>
+              </div>
+              <div><button class="btn btn--sm" type="submit" id="qt-submit" data-i18n="템플릿 추가">템플릿 추가</button></div>
+            </form>
+            <div id="qna-template-list" style="margin-top:14px;display:grid;gap:8px"></div>
+          </div>
+
+          <div class="panel">
             <b id="settings-form-title" data-i18n="새 정보 추가">새 정보 추가</b>
             <p class="small" style="margin-top:6px" data-i18n="비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.">비밀번호·API 키 같은 민감정보는 여기 적지 마세요 — 관리자 전원이 볼 수 있습니다.</p>
             <form id="settings-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:end">
@@ -1043,6 +1060,11 @@
           <div class="panel">
             <b data-i18n="베스트셀러 (수량 기준)">베스트셀러 (수량 기준)</b>
             <div id="dashboard-bestsellers" style="margin-top:10px"></div>
+          </div>
+          <div class="panel">
+            <b data-i18n="기기별 실제 매출 (결제 완료 기준)">기기별 실제 매출 (결제 완료 기준)</b>
+            <p class="small" style="color:var(--text-muted);margin-top:4px" data-i18n="아래 방문자 분석(Google Analytics)은 방문자 수만 알려주고 실제 결제 여부는 알려주지 않습니다 — 이 항목은 우리 DB에 실제로 결제 완료된 주문만 집계한 값이라 더 정확합니다.">아래 방문자 분석(Google Analytics)은 방문자 수만 알려주고 실제 결제 여부는 알려주지 않습니다 — 이 항목은 우리 DB에 실제로 결제 완료된 주문만 집계한 값이라 더 정확합니다.</p>
+            <div id="dashboard-sales-by-device" style="margin-top:10px"></div>
           </div>
           <div class="panel" id="dashboard-visitors" hidden>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -2032,6 +2054,7 @@
   wireExportMenu("inv-export", "inv-export-menu", downloadInventoryExport);
 
   const qnaState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
+  let qnaTemplates = [];
 
   function qnaCardHTML(q) {
     return `
@@ -2046,7 +2069,12 @@
           q.status === "답변완료"
             ? `<div class="notice" style="margin-top:12px"><b>${esc(t("답변"))}</b><p style="margin-top:6px">${esc(q.answer)}</p></div>`
             : `
-          <div class="field" style="margin-top:12px">
+          ${qnaTemplates.length ? `
+          <select class="mini-select admin-qna-template-pick" style="margin-top:12px">
+            <option value="">${esc(t("빠른 답변 템플릿 선택..."))}</option>
+            ${qnaTemplates.map((tpl) => `<option value="${esc(tpl.id)}">${esc(tpl.label)}</option>`).join("")}
+          </select>` : ""}
+          <div class="field" style="margin-top:8px">
             <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}"></textarea>
           </div>
           <button type="button" class="btn btn--sm admin-qna-submit">${esc(t("답변 등록"))}</button>`
@@ -2060,6 +2088,15 @@
     el("admin-qna-list").innerHTML = qnaState.items.length
       ? qnaState.items.map(qnaCardHTML).join("") + loadMoreHTML(hasMore, "admin-qna-more")
       : `<p class="small">${esc(t("조건에 맞는 문의가 없습니다"))}</p>`;
+
+    el("admin-qna-list").querySelectorAll(".admin-qna-template-pick").forEach((sel) =>
+      sel.addEventListener("change", () => {
+        if (!sel.value) return;
+        const tpl = qnaTemplates.find((t) => t.id === sel.value);
+        if (tpl) sel.closest("[data-id]").querySelector(".admin-qna-answer").value = tpl.body;
+        sel.value = "";
+      })
+    );
 
     el("admin-qna-list").querySelectorAll(".admin-qna-submit").forEach((btn) =>
       btn.addEventListener("click", async () => {
@@ -3407,6 +3444,54 @@
     renderAdminSettings();
   }
 
+  /* ---------- CS 빠른 답변 템플릿 ----------
+     완전 자동응답이 아니라 QnA 답변창에서 버튼 한 번으로 채워 넣는 문구 모음(023_qna_templates.sql).
+     목록은 로그인 시 한 번 불러와 두고(qnaTemplates), QnA 카드를 다시 그릴 때마다 그 값을 그대로 쓴다 —
+     템플릿을 추가·삭제하면 QnA 목록도 다시 그려서 드롭다운이 최신 상태를 반영하게 한다. */
+  function qnaTemplateRowHTML(tpl) {
+    return `<div class="best-row" data-id="${esc(tpl.id)}">
+      <span></span>
+      <span>${esc(tpl.label)}</span>
+      <span></span>
+      <button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>
+    </div>`;
+  }
+
+  async function paintQnaTemplates() {
+    const result = await adminFetch("/api/admin/qna-templates");
+    qnaTemplates = (result && result.items) || [];
+    el("qna-template-list").innerHTML = qnaTemplates.length
+      ? qnaTemplates.map(qnaTemplateRowHTML).join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("등록된 템플릿이 없습니다"))}</p>`;
+    el("qna-template-list").querySelectorAll(".qt-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        btn.disabled = true;
+        const ok = await adminFetch(`/api/admin/qna-templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!ok) { btn.disabled = false; return; }
+        await paintQnaTemplates();
+        renderAdminQna();
+      })
+    );
+  }
+
+  el("qna-template-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const label = el("qt-label").value.trim();
+    const body = el("qt-body").value.trim();
+    if (!label || !body) { toast(t("템플릿 이름과 답변 내용을 입력해 주세요.")); return; }
+    const btn = el("qt-submit");
+    btn.disabled = true;
+    const result = await adminFetch("/api/admin/qna-templates", { method: "POST", body: JSON.stringify({ label, body }) });
+    btn.disabled = false;
+    if (!result) return;
+    el("qt-label").value = "";
+    el("qt-body").value = "";
+    toast(t("템플릿을 추가했습니다"));
+    await paintQnaTemplates();
+    renderAdminQna();
+  });
+
   /* ---------- 감사 로그 (관리자가 2명 이상일 때 "누가 언제 무엇을 바꿨는지" 추적용) ----------
      008_admin_audit_log.sql을 실행하지 않았으면 서버가 저장을 조용히 건너뛰므로 여기도 빈 목록만 보임. */
   const AUDIT_ACTION_LABELS = {
@@ -3569,6 +3654,24 @@
           )
           .join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
+
+    /* GA4 방문자 분석과 달리 이건 우리 DB의 실제 결제 완료 주문만 센 값이라 device가 없는
+       주문(마이그레이션 022 이전에 만들어졌거나, 서버가 device 없이 저장한 경우)은 "확인
+       안 됨"으로 묶는다 — DEVICE_LABEL은 아래에서 GA4 렌더링과 같이 쓰므로 여기서 참조. */
+    const deviceMax = Math.max(1, ...(d.salesByDevice || []).map((s) => s.revenue));
+    el("dashboard-sales-by-device").innerHTML = (d.salesByDevice || []).length
+      ? d.salesByDevice
+          .map(
+            (s) => `
+          <div class="best-row">
+            <span></span>
+            <span>${esc(t(DEVICE_LABEL[s.device] || "확인 안 됨"))}</span>
+            <span class="tnum">${esc(money(s.revenue))} <span class="small" style="color:var(--text-muted)">(${esc(t("{n}건", { n: s.orders }))})</span></span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((s.revenue / deviceMax) * 100)}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
   }
 
   const DEVICE_LABEL = { mobile: "모바일", desktop: "PC", tablet: "태블릿" };
@@ -3669,7 +3772,7 @@
     paintAdminOrders();
     paintAdminReturns();
     paintAdminInventory();
-    paintAdminQna();
+    paintQnaTemplates().then(() => paintAdminQna());
     paintAdminProducts();
     paintAdminCoupons();
     paintAdminReviews();

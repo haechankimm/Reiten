@@ -335,10 +335,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     return ok;
   }
 
+  /* 서버(server/)가 아예 꺼져 있어 /api/order 응답 자체를 못 받았을 때만 쓰는 "수동 접수용
+     임시 참조번호"다 — 실제 주문번호(서버가 Postgres 시퀀스로 발급하는 R+날짜+6자리, pricing.js
+     참고)와 형식이 같으면 고객이 이걸 진짜 추적 가능한 주문번호로 착각할 수 있어 접두어를
+     "TMP"로 분리했다. DB에 저장되는 값이 아니라 이메일/카카오톡으로 수동 접수할 때만 쓰인다. */
   function orderNo() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, "0");
-    return "R" + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate())
+    return "TMP" + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate())
       + "-" + String(Math.floor(Math.random() * 9000) + 1000);
   }
 
@@ -470,7 +474,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         const prepRes = await fetch("/api/payments/prepare", {
           method: "POST",
           headers,
-          body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined }),
+          body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, device: detectDeviceType() }),
         });
         if (!prepRes.ok) {
           const body = await prepRes.json().catch(() => ({}));
@@ -557,7 +561,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       const res = await fetch("/api/order", {
         method: "POST",
         headers,
-        body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined }),
+        body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, device: detectDeviceType() }),
       });
 
       if (res.status === 409) {

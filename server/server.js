@@ -281,7 +281,21 @@ app.use(
    data.js의 정적 PRODUCTS는 마이그레이션 004를 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다.
    toProductDto/productPatchFromBody는 ./lib/products.js로, priceItem/shippingFor/orderNo는
    ./lib/pricing.js로 분리해 Supabase 없이도 단위 테스트할 수 있게 했다(server/test/ 참고). */
+
+/* GET /api/products가 로그인 없이 아무나 부를 수 있는 공개 API인데, 호출될 때마다 products
+   전체 + inventory 전체(withRealSoldOut)를 매번 다시 읽고 있었다 — 방문자가 늘어나거나
+   상품·컬러 수가 늘어나면 이 두 쿼리가 트래픽에 정비례해서 늘어나는 구조. 15초 TTL 메모리
+   캐시로 감싸서, 15초 동안 아무리 많이 방문해도 실제 DB 조회는 최대 1번만 나가게 한다.
+   품절 표시가 최대 15초 늦게 반영될 수 있지만(실제 결제 시점엔 decrement_inventory가 항상
+   실시간으로 재검증하므로 판매 정합성엔 영향 없음), 이 정도 지연은 상품 목록 화면에서
+   체감되지 않는 수준이라 감수한다. 캐시는 이 프로세스 메모리에만 있어 재배포하면 초기화됨. */
+const PRODUCTS_CACHE_TTL_MS = 15000;
+let productsCache = { data: null, at: 0 };
+
 async function getActiveProducts() {
+  if (productsCache.data && Date.now() - productsCache.at < PRODUCTS_CACHE_TTL_MS) {
+    return productsCache.data;
+  }
   const { data, error } = await supabaseAdmin
     .from("products")
     .select("*")
@@ -291,7 +305,9 @@ async function getActiveProducts() {
     console.error("[products] DB 조회 실패, 정적 목록으로 폴백:", error.message);
     return STATIC_PRODUCTS;
   }
-  return withRealSoldOut(data.map(toProductDto));
+  const result = await withRealSoldOut(data.map(toProductDto));
+  productsCache = { data: result, at: Date.now() };
+  return result;
 }
 
 /* 관리자가 손으로 체크하는 soldOut 배열(상품.sizes 전체에 적용 — "이 사이즈는 어느 컬러든 안 판다")과
@@ -340,6 +356,52 @@ app.get("/api/products", async (req, res) => {
 
 const REQUIRED_CUSTOMER_FIELDS = ["name", "tel", "email", "zip", "addr", "payer"];
 const PRICE_OPTS = { extras: EXTRAS, charmPrice: CHARM_PRICE, extraPrice: EXTRA_PRICE };
+const ORDER_DEVICE_TYPES = ["mobile", "tablet", "desktop"];
+
+/* 무통장입금(/api/order)과 카드결제 준비(/api/payments/prepare)가 "장바구니를 검증하고 가격을
+   다시 계산한다"는 부분만큼은 완전히 같은 로직이었는데 그동안 두 곳에 따로 복붙돼 있었다 —
+   가격 정책을 바꿀 때 한쪽만 고치고 다른 쪽을 놓치기 쉬운 지점이라 하나로 합친다. 이 함수는
+   DB에 아무것도 쓰지 않고(coupon 조회만 함) 검증된 값 또는 에러만 돌려주므로, 호출부가
+   재고 차감·저장 같은 각자의 나머지 절차를 이어서 하면 된다. */
+async function validateAndPriceOrder(body, products) {
+  const { customer, items: rawItems, couponCode, device } = body || {};
+  if (!customer || typeof customer !== "object") {
+    return { error: { status: 400, body: { error: "customer 정보가 없습니다." } } };
+  }
+  const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
+  if (missing.length) {
+    return { error: { status: 400, body: { error: `필수 항목이 비었습니다: ${missing.join(", ")}` } } };
+  }
+  if (!Array.isArray(rawItems) || !rawItems.length) {
+    return { error: { status: 400, body: { error: "장바구니 항목이 없습니다." } } };
+  }
+
+  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
+  if (items.some((it) => it === null)) {
+    return { error: { status: 400, body: { error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." } } };
+  }
+
+  const subtotal = items.reduce((s, it) => s + it.sum, 0);
+  const shipping = shippingFor(subtotal, SITE.shipping);
+
+  let coupon;
+  try {
+    coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
+  } catch (e) {
+    return { error: { status: e.status || 400, body: { error: e.message } } };
+  }
+
+  const total = subtotal - coupon.discount + shipping;
+  return {
+    rawItems,
+    items,
+    subtotal,
+    shipping,
+    coupon,
+    total,
+    device: ORDER_DEVICE_TYPES.includes(device) ? device : "unknown",
+  };
+}
 
 /* ---------- 카드결제(포트원) ----------
    결제창을 열기 전에 서버가 먼저 금액을 계산해서 pending_payments에 저장해두고, 그 값 그대로
@@ -351,35 +413,12 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
   }
 
-  const { customer, items: rawItems, couponCode } = req.body || {};
-  if (!customer || typeof customer !== "object") {
-    return res.status(400).json({ error: "customer 정보가 없습니다." });
-  }
-  const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
-  if (missing.length) {
-    return res.status(400).json({ error: `필수 항목이 비었습니다: ${missing.join(", ")}` });
-  }
-  if (!Array.isArray(rawItems) || !rawItems.length) {
-    return res.status(400).json({ error: "장바구니 항목이 없습니다." });
-  }
-
   const products = await getActiveProducts();
-  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
-  if (items.some((it) => it === null)) {
-    return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
-  }
+  const priced = await validateAndPriceOrder(req.body, products);
+  if (priced.error) return res.status(priced.error.status).json(priced.error.body);
+  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { customer } = req.body;
 
-  const subtotal = items.reduce((s, it) => s + it.sum, 0);
-  const shipping = shippingFor(subtotal, SITE.shipping);
-
-  let coupon;
-  try {
-    coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
-  } catch (e) {
-    return res.status(e.status || 400).json({ error: e.message });
-  }
-
-  const total = subtotal - coupon.discount + shipping;
   /* "reiten-" 접두어를 붙이면 43자가 되는데, NHN KCP V2 라이브 채널로 전환한 뒤 실제 결제를
      시도해보니 "KCP V2의 경우 주문 번호는 최대 40자를 넘을 수 없습니다"로 결제창 자체가 안
      열렸다(포트원 테스트 채널에서는 이 제약이 걸리지 않아 여태 못 보고 넘어갔던 문제).
@@ -396,7 +435,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     payer: String(customer.payer).trim(),
   };
 
-  const { error } = await supabaseAdmin.from("pending_payments").insert({
+  const { error } = await insertOrderRow("pending_payments", {
     payment_id: paymentId,
     customer: normalizedCustomer,
     raw_items: rawItems,
@@ -406,6 +445,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     total,
     coupon_code: coupon.code,
     discount: coupon.discount,
+    device,
   });
   if (error) {
     console.error("[payments/prepare] 저장 실패:", error.message);
@@ -429,6 +469,24 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     customer: { fullName: normalizedCustomer.name, phoneNumber: normalizedCustomer.tel, email: normalizedCustomer.email },
   });
 });
+
+/* orders/pending_payments에 device(기기 종류, 022_order_device.sql)를 넣어 insert하되,
+   마이그레이션이 아직 안 돌아서 컬럼이 없으면(PGRST204) device 없이 한 번 더 시도한다.
+   기기 정보는 부가 통계용일 뿐이라 이것 때문에 주문·결제 생성 자체(핵심 기능)가 막히면
+   절대 안 된다 — reviews.order_no와 같은 원칙(위 리뷰 실구매 인증 참고). */
+async function insertOrderRow(table, row, { returning = false } = {}) {
+  const run = (r) => {
+    const q = supabaseAdmin.from(table).insert(r);
+    return returning ? q.select().single() : q;
+  };
+  let result = await run(row);
+  if (result.error && result.error.code === "PGRST204" && "device" in row) {
+    console.warn(`[${table}] 'device' 컬럼 없음(마이그레이션 022 미실행) — device 없이 재시도`);
+    const { device, ...rest } = row;
+    result = await run(rest);
+  }
+  return result;
+}
 
 /* 결제 취소 시도 헬퍼 — 성공/실패 여부만 boolean으로 돌려주고, 실패 시 로그만 남긴다(호출부가
    결제취소 실패까지 감안해서 관리자 알림·시스템 오류 로그를 남기므로 여기서는 안 던짐). */
@@ -459,7 +517,7 @@ async function nextOrderSeq() {
    실패해도 예외를 던지지 않고 { ok:false, status, body }로 반환한다(호출부가 그대로 res에 흘려보냄). */
 async function finalizeCardOrder({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
-  const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount } = pending;
+  const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
   const orderNumber = orderNo(await nextOrderSeq());
 
   const inventoryItems = [];
@@ -533,13 +591,14 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
      rawItems와 순서가 그대로 대응되므로 그대로 붙여서 저장한다. */
   const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
 
-  const { data: saved, error: saveError } = await supabaseAdmin
-    .from("orders")
-    .insert({
+  const { data: saved, error: saveError } = await insertOrderRow(
+    "orders",
+    {
       order_no: orderNumber,
       user_id: userId,
       customer,
       items: itemsForStorage,
+      device: device || "unknown",
       subtotal,
       shipping,
       total,
@@ -548,9 +607,9 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       payment_method: "card",
       payment_id: paymentId,
       status: "입금확인",
-    })
-    .select()
-    .single();
+    },
+    { returning: true }
+  );
 
   if (saveError) {
     /* 여기까지 오는 동안 재고는 이미 차감됐고 결제도 이미 승인된 상태다(주문번호 충돌 —
@@ -632,37 +691,13 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     });
   }
 
-  const { customer, items: rawItems, couponCode } = req.body || {};
-
-  if (!customer || typeof customer !== "object") {
-    return res.status(400).json({ error: "customer 정보가 없습니다." });
-  }
-  const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
-  if (missing.length) {
-    return res.status(400).json({ error: `필수 항목이 비었습니다: ${missing.join(", ")}` });
-  }
-
-  if (!Array.isArray(rawItems) || !rawItems.length) {
-    return res.status(400).json({ error: "장바구니 항목이 없습니다." });
-  }
-
-  const products = await getActiveProducts();
-  const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
-  if (items.some((it) => it === null)) {
-    return res.status(400).json({ error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." });
-  }
-
-  const subtotal = items.reduce((s, it) => s + it.sum, 0);
-  const shipping = shippingFor(subtotal, SITE.shipping);
-
   /* 쿠폰이 유효하지 않으면 재고를 건드리기 전에(아래 decrement_inventory 호출 전에) 먼저 실패시킨다 —
      재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
-  let coupon;
-  try {
-    coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
-  } catch (e) {
-    return res.status(e.status || 400).json({ error: e.message });
-  }
+  const products = await getActiveProducts();
+  const priced = await validateAndPriceOrder(req.body, products);
+  if (priced.error) return res.status(priced.error.status).json(priced.error.body);
+  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { customer } = req.body;
 
   const orderNumber = orderNo(await nextOrderSeq());
 
@@ -733,7 +768,6 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     }
   }
 
-  const total = subtotal - coupon.discount + shipping;
   const normalizedCustomer = {
     name: String(customer.name).trim(),
     tel: String(customer.tel).trim(),
@@ -749,21 +783,22 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
      한다 — items(name/options/qty/unit/sum)에는 원래 productId가 없어서 나중엔 알 수 없었다. */
   const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
 
-  const { data: saved, error: saveError } = await supabaseAdmin
-    .from("orders")
-    .insert({
+  const { data: saved, error: saveError } = await insertOrderRow(
+    "orders",
+    {
       order_no: orderNumber,
       user_id: req.user ? req.user.id : null,
       customer: normalizedCustomer,
       items: itemsForStorage,
+      device,
       subtotal,
       shipping,
       total,
       coupon_code: coupon.code,
       discount: coupon.discount,
-    })
-    .select()
-    .single();
+    },
+    { returning: true }
+  );
 
   if (saveError) {
     console.error("[order] 주문 저장 실패:", saveError.message);
@@ -1084,11 +1119,24 @@ app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
    상품이 삭제·개명돼도 과거 주문 내역 자체는 그대로 남아있기 때문. */
 /* GET /api/admin/dashboard(화면)와 GET /api/admin/dashboard/export(내보내기)가 집계 로직을 공유한다. */
 async function computeDashboardStats() {
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from("orders")
-    .select("items, total, status, created_at")
+    .select("items, total, status, created_at, device")
     .order("created_at", { ascending: false })
     .limit(2000);
+
+  /* 42703 = device 컬럼이 아직 없음(022_order_device.sql 미실행) — SELECT는 INSERT와
+     달리 존재하지 않는 컬럼을 이름으로 지정하면 이 에러 코드로 실패한다(둘이 에러 코드가
+     다름을 직접 테스트해서 확인함). 기기별 집계만 못 하게 되는 거라 대시보드 전체가 죽으면
+     안 되므로 device 없이 재조회한다. */
+  if (error && error.code === "42703") {
+    console.warn("[dashboard] orders.device 컬럼 없음(마이그레이션 022 미실행) — device 없이 재조회");
+    ({ data, error } = await supabaseAdmin
+      .from("orders")
+      .select("items, total, status, created_at")
+      .order("created_at", { ascending: false })
+      .limit(2000));
+  }
 
   if (error) return { error };
 
@@ -1110,6 +1158,11 @@ async function computeDashboardStats() {
   }
 
   const qtyByName = new Map();
+  /* GA4는 "방문자 수"만 알려주고 실제 구매 여부는 모른다 — 우리 DB의 실제 결제 완료 기록에
+     저장해둔 기기 종류(device, 022_order_device.sql)로 "기기별 실제 매출·주문 건수"를
+     집계한다. 마이그레이션 미실행이거나 그 이전에 만들어진 주문은 device가 없으므로
+     "unknown"으로 묶는다. */
+  const salesByDevice = new Map();
   for (const o of data) {
     if (o.status === "입금대기") pendingCount++;
     if (!isCancelled(o)) {
@@ -1121,6 +1174,10 @@ async function computeDashboardStats() {
       for (const item of o.items || []) {
         qtyByName.set(item.name, (qtyByName.get(item.name) || 0) + (item.qty || 0));
       }
+
+      const deviceKey = o.device || "unknown";
+      const prev = salesByDevice.get(deviceKey) || { orders: 0, revenue: 0 };
+      salesByDevice.set(deviceKey, { orders: prev.orders + 1, revenue: prev.revenue + o.total });
     }
   }
 
@@ -1136,6 +1193,9 @@ async function computeDashboardStats() {
     pendingCount,
     dailyRevenue: [...revenueByDay.entries()].map(([date, total]) => ({ date, total })),
     bestsellers,
+    salesByDevice: [...salesByDevice.entries()]
+      .map(([device, v]) => ({ device, orders: v.orders, revenue: v.revenue }))
+      .sort((a, b) => b.revenue - a.revenue),
   };
 }
 
@@ -2751,6 +2811,34 @@ app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- CS 빠른 답변 템플릿 (023_qna_templates.sql) ----------
+   완전 자동응답이 아니라 관리자가 QnA 답변창에서 자주 쓰는 문구를 버튼 한 번으로 채워 넣는
+   용도 — 답변 시간만 줄여준다. 마이그레이션 미실행 시(42P01, 테이블 없음) 빈 목록만 내려주고
+   조용히 실패해 QnA 답변 작성 자체엔 지장이 없게 한다. */
+app.get("/api/admin/qna-templates", requireAdmin, async (req, res) => {
+  const { data, error } = await supabaseAdmin.from("qna_templates").select("*").order("created_at", { ascending: true });
+  if (error) return res.json({ items: [] });
+  res.json({ items: data.map((t) => ({ id: t.id, label: t.label, body: t.body })) });
+});
+
+app.post("/api/admin/qna-templates", requireAdmin, async (req, res) => {
+  const label = String((req.body || {}).label || "").trim().slice(0, 60);
+  const body = String((req.body || {}).body || "").trim().slice(0, 2000);
+  if (!label || !body) return res.status(400).json({ error: "이름과 답변 내용을 입력해 주세요." });
+
+  const { data, error } = await supabaseAdmin.from("qna_templates").insert({ label, body }).select().single();
+  if (error) return res.status(500).json({ error: "템플릿 저장에 실패했습니다(마이그레이션 023이 실행됐는지 확인해 주세요)." });
+  logAdminAction(req, "qna_template.create", "qna_template", data.id, { label });
+  res.json({ id: data.id, label: data.label, body: data.body });
+});
+
+app.delete("/api/admin/qna-templates/:id", requireAdmin, async (req, res) => {
+  const { error } = await supabaseAdmin.from("qna_templates").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: "삭제에 실패했습니다." });
+  logAdminAction(req, "qna_template.delete", "qna_template", req.params.id);
+  res.json({ ok: true });
+});
+
 /* ---------- 미입금 주문 자동취소 ----------
    고객 화면에는 "24시간 내 미입금 시 자동 취소됩니다"라고 안내한다(2026-08-14부터 3일→24시간
    으로 단축). 매시 정각에 24시간 넘게 "입금대기" 상태인 주문을 찾아 취소하고 재고를 되돌린다. */
@@ -2808,6 +2896,10 @@ cron.schedule("0 * * * *", () => {
    그게 RESTOCK_ALERT_DAYS일 이상 지난 조합만 매주 한 번 모아서 알린다(매일 보내면 같은 품절
    건이 몇 주씩 반복 발송되어 스팸이 되므로 주간 다이제스트로 묶는다). */
 const RESTOCK_ALERT_DAYS = 7;
+/* 발주 추천 수량 계산에 쓰는 조회 기간 — "얼마나 발주해야 할지 모르겠다"는 피드백으로 추가.
+   정교한 수요예측 모델이 아니라 "최근 이 정도 팔렸다"를 그대로 보여주는 참고치라 단순하게
+   간다(과도한 엔지니어링 지양). */
+const RESTOCK_SALES_LOOKBACK_DAYS = 30;
 
 async function findOutOfStockSince(productId, color, size, currentQty) {
   const { data: logs, error } = await supabaseAdmin
@@ -2820,6 +2912,23 @@ async function findOutOfStockSince(productId, color, size, currentQty) {
     .limit(200);
   if (error || !logs) return null; // 이력이 없으면 언제부터 품절인지 알 수 없어 건너뛴다
   return findOutOfStockSinceFromLogs(logs, currentQty);
+}
+
+/* 최근 RESTOCK_SALES_LOOKBACK_DAYS일간 이 조합이 "주문(order)"으로 얼마나 팔렸는지 합산 —
+   발주 추천 수량의 기준치로 쓴다. 품절 기간이 이 창보다 길면 그동안은 못 판 것까지 포함되니
+   실제 수요보다 적게 나올 수 있음(메일 문구에도 명시). */
+async function recentSalesQty(productId, color, size) {
+  const cutoff = new Date(Date.now() - RESTOCK_SALES_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("inventory_log")
+    .select("delta")
+    .eq("product_id", productId)
+    .eq("color", color)
+    .eq("size", size)
+    .eq("reason", "order")
+    .gte("created_at", cutoff);
+  if (error || !data) return 0;
+  return data.reduce((sum, r) => sum + Math.abs(r.delta), 0);
 }
 
 async function checkRestockNeeded() {
@@ -2842,12 +2951,16 @@ async function checkRestockNeeded() {
   const { data: products } = await supabaseAdmin.from("products").select("id, name_ko").in("id", ids);
   const nameOf = (id) => products?.find((p) => p.id === id)?.name_ko || id;
 
-  const items = overdue.map((r) => ({
-    name: nameOf(r.product_id),
-    color: r.color,
-    size: r.size,
-    daysSince: Math.floor((Date.now() - new Date(r.since).getTime()) / (24 * 3600 * 1000)),
-  }));
+  const items = [];
+  for (const r of overdue) {
+    items.push({
+      name: nameOf(r.product_id),
+      color: r.color,
+      size: r.size,
+      daysSince: Math.floor((Date.now() - new Date(r.since).getTime()) / (24 * 3600 * 1000)),
+      recommendedQty: await recentSalesQty(r.product_id, r.color, r.size),
+    });
+  }
 
   sendAdminRestockAlert(items, RESTOCK_ALERT_DAYS).catch((err) => console.error("[mailer] 재입고 알림 메일 발송 실패:", err.message));
 }

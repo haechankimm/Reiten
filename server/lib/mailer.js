@@ -133,6 +133,10 @@ async function sendAdminLowStock(items) {
 /* 재입고 발주 알림(관리자용) — sendAdminLowStock은 "방금 0이 됐다"는 즉시 알림이고, 이건
    그 상태가 며칠째 이어지고 있는지(daysSince) 매주 한 번 모아서 다시 알려주는 용도다.
    품절 즉시 메일은 이미 가고 있으니 굳이 매일 또 보내면 스팸이 되므로 주간 다이제스트로 묶는다. */
+/* recommendedQty(선택) — 최근 판매 속도 기반 발주 추천 수량. 조합별로 최근
+   RESTOCK_SALES_LOOKBACK_DAYS일간 실제로 팔린 개수를 그대로 추천치로 쓴다(정교한 수요예측이
+   아니라 "최소 이만큼은 준비하라"는 참고용 하한선 — 품절 기간이 이 창보다 길면 그동안은
+   팔 수가 없었으니 실제보다 적게 나올 수 있음을 메일에도 명시한다). */
 async function sendAdminRestockAlert(items, thresholdDays) {
   if (!resend || !process.env.ADMIN_NOTIFY_EMAIL || !items.length) return;
 
@@ -144,8 +148,16 @@ async function sendAdminRestockAlert(items, thresholdDays) {
       <h2>${thresholdDays}일 이상 재고 소진 중인 상품이 있습니다</h2>
       <p>재입고(발주)를 검토해 주세요.</p>
       <ul>${items
-        .map((it) => `<li>${escHtml(it.name)} — ${escHtml(it.color || "(공통)")} / ${escHtml(it.size)} · ${it.daysSince}일째 품절</li>`)
+        .map(
+          (it) =>
+            `<li>${escHtml(it.name)} — ${escHtml(it.color || "(공통)")} / ${escHtml(it.size)} · ${it.daysSince}일째 품절` +
+            (it.recommendedQty > 0 ? ` · <b>추천 발주 수량 ${it.recommendedQty}개</b>` : "") +
+            `</li>`
+        )
         .join("")}</ul>
+      <p style="color:#666;font-size:13px;margin-top:16px">추천 수량은 최근 30일간 실제 판매량을 그대로 보여주는
+      참고치입니다(정교한 수요예측이 아님) — 품절 기간이 30일보다 길면 그동안 못 판 만큼
+      실제 수요보다 적게 나올 수 있으니 참고만 해주세요.</p>
     `,
   });
 }
