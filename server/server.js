@@ -8,7 +8,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 const cron = require("node-cron");
-const { SITE, PRODUCTS: STATIC_PRODUCTS, LOOKBOOK: STATIC_LOOKBOOK, COLORS: STATIC_COLORS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
+const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
 const {
@@ -29,17 +29,27 @@ const {
   sendCustomerOrderCancelled,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
-const { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto } = require("./lib/cloudinary");
+const { uploadReviewPhoto, uploadProductPhoto } = require("./lib/cloudinary");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { resolveCoupon } = require("./lib/coupons");
 const { toProductDto, productPatchFromBody } = require("./lib/products");
-const { toLookbookDto, lookbookPatchFromBody } = require("./lib/lookbook");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
 const portone = require("./lib/portone");
 const { getVisitorStats } = require("./lib/analytics");
-const { kstDateKey, kstMonthKey, kstDayRangeISO, kstMonthRangeISO } = require("./lib/kst");
+const { kstDateKey, kstMonthKey, kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
+const { logAdminAction, logInventoryChange, logSystemError } = require("./lib/adminLog");
+const { writeLimiter } = require("./lib/rateLimiters");
+const { getValidColorMap } = require("./lib/colors");
+/* 아래 4개는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
+   각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1단계). 결제·주문·재고·
+   반품환불처럼 실제 돈이 걸린 라우트는 아직 이 파일에 그대로 남아있다 — README 0번 섹션
+   "server.js 라우트 분리" 참고. */
+const settingsRoutes = require("./routes/settings");
+const lookbookRoutes = require("./routes/lookbook");
+const colorsRoutes = require("./routes/colors");
+const qnaRoutes = require("./routes/qna");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -127,14 +137,8 @@ app.use(
 // 전체 API 남용 방지 (기본): IP당 15분에 300회
 app.use("/api/", rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
 
-// 주문/리뷰/문의/반품/조회처럼 쓰기·조회 남용 여지가 큰 엔드포인트는 더 엄격하게: IP당 15분에 20회
-const writeLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." },
-});
+// writeLimiter(쓰기·조회 남용 방지, IP당 15분 20회)는 lib/rateLimiters.js에서 가져온다 —
+// routes/qna.js 등 분리된 라우트 파일과 반드시 같은 인스턴스를 써야 카운터가 안 나뉜다.
 
 /* 포트원 웹훅은 서명 검증에 "파싱 전 원본 문자열"이 필요해서, 이 라우트만 아래
    express.json()보다 먼저 등록해 그 미들웨어를 타지 않게 한다(등록 순서대로 매칭되는 Express 특성 이용).
@@ -1037,81 +1041,9 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
   });
 });
 
-/* ---------- 관리자 감사 로그 ----------
-   관리자가 2명 이상이 되면 "누가 언제 무엇을 바꿨는지"를 추적할 방법이 필요해진다.
-   메일 발송과 같은 패턴으로 요청을 막지 않고(fire-and-forget) 실패해도 본작업은 성공 처리한다 —
-   로그 적재 실패가 실제 관리 작업을 막아서는 안 되기 때문. 008_admin_audit_log.sql 미실행 시에도
-   본작업에는 지장이 없도록 에러를 조용히 삼킨다. */
-function logAdminAction(req, action, targetType, targetId, detail) {
-  supabaseAdmin
-    .from("admin_audit_log")
-    .insert({
-      admin_id: req.user.id,
-      admin_email: req.user.email || "",
-      action,
-      target_type: targetType,
-      target_id: String(targetId),
-      detail: detail || null,
-    })
-    .then(({ error }) => {
-      if (error) console.error("[audit-log] 적재 실패:", error.message);
-    });
-}
-
-/* ---------- 재고 변동 이력 ----------
-   inventory 테이블은 현재 수량만 갖고 있어 "왜 줄었는지"를 알 수 없었다(012_inventory_log.sql).
-   재고를 바꾸는 모든 지점(주문 차감, 자동취소·반품 복원, 관리자 수기 수정)에서 이 함수로 한 줄씩
-   남긴다. logAdminAction과 같은 fire-and-forget 원칙 — 로그 적재 실패가 본작업(재고 변경 자체)을
-   막아서는 안 된다. rows: [{ productId, size, delta, reason, ref?, adminEmail? }] */
-function logInventoryChange(rows) {
-  if (!rows || !rows.length) return;
-  supabaseAdmin
-    .from("inventory_log")
-    .insert(
-      rows.map((r) => ({
-        product_id: r.productId,
-        color: r.color || "",
-        size: r.size,
-        delta: r.delta,
-        reason: r.reason,
-        ref: r.ref || null,
-        admin_email: r.adminEmail || null,
-      }))
-    )
-    .then(({ error }) => {
-      if (error) console.error("[inventory-log] 적재 실패:", error.message);
-    });
-}
-
-/* ---------- 시스템 오류 로그 ----------
-   카드결제 이중실패·환불 실패처럼 지금까지 관리자 이메일로만 가서 놓치기 쉬웠던 긴급 이벤트를
-   Works 알림센터(/api/admin/notifications)에서도 바로 보이게 한다(019_system_error_log.sql).
-   메일 발송과 같은 fire-and-forget 원칙 — 로그 적재 실패가 본작업(결제취소·환불 시도)을 막아서는
-   안 된다. 마이그레이션 미실행 시에도 조용히 실패해 사이트 동작에는 지장이 없다. */
-function logSystemError(type, detail) {
-  supabaseAdmin
-    .from("system_error_log")
-    .insert({ type, detail: detail || null })
-    .then(({ error }) => {
-      if (error) console.error("[system-error-log] 적재 실패:", error.message);
-    });
-}
-
-/* dateFrom/dateTo(YYYY-MM-DD, KST 기준 하루)를 쿼리에 적용하는 공통 헬퍼 — 감사로그·주문·
-   반품·리뷰·문의 필터 5곳에서 똑같이 반복되던 `T00:00:00+09:00` 패턴을 kst.js의
-   kstDayRangeISO 하나로 통일한다(날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정
-   근처 기록이 하루 어긋나 보일 수 있음). */
-function applyKstDateRangeFilter(query, column, dateFrom, dateTo) {
-  if (dateFrom) {
-    const range = kstDayRangeISO(dateFrom);
-    if (range) query = query.gte(column, range.startISO);
-  }
-  if (dateTo) {
-    const range = kstDayRangeISO(dateTo);
-    if (range) query = query.lte(column, range.endISO);
-  }
-  return query;
-}
+/* logAdminAction·logInventoryChange·logSystemError는 lib/adminLog.js로,
+   applyKstDateRangeFilter는 lib/kst.js로 옮겨서 위 import에서 가져온다 — 여러 라우트 파일이
+   공유하는 로그·필터 헬퍼라 한 곳에 있어야 한다(2026-09-01, 코드 크기 정리 1단계). */
 
 app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
@@ -1235,7 +1167,7 @@ async function computeDashboardStats() {
   return {
     todayRevenue,
     monthRevenue,
-    totalOrders: data.length,
+    totalOrders: totalOrdersCount ?? data.length,
     pendingCount,
     dailyRevenue: [...revenueByDay.entries()].map(([date, total]) => ({ date, total })),
     bestsellers,
@@ -1321,12 +1253,14 @@ app.get("/api/admin/admins", requireAdmin, async (req, res) => {
     .order("created_at", { ascending: true });
   if (error) return res.status(500).json({ error: "관리자 목록을 불러오지 못했습니다." });
 
-  const items = await Promise.all(
-    profiles.map(async (p) => {
-      const { data } = await supabaseAdmin.auth.admin.getUserById(p.id);
-      return { id: p.id, name: p.name || "", email: data?.user?.email || "", createdAt: p.created_at };
-    })
-  );
+  /* 관리자 한 명당 getUserById()를 따로 부르면(N+1) 관리자가 늘어날수록 호출 수가 그만큼
+     늘어난다 — Admin API는 ID로 콕 집어 배치 조회하는 기능이 없어서, 대신 listUsers()
+     한 번으로 이메일까지 전부 가져와 매칭한다(가입자 총 수가 이 perPage를 넘지 않는 한
+     항상 1번의 호출로 끝남 — 이 매장 규모에서는 충분하지만, 가입자가 그 이상으로 늘어나면
+     프로필에 이메일을 비정규화해 저장하는 방식으로 바꿔야 함). */
+  const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const emailById = new Map((userList?.users || []).map((u) => [u.id, u.email || ""]));
+  const items = profiles.map((p) => ({ id: p.id, name: p.name || "", email: emailById.get(p.id) || "", createdAt: p.created_at }));
   res.json({ items });
 });
 
@@ -2270,334 +2204,12 @@ app.post("/api/admin/products/photo", requireAdmin, (req, res) => {
   });
 });
 
-/* ---------- 상품 색상 팔레트 (product_colors 테이블 — 관리자 패널에서 추가·수정·삭제) ----------
-   data.js의 정적 COLORS는 마이그레이션 010을 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다.
-   products.colors 배열이 이 테이블의 key를 참조하므로, key는 한 번 만들어지면 값이 바뀌지 않는다
-   (라벨·hex는 수정 가능하지만 key 자체는 수정 API가 없음). */
-function toColorDto(row) {
-  return { key: row.key, label: row.label, labelDe: row.label_de || null, hex: row.hex };
-}
 
-function staticColorList() {
-  return Object.values(STATIC_COLORS).map((c) => ({ key: c.key, label: c.label, labelDe: null, hex: c.hex }));
-}
-
-async function getPublicColors() {
-  const { data, error } = await supabaseAdmin.from("product_colors").select("*").order("sort_order", { ascending: true });
-  if (error) {
-    console.error("[colors] DB 조회 실패, 정적 목록으로 폴백:", error.message);
-    return staticColorList();
-  }
-  return data.map(toColorDto);
-}
-
-app.get("/api/colors", async (req, res) => {
-  res.json(await getPublicColors());
-});
-
-/* 상품 저장 시 colors 배열을 검증할 때 쓴다({ key: true, ... } 형태) — 관리자가
-   product_colors에 새로 추가한 색상까지 포함해야 저장 시 걸러지지 않는다(productPatchFromBody 참고). */
-async function getValidColorMap() {
-  const list = await getPublicColors();
-  return Object.fromEntries(list.map((c) => [c.key, true]));
-}
-
-app.get("/api/admin/colors", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin.from("product_colors").select("*").order("sort_order", { ascending: true });
-  if (error) return res.status(500).json({ error: "색상 목록을 불러오지 못했습니다." });
-  res.json(data.map(toColorDto));
-});
-
-function slugifyColorKey(label) {
-  const base = String(label || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "color";
-}
-
-/* 한글 라벨은 슬러그가 비거나("color"로만 남거나) 겹치기 쉬워서, DB에 이미 있는 key와
-   충돌하면 -2, -3 ...을 붙여 유일한 값을 찾을 때까지 반복한다. */
-async function uniqueColorKey(label) {
-  const base = slugifyColorKey(label);
-  let key = base;
-  let suffix = 2;
-  for (;;) {
-    const { data, error } = await supabaseAdmin.from("product_colors").select("key").eq("key", key).maybeSingle();
-    if (error) throw error;
-    if (!data) return key;
-    key = `${base}-${suffix++}`;
-  }
-}
-
-const HEX_RE = /^#[0-9a-f]{6}$/i;
-
-app.post("/api/admin/colors", requireAdmin, async (req, res) => {
-  const { label, labelDe, hex } = req.body || {};
-  const labelStr = String(label || "").trim().slice(0, 40);
-  if (!labelStr) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
-  const hexStr = String(hex || "").trim();
-  if (!HEX_RE.test(hexStr)) return res.status(400).json({ error: "색상 값은 #RRGGBB 형식으로 입력해 주세요." });
-
-  let key;
-  try {
-    key = await uniqueColorKey(labelStr);
-  } catch (e) {
-    console.error("[admin/colors] key 생성 실패:", e.message);
-    return res.status(500).json({ error: "생성에 실패했습니다." });
-  }
-
-  const { count } = await supabaseAdmin.from("product_colors").select("key", { count: "exact", head: true });
-
-  const { data, error } = await supabaseAdmin
-    .from("product_colors")
-    .insert({
-      key,
-      label: labelStr,
-      label_de: labelDe ? String(labelDe).trim().slice(0, 40) : null,
-      hex: hexStr,
-      sort_order: count ?? 0,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[admin/colors] 생성 실패:", error.message);
-    return res.status(500).json({ error: "생성에 실패했습니다." });
-  }
-  logAdminAction(req, "color.create", "color", data.key, { label: data.label });
-  res.json(toColorDto(data));
-});
-
-app.patch("/api/admin/colors/:key", requireAdmin, async (req, res) => {
-  const { label, labelDe, hex } = req.body || {};
-  const patch = { updated_at: new Date().toISOString() };
-  if (label !== undefined) {
-    const v = String(label || "").trim().slice(0, 40);
-    if (!v) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
-    patch.label = v;
-  }
-  if (labelDe !== undefined) patch.label_de = labelDe ? String(labelDe).trim().slice(0, 40) : null;
-  if (hex !== undefined) {
-    const v = String(hex || "").trim();
-    if (!HEX_RE.test(v)) return res.status(400).json({ error: "색상 값은 #RRGGBB 형식으로 입력해 주세요." });
-    patch.hex = v;
-  }
-
-  const { data, error } = await supabaseAdmin.from("product_colors").update(patch).eq("key", req.params.key).select().maybeSingle();
-  if (error) {
-    console.error("[admin/colors] 수정 실패:", error.message);
-    return res.status(500).json({ error: "수정에 실패했습니다." });
-  }
-  if (!data) return res.status(404).json({ error: "존재하지 않는 색상입니다." });
-  logAdminAction(req, "color.update", "color", req.params.key, patch);
-  res.json(toColorDto(data));
-});
-
-/* 이미 어떤 활성 상품이 쓰고 있는 색상을 지우면 그 상품의 컬러 스와치가 깨지므로
-   (COLORS[key]가 undefined가 됨), 삭제 전에 반드시 사용 여부를 먼저 확인한다. */
-app.delete("/api/admin/colors/:key", requireAdmin, async (req, res) => {
-  const key = req.params.key;
-  /* supabase-js의 .contains(col, [값])은 값이 JS 배열이면 Postgres 배열 리터럴({값} 형태)로
-     직렬화한다 — colors는 실제 Postgres 배열이 아니라 jsonb라서 그 형태를 그대로 받으면
-     "invalid input syntax for type json"으로 매번 실패했다(예: "clay" 색상 삭제 시도 시 실제
-     재현됨). jsonb 컬럼에서 포함 여부(@>)를 확인하려면 JSON 문자열 그대로 넘겨야 한다. */
-  const { data: inUse, error: checkError } = await supabaseAdmin
-    .from("products")
-    .select("id")
-    .eq("active", true)
-    .filter("colors", "cs", JSON.stringify([key]));
-  if (checkError) {
-    console.error("[admin/colors] 사용 여부 확인 실패:", checkError.message);
-    return res.status(500).json({ error: "삭제 가능 여부를 확인하지 못했습니다." });
-  }
-  if (inUse.length) {
-    return res.status(409).json({ error: `이 색상을 사용 중인 상품이 ${inUse.length}개 있어 삭제할 수 없습니다.` });
-  }
-
-  const { error } = await supabaseAdmin.from("product_colors").delete().eq("key", key);
-  if (error) {
-    console.error("[admin/colors] 삭제 실패:", error.message);
-    return res.status(500).json({ error: "삭제에 실패했습니다." });
-  }
-  logAdminAction(req, "color.delete", "color", key);
-  res.json({ ok: true });
-});
-
-/* ---------- 룩북 (lookbook 테이블 — 관리자 패널에서 추가·수정·삭제) ----------
-   data.js의 정적 LOOKBOOK은 마이그레이션 006을 실행하지 않은 서버나 조회 실패 시의 폴백으로만 쓰인다. */
-async function getActiveLookbook() {
-  const { data, error } = await supabaseAdmin
-    .from("lookbook")
-    .select("*")
-    .eq("active", true)
-    .order("sort_order", { ascending: true });
-  if (error) {
-    console.error("[lookbook] DB 조회 실패, 정적 목록으로 폴백:", error.message);
-    return STATIC_LOOKBOOK;
-  }
-  return data.map(toLookbookDto);
-}
-
-app.get("/api/lookbook", async (req, res) => {
-  res.json(await getActiveLookbook());
-});
-
-app.get("/api/admin/lookbook", requireAdmin, async (req, res) => {
-  const { page, pageSize, from, to } = paginationParams(req.query, { defaultSize: 50 });
-  const { data, error, count } = await supabaseAdmin
-    .from("lookbook")
-    .select("*", { count: "exact" })
-    .order("sort_order", { ascending: true })
-    .range(from, to);
-
-  if (error) return res.status(500).json({ error: "룩북 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map(toLookbookDto), page, pageSize, total: count ?? data.length });
-});
-
-app.post("/api/admin/lookbook", requireAdmin, async (req, res) => {
-  const { patch, error: patchError } = lookbookPatchFromBody(req.body || {}, { forCreate: true });
-  if (patchError) return res.status(400).json({ error: patchError });
-
-  const { data, error } = await supabaseAdmin.from("lookbook").insert(patch).select().single();
-  if (error) {
-    console.error("[admin/lookbook] 생성 실패:", error.message);
-    return res.status(500).json({ error: "룩북 항목 생성에 실패했습니다." });
-  }
-  logAdminAction(req, "lookbook.create", "lookbook", data.id, { label: data.label });
-  res.json(toLookbookDto(data));
-});
-
-app.patch("/api/admin/lookbook/:id", requireAdmin, async (req, res) => {
-  const { patch, error: patchError } = lookbookPatchFromBody(req.body || {}, { forCreate: false });
-  if (patchError) return res.status(400).json({ error: patchError });
-  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
-  patch.updated_at = new Date().toISOString();
-
-  const { data, error } = await supabaseAdmin
-    .from("lookbook")
-    .update(patch)
-    .eq("id", req.params.id)
-    .select()
-    .maybeSingle();
-
-  if (error) {
-    console.error("[admin/lookbook] 수정 실패:", error.message);
-    return res.status(500).json({ error: "수정에 실패했습니다." });
-  }
-  if (!data) return res.status(404).json({ error: "존재하지 않는 항목입니다." });
-  logAdminAction(req, "lookbook.update", "lookbook", req.params.id, patch);
-  res.json(toLookbookDto(data));
-});
-
-app.delete("/api/admin/lookbook/:id", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("lookbook").delete().eq("id", req.params.id);
-  if (error) {
-    console.error("[admin/lookbook] 삭제 실패:", error.message);
-    return res.status(500).json({ error: "삭제에 실패했습니다." });
-  }
-  logAdminAction(req, "lookbook.delete", "lookbook", req.params.id);
-  res.json({ ok: true });
-});
-
-const lookbookUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
-}).single("photo");
-
-app.post("/api/admin/lookbook/photo", requireAdmin, (req, res) => {
-  lookbookUpload(req, res, async (uploadErr) => {
-    if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: "사진 파일이 없습니다." });
-    }
-    try {
-      const url = await uploadLookbookPhoto(req.file.buffer);
-      res.json({ url });
-    } catch (e) {
-      console.error("[admin/lookbook] 사진 업로드 실패:", e.message);
-      res.status(500).json({ error: "사진 업로드에 실패했습니다." });
-    }
-  });
-});
-
-/* ---------- 관리자 참고정보(정보 탭) ----------
-   Works 관리자 패널에서 사업자 정보 요약이나 Supabase·Render 같은 운영 사이트 링크를
-   직접 적어두고 보는 용도. 비밀번호·API 키 등 민감정보는 여기 넣지 않는다(관리자 전원 열람 가능). */
-function toSettingDto(row) {
-  return {
-    id: row.id,
-    label: row.label,
-    value: row.value || "",
-    note: row.note || "",
-    sortOrder: row.sort_order,
-  };
-}
-
-app.get("/api/admin/settings", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin.from("admin_settings").select("*").order("sort_order", { ascending: true });
-  if (error) return res.status(500).json({ error: "정보를 불러오지 못했습니다." });
-  res.json(data.map(toSettingDto));
-});
-
-app.post("/api/admin/settings", requireAdmin, async (req, res) => {
-  const { label, value, note, sortOrder } = req.body || {};
-  const labelStr = String(label || "").trim().slice(0, 80);
-  if (!labelStr) return res.status(400).json({ error: "이름을 입력해 주세요." });
-
-  const { data, error } = await supabaseAdmin
-    .from("admin_settings")
-    .insert({
-      label: labelStr,
-      value: String(value || "").trim().slice(0, 500),
-      note: String(note || "").trim().slice(0, 300),
-      sort_order: Number.isFinite(Number(sortOrder)) ? Math.floor(Number(sortOrder)) : 0,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[admin/settings] 생성 실패:", error.message);
-    return res.status(500).json({ error: "생성에 실패했습니다." });
-  }
-  logAdminAction(req, "setting.create", "setting", data.id, { label: data.label });
-  res.json(toSettingDto(data));
-});
-
-app.patch("/api/admin/settings/:id", requireAdmin, async (req, res) => {
-  const { label, value, note, sortOrder } = req.body || {};
-  const patch = { updated_at: new Date().toISOString() };
-  if (label !== undefined) {
-    const v = String(label || "").trim().slice(0, 80);
-    if (!v) return res.status(400).json({ error: "이름을 입력해 주세요." });
-    patch.label = v;
-  }
-  if (value !== undefined) patch.value = String(value || "").trim().slice(0, 500);
-  if (note !== undefined) patch.note = String(note || "").trim().slice(0, 300);
-  if (sortOrder !== undefined) patch.sort_order = Number.isFinite(Number(sortOrder)) ? Math.floor(Number(sortOrder)) : 0;
-
-  const { data, error } = await supabaseAdmin.from("admin_settings").update(patch).eq("id", req.params.id).select().maybeSingle();
-  if (error) {
-    console.error("[admin/settings] 수정 실패:", error.message);
-    return res.status(500).json({ error: "수정에 실패했습니다." });
-  }
-  if (!data) return res.status(404).json({ error: "존재하지 않는 항목입니다." });
-  logAdminAction(req, "setting.update", "setting", req.params.id, patch);
-  res.json(toSettingDto(data));
-});
-
-app.delete("/api/admin/settings/:id", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("admin_settings").delete().eq("id", req.params.id);
-  if (error) {
-    console.error("[admin/settings] 삭제 실패:", error.message);
-    return res.status(500).json({ error: "삭제에 실패했습니다." });
-  }
-  logAdminAction(req, "setting.delete", "setting", req.params.id);
-  res.json({ ok: true });
-});
+/* 색상 팔레트(colors) · 룩북(lookbook) · 정보 탭(settings) 라우트는 routes/*.js로 분리됐다
+   (2026-09-01) — 돈·재고를 건드리지 않는 순수 CRUD라 여기서는 마운트만 한다. */
+app.use(colorsRoutes);
+app.use(lookbookRoutes);
+app.use(settingsRoutes);
 
 /* ---------- 상품 리뷰 ---------- */
 const reviewUpload = multer({
@@ -2798,146 +2410,10 @@ app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-/* ---------- 상품 Q&A ---------- */
-function toQnaDto(q, { redact } = {}) {
-  const hide = redact && q.secret;
-  return {
-    id: q.id,
-    productId: q.product_id,
-    name: q.name,
-    question: hide ? null : q.question,
-    secret: q.secret,
-    answer: hide ? null : q.answer,
-    status: q.status,
-    at: q.created_at,
-    answeredAt: q.answered_at,
-  };
-}
+/* 상품 Q&A + CS 빠른 답변 템플릿 라우트도 routes/qna.js로 분리됐다(2026-09-01) — 돈·재고를
+   건드리지 않는 순수 CRUD라 여기서는 마운트만 한다. */
+app.use(qnaRoutes);
 
-app.get("/api/qna", optionalAuth, async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from("qna")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
-
-  res.json(
-    data.map((q) => toQnaDto(q, { redact: !(req.user && req.user.id === q.user_id) }))
-  );
-});
-
-app.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
-  const { productId, name, question, secret } = req.body || {};
-
-  const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
-  if (!validProduct) {
-    return res.status(400).json({ error: "존재하지 않는 상품입니다." });
-  }
-
-  const nameStr = String(name || "").trim().slice(0, 40);
-  const questionStr = String(question || "").trim().slice(0, 1000);
-  if (!nameStr || !questionStr) {
-    return res.status(400).json({ error: "이름과 문의 내용을 입력해 주세요." });
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("qna")
-    .insert({
-      product_id: productId,
-      user_id: req.user ? req.user.id : null,
-      name: nameStr,
-      question: questionStr,
-      secret: !!secret,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[qna] 저장 실패:", error.message);
-    return res.status(500).json({ error: "문의 등록에 실패했습니다." });
-  }
-
-  res.json(toQnaDto(data, { redact: false }));
-});
-
-/* 문의 목록 필터 — q는 작성자명·문의내용·상품ID 부분 일치, status는 "답변대기"/"답변완료". */
-function applyQnaFilters(query, reqQuery) {
-  const { q, status, dateFrom, dateTo } = reqQuery;
-  if (q) {
-    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
-    if (v) query = query.or(`name.ilike.%${v}%,question.ilike.%${v}%,product_id.ilike.%${v}%`);
-  }
-  if (status) query = query.eq("status", status);
-  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
-  return query;
-}
-
-app.get("/api/admin/qna", requireAdmin, async (req, res) => {
-  const { page, pageSize, from, to } = paginationParams(req.query);
-  let query = supabaseAdmin
-    .from("qna")
-    .select("*", { count: "exact" })
-    .order("created_at", { ascending: false });
-  query = applyQnaFilters(query, req.query);
-  const { data, error, count } = await query.range(from, to);
-
-  if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map((q) => toQnaDto(q, { redact: false })), page, pageSize, total: count ?? data.length });
-});
-
-app.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
-  const { answer } = req.body || {};
-  const answerStr = String(answer || "").trim().slice(0, 2000);
-  if (!answerStr) {
-    return res.status(400).json({ error: "답변 내용을 입력해 주세요." });
-  }
-
-  const { error } = await supabaseAdmin
-    .from("qna")
-    .update({ answer: answerStr, status: "답변완료", answered_at: new Date().toISOString() })
-    .eq("id", req.params.id);
-
-  if (error) return res.status(500).json({ error: "답변 저장에 실패했습니다." });
-  logAdminAction(req, "qna.answer", "qna", req.params.id);
-  res.json({ ok: true });
-});
-
-/* ---------- CS 빠른 답변 템플릿 (023_qna_templates.sql) ----------
-   완전 자동응답이 아니라 관리자가 QnA 답변창에서 자주 쓰는 문구를 버튼 한 번으로 채워 넣는
-   용도 — 답변 시간만 줄여준다. 마이그레이션 미실행 시(42P01, 테이블 없음) 빈 목록만 내려주고
-   조용히 실패해 QnA 답변 작성 자체엔 지장이 없게 한다. */
-app.get("/api/admin/qna-templates", requireAdmin, async (req, res) => {
-  const { data, error } = await supabaseAdmin.from("qna_templates").select("*").order("created_at", { ascending: true });
-  if (error) return res.json({ items: [] });
-  res.json({ items: data.map((t) => ({ id: t.id, label: t.label, body: t.body, keywords: t.keywords || [] })) });
-});
-
-app.post("/api/admin/qna-templates", requireAdmin, async (req, res) => {
-  const label = String((req.body || {}).label || "").trim().slice(0, 60);
-  const body = String((req.body || {}).body || "").trim().slice(0, 2000);
-  /* 문의 본문과 대조할 키워드 — QnA 답변창에서 이 템플릿을 기본 선택해주는 용도(자동 매칭). */
-  const keywords = Array.isArray((req.body || {}).keywords)
-    ? (req.body.keywords).map((k) => String(k).trim()).filter(Boolean).slice(0, 20)
-    : [];
-  if (!label || !body) return res.status(400).json({ error: "이름과 답변 내용을 입력해 주세요." });
-
-  let { data, error } = await supabaseAdmin.from("qna_templates").insert({ label, body, keywords }).select().single();
-  if (error && error.code === "PGRST204") {
-    // keywords 컬럼 없음(마이그레이션 024 미실행) — 키워드 없이 재시도.
-    ({ data, error } = await supabaseAdmin.from("qna_templates").insert({ label, body }).select().single());
-  }
-  if (error) return res.status(500).json({ error: "템플릿 저장에 실패했습니다(마이그레이션 023이 실행됐는지 확인해 주세요)." });
-  logAdminAction(req, "qna_template.create", "qna_template", data.id, { label });
-  res.json({ id: data.id, label: data.label, body: data.body, keywords: data.keywords || [] });
-});
-
-app.delete("/api/admin/qna-templates/:id", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("qna_templates").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "삭제에 실패했습니다." });
-  logAdminAction(req, "qna_template.delete", "qna_template", req.params.id);
-  res.json({ ok: true });
-});
 
 /* ---------- 미입금 주문 자동취소 ----------
    고객 화면에는 "24시간 내 미입금 시 자동 취소됩니다"라고 안내한다(2026-08-14부터 3일→24시간

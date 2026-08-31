@@ -65,4 +65,20 @@ function kstMonthRangeISO(monthsAgo = 0, from = new Date()) {
   };
 }
 
-module.exports = { toKst, kstDateKey, kstMonthKey, kstDateTimeLabel, kstDayRangeISO, kstMonthRangeISO };
+/* dateFrom/dateTo(YYYY-MM-DD, KST 기준 하루)를 Supabase 쿼리에 적용하는 공통 헬퍼 — 감사로그·
+   주문·반품·리뷰·문의 필터에서 똑같이 반복되던 `T00:00:00+09:00` 패턴을 kstDayRangeISO
+   하나로 통일한다(날짜는 한국 사용자 기준이라 UTC로 그대로 비교하면 자정 근처 기록이
+   하루 어긋나 보일 수 있음). */
+function applyKstDateRangeFilter(query, column, dateFrom, dateTo) {
+  if (dateFrom) {
+    const range = kstDayRangeISO(dateFrom);
+    if (range) query = query.gte(column, range.startISO);
+  }
+  if (dateTo) {
+    const range = kstDayRangeISO(dateTo);
+    if (range) query = query.lte(column, range.endISO);
+  }
+  return query;
+}
+
+module.exports = { toKst, kstDateKey, kstMonthKey, kstDateTimeLabel, kstDayRangeISO, kstMonthRangeISO, applyKstDateRangeFilter };
