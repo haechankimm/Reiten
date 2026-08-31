@@ -68,6 +68,23 @@
           )
           .join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
+
+    /* 반품 사유 통계 — return_requests.reason을 그대로 집계한 것(server.js의
+       computeDashboardStats). 새 테이블 없이 "왜 반품이 많은지"를 한눈에 보여주는 용도. */
+    const reasonMax = Math.max(1, ...(d.returnReasons || []).map((r) => r.count));
+    el("dashboard-return-reasons").innerHTML = (d.returnReasons || []).length
+      ? d.returnReasons
+          .map(
+            (r) => `
+          <div class="best-row">
+            <span></span>
+            <span>${esc(t(r.reason))}</span>
+            <span class="tnum">${esc(t("{n}건", { n: r.count }))}</span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((r.count / reasonMax) * 100)}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 반품 신청이 없습니다"))}</p>`;
   }
 
   const DEVICE_LABEL = { mobile: "모바일", desktop: "PC", tablet: "태블릿" };

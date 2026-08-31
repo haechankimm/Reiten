@@ -149,7 +149,7 @@
   function qnaTemplateRowHTML(tpl) {
     return `<div class="best-row" data-id="${esc(tpl.id)}">
       <span></span>
-      <span>${esc(tpl.label)}</span>
+      <span>${esc(tpl.label)}${tpl.keywords && tpl.keywords.length ? `<div class="small" style="color:var(--text-muted)">${esc(tpl.keywords.join(", "))}</div>` : ""}</span>
       <span></span>
       <button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>
     </div>`;
@@ -177,14 +177,16 @@
     e.preventDefault();
     const label = el("qt-label").value.trim();
     const body = el("qt-body").value.trim();
+    const keywords = el("qt-keywords").value.split(",").map((k) => k.trim()).filter(Boolean);
     if (!label || !body) { toast(t("템플릿 이름과 답변 내용을 입력해 주세요.")); return; }
     const btn = el("qt-submit");
     btn.disabled = true;
-    const result = await adminFetch("/api/admin/qna-templates", { method: "POST", body: JSON.stringify({ label, body }) });
+    const result = await adminFetch("/api/admin/qna-templates", { method: "POST", body: JSON.stringify({ label, body, keywords }) });
     btn.disabled = false;
     if (!result) return;
     el("qt-label").value = "";
     el("qt-body").value = "";
+    el("qt-keywords").value = "";
     toast(t("템플릿을 추가했습니다"));
     await paintQnaTemplates();
     renderAdminQna();

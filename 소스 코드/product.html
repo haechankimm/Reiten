@@ -241,7 +241,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     sizesEl.innerHTML = p.sizes.map(s => {
       const out = p.soldOut.includes(s) || outSizes.includes(s);
       return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""}
-                aria-pressed="${s === state.size}">${s}</button>`;
+                aria-pressed="${s === state.size}" ${out ? `aria-label="${esc(t("{size} 품절", { size: s }))}" title="${esc(t("품절"))}"` : ""}>${s}</button>`;
     }).join("");
     sizesEl.querySelectorAll(".chip").forEach(b =>
       b.addEventListener("click", () => { state.size = b.dataset.s; render(); }));

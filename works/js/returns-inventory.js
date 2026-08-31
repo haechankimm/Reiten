@@ -398,8 +398,11 @@
     order: "주문 차감",
     auto_cancel: "미입금 자동취소 복원",
     admin_cancel: "관리자 취소 복원",
+    admin_uncancel: "관리자 취소 되돌림 재차감",
     return_restock: "반품 복원",
     admin_adjust: "관리자 수정",
+    order_finalize_duplicate: "중복 결제요청 정리",
+    order_finalize_failed: "주문 확정 실패 복원",
   };
 
   async function toggleInventoryLog(btn) {

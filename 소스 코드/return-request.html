@@ -131,7 +131,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           detail: el("rq-detail").value.trim(),
         }),
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        let message = "";
+        try { message = (await res.json()).error || ""; } catch (e) {}
+        toast(message || t("접수에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
+        btn.disabled = false;
+        return;
+      }
 
       el("return-form").hidden = true;
       el("done").hidden = false;

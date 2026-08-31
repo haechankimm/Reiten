@@ -57,7 +57,7 @@
       <div class="detail-field" id="od-cancel-reason-field" ${o.status === "취소" ? "" : "hidden"} style="margin-top:8px">
         <label>${esc(t("취소 사유 (선택)"))}</label>
         <input type="text" id="od-cancel-reason" placeholder="${esc(t("예: 고객 요청, 재고 소진 등"))}" maxlength="300">
-        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제 건은 환불도 자동 시도됩니다."))}</p>
+        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제 건은 환불도 자동 시도됩니다. 취소를 다시 다른 상태로 되돌리면 재고는 자동으로 다시 차감되지만, 카드 환불은 자동으로 되돌릴 수 없어 수동 확인이 필요합니다."))}</p>
       </div>
       <div class="detail-ship">
         <select id="od-courier">
@@ -66,6 +66,25 @@
         </select>
         <input type="text" id="od-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}">
         <button type="button" class="primary-btn" id="od-save">${esc(t("저장"))}</button>
+      </div>
+      <div class="detail-field" style="margin-top:16px">
+        <button type="button" class="btn btn--sm btn--ghost" id="od-history-toggle">${esc(t("변경 이력 보기"))}</button>
+        <div id="od-history-panel" hidden style="margin-top:8px"></div>
+      </div>`;
+  }
+
+  /* admin_audit_log를 targetType=order+targetId(주문번호)로 좁혀서 이 주문 하나에 대한
+     변경 이력만 보여준다 — settings.js의 AUDIT_ACTION_LABELS/fmtDateTime/emailName을 그대로
+     재사용(같은 페이지의 클래식 스크립트라 전역으로 공유됨). 새 테이블 없이 기존 감사로그 재사용. */
+  function orderHistoryRowHTML(r) {
+    const label = t(AUDIT_ACTION_LABELS[r.action] || r.action);
+    const detailStr = r.detail && Object.keys(r.detail).length ? JSON.stringify(r.detail) : "";
+    return `
+      <div class="logrow">
+        <span class="tnum small">${esc(fmtDateTime(r.at))}</span>
+        <span class="small" title="${esc(r.adminEmail)}">${esc(emailName(r.adminEmail))}</span>
+        <span class="logrow-action">${esc(label)}</span>
+        ${detailStr ? `<div class="logrow-detail">${esc(detailStr)}</div>` : ""}
       </div>`;
   }
 
@@ -92,12 +111,29 @@
         el("od-cancel-reason-field").hidden = el("od-status").value !== "취소";
       });
 
+      el("od-history-toggle").addEventListener("click", async () => {
+        const panel = el("od-history-panel");
+        const btn = el("od-history-toggle");
+        const opening = panel.hidden;
+        panel.hidden = !opening;
+        btn.textContent = t(opening ? "변경 이력 닫기" : "변경 이력 보기");
+        if (!opening || panel.dataset.loaded) return;
+        panel.innerHTML = `<p class="small">${esc(t("불러오는 중…"))}</p>`;
+        const result = await adminFetch(`/api/admin/audit-log?targetType=order&targetId=${encodeURIComponent(o.no)}&pageSize=30`);
+        if (!result) { panel.hidden = true; btn.textContent = t("변경 이력 보기"); return; }
+        panel.dataset.loaded = "1";
+        panel.innerHTML = result.items.length
+          ? result.items.map(orderHistoryRowHTML).join("")
+          : `<p class="small" style="color:var(--text-muted)">${esc(t("변경 이력이 없습니다"))}</p>`;
+      });
+
       el("od-save").addEventListener("click", async () => {
         const status = el("od-status").value;
         const courier = el("od-courier").value;
         const trackingNo = el("od-tracking").value.trim();
         const cancelReason = el("od-cancel-reason").value.trim();
         const isNewCancel = status === "취소" && o.status !== "취소";
+        const isUncancel = o.status === "취소" && status !== "취소";
         const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
           method: "PATCH",
           body: JSON.stringify({ status, courier, trackingNo, cancelReason }),
@@ -111,6 +147,10 @@
           else if (result.cancel.refund === "card" && !result.cancel.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
           else if (result.cancel.refund === "bank_manual") toast(t("주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요"));
           else toast(t("주문을 취소했습니다"));
+        } else if (isUncancel && result.uncancel) {
+          if (result.uncancel.inventoryRestored === false) toast(t("상태를 되돌렸지만 재고가 이미 소진돼 재차감하지 못했습니다 — 재고 탭에서 직접 확인해 주세요"));
+          else if (result.uncancel.paymentNote === "card_refund_not_reversible") toast(t("상태를 되돌렸습니다 — 단, 이미 나간 카드 환불은 자동으로 되돌릴 수 없으니 직접 확인해 주세요"));
+          else toast(t("주문 상태를 되돌렸습니다 — 재고를 다시 차감했습니다"));
         } else {
           toast(t("주문 정보를 저장했습니다"));
         }

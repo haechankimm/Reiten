@@ -1,7 +1,17 @@
   const qnaState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
   let qnaTemplates = [];
 
+  /* 문의 본문에 템플릿의 매칭 키워드(대소문자 무시) 중 하나라도 포함되면 그 템플릿을 기본으로
+     골라준다 — 완전 자동응답이 아니라 답변창을 열었을 때 이미 채워져 있어 클릭 한 번을
+     줄여주는 용도(등록 전에는 언제든 고쳐 쓰거나 드롭다운에서 다른 템플릿으로 바꿀 수 있음).
+     여러 템플릿이 매칭되면 먼저 등록된(=목록 앞쪽) 템플릿을 우선한다. */
+  function matchQnaTemplate(question) {
+    const q = String(question || "").toLowerCase();
+    return qnaTemplates.find((tpl) => (tpl.keywords || []).some((kw) => kw && q.includes(kw.toLowerCase())));
+  }
+
   function qnaCardHTML(q) {
+    const matched = q.status !== "답변완료" ? matchQnaTemplate(q.question) : null;
     return `
       <div class="panel" data-id="${esc(q.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
@@ -17,10 +27,11 @@
           ${qnaTemplates.length ? `
           <select class="mini-select admin-qna-template-pick" style="margin-top:12px">
             <option value="">${esc(t("빠른 답변 템플릿 선택..."))}</option>
-            ${qnaTemplates.map((tpl) => `<option value="${esc(tpl.id)}">${esc(tpl.label)}</option>`).join("")}
+            ${qnaTemplates.map((tpl) => `<option value="${esc(tpl.id)}" ${matched && matched.id === tpl.id ? "selected" : ""}>${esc(tpl.label)}</option>`).join("")}
           </select>` : ""}
+          ${matched ? `<p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("키워드가 일치해 \"{label}\" 템플릿을 미리 채웠습니다 — 확인 후 등록하거나 자유롭게 고쳐 쓰세요.", { label: matched.label }))}</p>` : ""}
           <div class="field" style="margin-top:8px">
-            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}"></textarea>
+            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}">${matched ? esc(matched.body) : ""}</textarea>
           </div>
           <button type="button" class="btn btn--sm admin-qna-submit">${esc(t("답변 등록"))}</button>`
         }
@@ -49,10 +60,11 @@
         const answer = card.querySelector(".admin-qna-answer").value.trim();
         if (!answer) { toast(t("답변 내용을 입력해 주세요.")); return; }
         btn.disabled = true;
-        await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, {
+        const result = await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, {
           method: "PATCH",
           body: JSON.stringify({ answer }),
         });
+        if (!result) { btn.disabled = false; return; }
         toast(t("답변을 등록했습니다"));
         const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
         if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], answer, status: "답변완료" };

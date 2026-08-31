@@ -594,6 +594,11 @@
                 <label for="qt-body" data-i18n="답변 내용">답변 내용</label>
                 <textarea id="qt-body" required maxlength="2000"></textarea>
               </div>
+              <div class="field">
+                <label for="qt-keywords" data-i18n="매칭 키워드 (선택, 쉼표로 구분)">매칭 키워드 (선택, 쉼표로 구분)</label>
+                <input id="qt-keywords" placeholder="예: 배송, 택배, 언제 와요" data-i18n-attr="placeholder:예: 배송, 택배, 언제 와요" maxlength="200">
+                <p class="small" style="color:var(--text-muted);margin-top:4px" data-i18n="문의 내용에 이 단어 중 하나라도 있으면 답변창에서 이 템플릿을 기본으로 골라줍니다.">문의 내용에 이 단어 중 하나라도 있으면 답변창에서 이 템플릿을 기본으로 골라줍니다.</p>
+              </div>
               <div><button class="btn btn--sm" type="submit" id="qt-submit" data-i18n="템플릿 추가">템플릿 추가</button></div>
             </form>
             <div id="qna-template-list" style="margin-top:14px;display:grid;gap:8px"></div>
@@ -651,6 +656,10 @@
           <div class="panel">
             <b data-i18n="기기별 실제 매출 (결제 완료 기준)">기기별 실제 매출 (결제 완료 기준)</b>
             <div id="dashboard-sales-by-device" style="margin-top:10px"></div>
+          </div>
+          <div class="panel">
+            <b data-i18n="반품 사유 (누적)">반품 사유 (누적)</b>
+            <div id="dashboard-return-reasons" style="margin-top:10px"></div>
           </div>
           <div class="panel" id="dashboard-visitors" hidden>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
