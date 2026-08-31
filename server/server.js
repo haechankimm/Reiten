@@ -612,6 +612,32 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   );
 
   if (saveError) {
+    if (saveError.code === "23505") {
+      /* 경쟁 상태: 포트원 웹훅(/api/payments/webhook)과 결제 직후 프론트엔드 확인 요청(/api/order)이
+         거의 동시에 도착하면 둘 다 "아직 주문 없음" 확인을 통과해 각자 재고를 차감하고 저장을
+         시도할 수 있다. 이 경우 payment_id 유니크 제약(009_card_payments.sql)에 걸려 나중에
+         도착한 쪽만 여기로 온다 — 결제 자체는 먼저 도착한 쪽이 이미 정상 처리했으므로, 이 쪽은
+         자신이 중복으로 차감한 재고만 되돌리고 먼저 성공한 주문을 그대로 반환한다. 결제를
+         취소하면 정상 결제·주문이 취소되는 사고로 이어지므로 여기서는 절대 취소하지 않는다. */
+      console.warn("[order] 주문 저장 중복(경쟁 상태) — 기존 주문으로 대체:", paymentId);
+      if (inventoryItems.length) {
+        const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+        if (restoreError) {
+          console.error("[order] ⚠️ 중복 저장 정리 중 재고 복원 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+        } else {
+          logInventoryChange(
+            inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_duplicate", ref: paymentId }))
+          );
+        }
+      }
+      const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+      if (existing) return { ok: true, saved: existing };
+      /* 유니크 위반인데 아직 다른 트랜잭션의 행이 안 보이는 극히 드문 복제 지연 케이스 —
+         결제는 취소하지 않고(다른 트랜잭션이 곧 성공했을 가능성이 큼) 관리자에게만 남긴다. */
+      logSystemError("order_finalize_duplicate_not_found", { paymentId });
+      return { ok: false, status: 500, body: { error: "주문 처리 중입니다. 잠시 후 주문 조회에서 확인해 주세요." } };
+    }
+
     /* 여기까지 오는 동안 재고는 이미 차감됐고 결제도 이미 승인된 상태다(주문번호 충돌 —
        020_order_seq.sql로 사실상 불가능해졌지만 — 이나 그 밖의 일시적 DB 오류로 저장만
        실패할 수 있음). 재고를 되돌리고 결제도 취소해서 "결제·재고차감은 됐는데 주문 기록이
@@ -874,6 +900,19 @@ app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
   if (!email) return res.status(400).json({ error: "email이 필요합니다." });
 
   if (success) {
+    /* success:true(실패 카운트 초기화)는 로그인이 방금 실제로 성공했을 때만 브라우저가 이미
+       손에 쥐고 있는 Supabase 세션 토큰이 있다 — 그 토큰을 요구해서 본인 것이 맞는지 검증한다.
+       검증 없이 email+success만 믿으면, 로그인을 한 번도 시도하지 않은 공격자가 남의 이메일로
+       success:true를 계속 보내 실패 카운트를 미리 지워서 잠금 자체를 무력화할 수 있었다.
+       (success:false는 로그인이 실패했을 때 보고하는 것이라 애초에 토큰이 존재하지 않으므로
+       이 검증을 적용할 수 없다 — 그 경로의 잔여 위험은 알려진 제약으로 남겨둠.) */
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "인증 토큰이 필요합니다." });
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data.user || String(data.user.email || "").trim().toLowerCase() !== email) {
+      return res.status(403).json({ error: "본인 계정에 대해서만 초기화할 수 있습니다." });
+    }
     await supabaseAdmin.from("login_attempts").delete().eq("email", email);
     return res.json({ ok: true });
   }

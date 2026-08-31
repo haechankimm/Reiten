@@ -45,10 +45,15 @@
         return { locked: false };
       }
     }
-    function reportLoginAttempt(email, success) {
+    function reportLoginAttempt(email, success, token) {
+      /* success:true 보고는 서버가 이 토큰으로 본인 계정이 맞는지 검증한다(server.js의
+         /api/admin/login-lock 참고) — 로그인 성공 직후에만 존재하는 세션 토큰이라 실패
+         보고(success:false)에는 애초에 넘길 토큰이 없다. */
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
       fetch("/api/admin/login-lock", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ email, success }),
       }).catch(() => {});
     }
@@ -68,8 +73,8 @@
         return;
       }
 
-      const { error } = await client.auth.signInWithPassword({ email, password: el("li-pw").value });
-      reportLoginAttempt(email, !error);
+      const { data: authData, error } = await client.auth.signInWithPassword({ email, password: el("li-pw").value });
+      reportLoginAttempt(email, !error, authData?.session?.access_token);
       if (error) {
         el("li-err").textContent = t("이메일 또는 비밀번호가 올바르지 않습니다.");
         el("li-err").classList.add("on");
