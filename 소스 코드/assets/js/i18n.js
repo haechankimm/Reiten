@@ -857,12 +857,6 @@ const I18N = {
   "일": { de: " Tage" },
   "개월": { de: " Monate" },
   "누적": { de: "Gesamt" },
-  "이 데이터는 Google Analytics 서버에만 쌓이고 별도 저장소를 쓰지 않습니다 — 조회할 때마다 그때그때 가져오는 값이라 우리 쪽에 데이터가 쌓여 무거워질 걱정은 없습니다. \"누적\"은 Google Analytics가 보관하는 가장 오래 전(최근 약 18개월)까지입니다.": {
-    de: "Diese Daten werden nur auf den Servern von Google Analytics gespeichert, nicht bei uns — sie werden bei jeder Anzeige live abgerufen, es entsteht also keine zusätzliche Datenlast auf unserer Seite. \"Gesamt\" reicht so weit zurück, wie Google Analytics Daten aufbewahrt (ca. 18 Monate).",
-  },
-  "직접 접속 = 검색·광고·SNS를 거치지 않고 주소를 직접 입력하거나 즐겨찾기·앱으로 들어온 경우(유입 경로를 알 수 없을 때도 여기로 잡힘)": {
-    de: "Direktzugriff = ohne Suche/Werbung/Social Media, z. B. direkte URL-Eingabe, Lesezeichen oder App (auch erfasst, wenn die Quelle unbekannt ist)",
-  },
   "기기별": { de: "Nach Gerät" },
   "유입 경로": { de: "Traffic-Quelle" },
   "모바일": { de: "Mobil" },
@@ -933,14 +927,8 @@ const I18N = {
   "{n}개": { de: "{n} Stk." },
   "{n}건": { de: "{n} Bestellungen" },
   "기기별 실제 매출 (결제 완료 기준)": { de: "Tatsächlicher Umsatz nach Gerät (abgeschlossene Zahlungen)" },
-  "아래 방문자 분석(Google Analytics)은 방문자 수만 알려주고 실제 결제 여부는 알려주지 않습니다 — 이 항목은 우리 DB에 실제로 결제 완료된 주문만 집계한 값이라 더 정확합니다.": {
-    de: "Die Besucheranalyse unten (Google Analytics) zeigt nur Besucherzahlen, nicht ob tatsächlich bezahlt wurde — dieser Wert zählt nur wirklich abgeschlossene Zahlungen aus unserer Datenbank und ist daher genauer.",
-  },
   "확인 안 됨": { de: "Unbekannt" },
   "CS 빠른 답변 템플릿": { de: "Schnellantwort-Vorlagen" },
-  "Q&A 답변창에서 버튼 한 번으로 채워 넣을 수 있는 답변 문구입니다. 완전 자동응답이 아니라 답변 시간만 줄여주는 용도입니다.": {
-    de: "Antworttexte, die sich im Q&A-Antwortfeld per Knopfdruck einfügen lassen — keine vollautomatische Antwort, sondern spart nur Zeit.",
-  },
   "템플릿 이름": { de: "Vorlagenname" },
   "답변 내용": { de: "Antworttext" },
   "템플릿 추가": { de: "Vorlage hinzufügen" },
