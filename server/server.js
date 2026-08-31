@@ -50,6 +50,7 @@ const settingsRoutes = require("./routes/settings");
 const lookbookRoutes = require("./routes/lookbook");
 const colorsRoutes = require("./routes/colors");
 const qnaRoutes = require("./routes/qna");
+const healthRoutes = require("./routes/health");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -844,6 +845,10 @@ app.get("/api/config", (req, res) => {
     portoneChannelKey: process.env.PORTONE_CHANNEL_KEY || null,
   });
 });
+
+/* GET /health는 routes/health.js에서 가져온다 — UptimeRobot이 DB 연결까지 확인할 수 있는
+   전용 엔드포인트(2026-09-01 추가, 위 0번 섹션 참고). */
+app.use(healthRoutes);
 
 /* ---------- 관리자 로그인 실패 잠금 ----------
    로그인 자체는 브라우저가 Supabase Auth를 직접 호출해서 이뤄진다(server/를 거치지 않음) —

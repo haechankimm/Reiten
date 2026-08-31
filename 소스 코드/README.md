@@ -22,6 +22,13 @@
 > **⚠️ 운영 규칙: 의미 있는 패치(기능 추가·버그 수정·설정 변경)를 커밋할 때마다, 같은 작업
 > 안에서 반드시 이 0번 섹션의 표와 "최근 작업 이력"을 함께 업데이트한다.** 코드만 고치고
 > README를 안 고치면, 다음 세션(또는 다른 사람)은 지금 상태를 다시 처음부터 추측해야 합니다.
+>
+> **⚠️ 운영 규칙 2: `server.js`에 새 로직을 추가하기 전에 먼저 `server/lib/`·`server/routes/`에
+> 이미 비슷한 게 있는지 확인한다.** 재고 차감·로그 적재·날짜 필터·rate limit 같은 공용 로직이
+> 이미 있는데 모르고 새로 만들면, 오늘 실제로 고친 "재고 차감 로직이 두 곳에 복붙돼 있던" 버그와
+> 같은 종류의 사고(한쪽만 고치고 다른 쪽을 놓침)가 또 생깁니다. 특히 `writeLimiter`는 절대
+> 새로 만들지 말고 `lib/rateLimiters.js`의 것을 그대로 가져다 쓸 것(안 그러면 남용 방지 제한이
+> 파일 수만큼 나눠져 느슨해짐).
 
 ### 🔜 다음 세션이 가장 먼저 할 일 (우선순위 순)
 
@@ -289,6 +296,32 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-09-01(3차) — 헬스체크·라우트 통합 테스트·운영 규칙 추가.** 라우트 분리 직후 사용자가
+"이러면 오히려 관리할 파일이 늘어난 거 아니냐"고 정확히 지적 → 그 지적에 대한 답으로 4가지를
+바로 실행:
+1. **`GET /health` 신설**(`server/routes/health.js`) — 지금까지 UptimeRobot이 홈페이지를 핑하고
+   있었을 가능성이 큰데, 그러면 정적 파일은 그대로 나가서 Supabase가 완전히 끊겨도 200이 나옴.
+   이 엔드포인트는 실제로 `orders` 테이블에 가벼운 쿼리를 날려봐서 DB까지 살아있는지 확인
+   (`{ok:true,db:"ok"}` 또는 `503`). 로컬에서 실제 Supabase에 대고 200 확인. **UptimeRobot
+   모니터 URL을 이 경로로 바꾸는 건 Render 대시보드 접근이 필요해 사용자가 직접 해야 함.**
+2. **`routes/*.js` 통합 테스트 22개 추가**(`server/test/routes{Settings,Colors,Lookbook,Qna}.test.js`)
+   — `supertest`로 실제 Express 라우터에 요청을 날려 인증 게이트(401)·입력 검증(400)·CRUD
+   전체 흐름(생성→조회→수정→삭제가 실제로 반영되는지)까지 검증. 실제 Supabase 없이 돌리려고
+   `test-helpers/fakeSupabase.js`를 insert/update/delete/order/range + `auth.getUser`까지
+   지원하도록 확장(기존 `resolveCoupon` 테스트 용도로 쓰던 select/eq만 되던 걸 넓힘, 기존 사용법과
+   100% 호환 — 확장 후에도 기존 테스트 전부 통과 확인). `lib/supabase.js`에 `SUPABASE_URL=fake`일
+   때 가짜 클라이언트를 쓰는 분기 하나만 추가해서, **라우트 코드는 한 줄도 안 고치고** 그대로
+   테스트에 꽂히게 함. 색상 삭제의 "사용 중인 상품이 있으면 409" 같은 실제 비즈니스 규칙까지
+   가짜 DB의 `.filter(..., "cs", ...)`(jsonb contains) 지원을 새로 추가해서 제대로 검증함(처음엔
+   가짜 클라이언트가 그 연산자를 몰라서 500이 나는 걸 "예상 동작"으로 잘못 적었다가, 그건 진짜
+   확인해야 할 걸 확인 안 하는 거라 판단해 그 자리에서 고쳐서 실제 409를 검증하도록 수정).
+   테스트 70개(순수 로직) + 22개(라우트 통합) = **92개**, 전부 통과. 실제(가짜 아닌) Supabase
+   경로도 서버 기동 확인해서 안 깨진 것까지 검증.
+3. **README 운영 규칙 2번 추가** — "새 로직을 추가하기 전에 `server/lib/`·`server/routes/`에
+   이미 있는지 먼저 확인" + `writeLimiter`는 절대 새로 만들지 말라는 경고(위 0번 섹션 상단).
+4. 옮긴 라우트에 자동화 테스트를 만드는 게 좋을지 사용자가 판단을 맡겨서 — "좋다"고 판단하고
+   위 2번을 진행(이 항목이 곧 2번).
 
 **2026-09-01(2차) — 대시보드·관리자목록 효율화 마무리 + `server.js` 라우트 분리 1단계.** 사용자가
 "이렇게 계속 코드를 추가하면 사이트가 무거워지지 않는지, `server.js` 하나가 계속 커지는 게
@@ -652,7 +685,8 @@ npm start
 │   │   ├── settings.js           Works "정보" 탭 CRUD
 │   │   ├── lookbook.js           공개 조회 + 관리자 룩북 CRUD·사진 업로드
 │   │   ├── colors.js             공개 조회 + 관리자 색상 팔레트 CRUD
-│   │   └── qna.js                상품 Q&A + CS 빠른 답변 템플릿
+│   │   ├── qna.js                상품 Q&A + CS 빠른 답변 템플릿
+│   │   └── health.js             GET /health — DB 연결까지 확인하는 헬스체크(2026-09-01 추가)
 │   ├── lib/                      (※ 아래는 대표적인 것만 — 실제로는 더 많음, `ls server/lib`로 최신 목록 확인)
 │   │   ├── supabase.js           service role 클라이언트
 │   │   ├── auth.js               requireAuth / optionalAuth / requireAdmin 미들웨어
@@ -667,7 +701,14 @@ npm start
 │   │   ├── lookbook.js           룩북 DTO 변환 · 관리자 입력값 검증 — 순수 함수, 단위 테스트 대상
 │   │   ├── pagination.js         관리자 목록 API 공용 페이지네이션 헬퍼
 │   │   └── portone.js            카드결제(포트원 V2) 결제 조회·취소·웹훅 검증 (PORTONE_API_SECRET 없으면 전부 비활성)
-│   ├── test/                     서버 핵심 로직 단위 테스트 (`npm test`, Node 내장 테스트러너 사용 — 별도 패키지 불필요)
+│   ├── test/                     서버 핵심 로직 단위 테스트 + routes/*.js 통합 테스트 (`npm test`, Node 내장
+│   │                              테스트러너 + `supertest`) — `routes*.test.js`는 실제 Supabase 없이
+│   │                              `test-helpers/fakeSupabase.js`를 씀(아래 참고)
+│   ├── test-helpers/
+│   │   └── fakeSupabase.js       insert/update/delete/order/range + auth.getUser까지 흉내내는 가짜 클라이언트.
+│   │                              테스트 파일 맨 위에서 `process.env.SUPABASE_URL = "fake"`를 lib/supabase.js를
+│   │                              require하기 전에 설정하면 그 뒤로는 실제 라우트 코드를 한 줄도 안 고치고
+│   │                              그대로 테스트에 꽂힌다(2026-09-01, routes/*.js 분리 후 통합 테스트 추가하며 확장)
 │   └── migrations/
 │       ├── 001_init.sql          Supabase 초기 스키마 (SQL Editor에 붙여넣어 실행)
 │       ├── 002_reviews_helpful_and_qna.sql   리뷰 공감 수 + Q&A 테이블 (001 다음에 실행)
@@ -928,6 +969,7 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 | `POST /api/payments/prepare` | 선택 | 카드결제 시작 전 서버가 먼저 `{ customer, items }`로 금액을 재계산해 `pending_payments`에 저장하고, 결제창에 넘길 `paymentId`/`totalAmount`/`orderName`/`storeId`/`channelKey`를 반환(사전검증, 11번 참고). `PORTONE_*` 환경변수가 없으면 `503` |
 | `POST /api/payments/webhook` | 포트원 서명 검증 | 포트원이 결제 완료를 알려주는 웹훅. `/api/order`가 이미 처리했으면 조용히 넘어가는 멱등 처리 — 고객이 결제 직후 브라우저를 닫아 `/api/order` 호출 자체가 안 갔을 때의 보조 경로 |
 | `GET /api/config` | 없음 | 브라우저가 Supabase 클라이언트를 초기화할 `supabaseUrl`/`supabaseAnonKey`, 카드결제 가능 여부(`cardPaymentEnabled`)와 결제창에 필요한 공개 식별자(`portoneStoreId`/`portoneChannelKey`) 반환 |
+| `GET /health` | 없음 | 헬스체크(2026-09-01 추가, `server/routes/health.js`) — DB에 가벼운 쿼리를 실제로 날려봐서 정상이면 `200 {ok:true}`, 실패하면 `503 {ok:false}`. UptimeRobot이 지금까지 홈페이지를 핑하고 있었다면(정적 파일이라 DB가 죽어도 200이 나옴) 이 경로로 모니터 URL을 바꾸는 걸 권장 — Render 대시보드 접근이 필요해 사용자가 직접 해야 함 |
 | `POST /api/orders/lookup` | 없음 | 비회원 주문 조회. `{ orderNo, tel }`이 저장된 주문과 일치할 때만 상태·배송정보·내역을 반환(연락처는 숫자만 비교). 불일치 시 어느 쪽이 틀렸는지 알려주지 않고 `404` |
 | `GET /api/my/orders` | 로그인 필요 | 로그인한 회원 본인의 주문내역(배송정보 포함) |
 | `POST /api/returns` | 선택 | 반품·교환 신청 접수(비회원도 가능) |
