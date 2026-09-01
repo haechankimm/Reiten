@@ -364,6 +364,28 @@ async function sendAdminSettlementReport({ monthLabel, summary, buffer }) {
   });
 }
 
+/* 첫 구매 감사 쿠폰 안내 메일(고객용) — 이 고객의 확정 주문이 이걸로 처음일 때 1회 발송.
+   코드는 이 고객 전용으로 새로 발급된 것이라(coupons 테이블에 usage_limit=1로 저장) 한 번만
+   쓸 수 있다는 걸 명확히 안내한다. */
+async function sendCustomerFirstPurchaseThanks({ customer, code, discountValue }) {
+  if (!resend || !customer.email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: customer.email,
+    replyTo: SITE.email,
+    subject: `[REITEN] ${customer.name}님, 첫 구매 감사드려요 — 다음 주문에 쓸 쿠폰을 드립니다`,
+    html: `
+      <h2>${escHtml(customer.name)}님, 첫 구매 감사드립니다</h2>
+      <p>다음 주문에서 쓰실 수 있는 <b>${discountValue}% 할인 쿠폰</b>을 드립니다.</p>
+      <p style="margin-top:12px;padding:12px 16px;background:#f4f4f4;border-radius:8px;font-size:18px;letter-spacing:1px">
+        <b>${escHtml(code)}</b>
+      </p>
+      <p style="margin-top:16px;color:#666">이 코드는 회원님께만 발급된 1회용 쿠폰입니다. 장바구니의 쿠폰 코드 입력란에 그대로 입력해 주세요.</p>
+    `,
+  });
+}
+
 module.exports = {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -380,4 +402,5 @@ module.exports = {
   sendAdminLoginLocked,
   sendAdminSettlementReport,
   sendCustomerOrderCancelled,
+  sendCustomerFirstPurchaseThanks,
 };

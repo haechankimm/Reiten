@@ -27,6 +27,7 @@ const {
   sendAdminLoginLocked,
   sendAdminSettlementReport,
   sendCustomerOrderCancelled,
+  sendCustomerFirstPurchaseThanks,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { uploadReviewPhoto, uploadProductPhoto } = require("./lib/cloudinary");
@@ -192,18 +193,21 @@ app.use(express.json());
 /* works.reiten.kr로 들어온 요청은 관리자 전용 정적 사이트(works/)를 먼저 찾는다.
    express.static은 파일을 못 찾으면 그냥 next()로 넘어가므로, works/에 없는 assets/*
    요청은 아래의 SITE_DIR static으로 자연스럽게 이어져 이미지·CSS·공용 JS를 공유한다
-   (사이트별로 중복 보관하지 않음). API·인증·DB는 완전히 동일한 이 서버 인스턴스를 쓴다. */
+   (사이트별로 중복 보관하지 않음). API·인증·DB는 완전히 동일한 이 서버 인스턴스를 쓴다.
+   works.localhost는 로컬 개발 전용 별칭이다(.localhost는 브라우저가 별도 설정 없이 항상
+   127.0.0.1로 처리하는 예약 도메인이라 실제 인터넷에서는 접근 자체가 불가능함) — 예전엔
+   `/__works-preview`라는 별도 경로로 로컬 미리보기를 우회했었는데, 그 경로는 프로덕션에서도
+   인증 없이 그대로 열려 있어(works.reiten.kr 분기와 무관하게 항상 마운트돼 있었음) 관리자
+   패널 화면이 누구에게나 노출되는 불필요한 표면이었다(실제 데이터 API는 여전히 requireAdmin이
+   막지만, UI 셸 자체가 열리는 것만으로도 줄일 수 있는 노출). 2026-09-01, 이 분기 하나로 통합해
+   프로덕션 노출은 없애고 로컬에서는 실제 호스트네임 분기 로직을 그대로 검증하도록 정리함
+   (http://works.localhost:3000 으로 접속하면 됨). */
 app.use((req, res, next) => {
-  if (req.hostname === "works.reiten.kr") {
+  if (req.hostname === "works.reiten.kr" || req.hostname === "works.localhost") {
     return express.static(WORKS_DIR)(req, res, next);
   }
   next();
 });
-
-/* works.reiten.kr DNS/Custom Domain 연결 전에도 먼저 써볼 수 있도록 임시로 열어둔 경로.
-   works/index.html이 절대경로(/assets/...)로 자산을 불러오므로 이 프리픽스 아래에서도 정상 동작한다.
-   works.reiten.kr가 실제로 연결되면 이 라우트는 지워도 된다. */
-app.use("/__works-preview", express.static(WORKS_DIR));
 
 function escapeHtmlAttr(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -688,8 +692,74 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   sendAdminCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 관리자 알림 메일 발송 실패:", err.message));
   sendCustomerCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 완료 메일 발송 실패:", err.message));
   kakao.sendAlimtalk("CARD_PAID", customer.tel, { name: customer.name, orderNo: saved.order_no }).catch(() => {});
+  maybeIssueFirstPurchaseCoupon(saved).catch((err) => console.error("[first-purchase-coupon] 처리 실패:", err.message));
 
   return { ok: true, saved };
+}
+
+/* ---------- 첫 구매 감사 쿠폰 ----------
+   카드결제(finalizeCardOrder, 결제 즉시 "입금확인")와 무통장입금(관리자가 PATCH로 "입금확인"
+   처리) 양쪽에서 공통으로 부른다. 이 고객의 확정 주문(취소·입금대기 제외)이 이번이 처음이면,
+   그 고객 전용 1회용 쿠폰을 새로 만들어 coupons 테이블에 저장하고(Works "쿠폰" 탭에도 그대로
+   보임 — usage_limit=1이라 자연히 "한 번만" 쓸 수 있게 됨, 새 검증 로직 없이 기존
+   resolveCoupon()이 그대로 처리) 메일로 안내한다.
+   할인율은 새 설정 테이블을 만들지 않고 기존 admin_settings(Works "정보" 탭)를 재사용한다 —
+   관리자가 그 탭에서 이 라벨의 값을 숫자로 바꾸면 다음 발급부터 바로 반영된다. 설정 자체가
+   없으면(처음 배포 시) 기본값 1%로 폴백한다. */
+const FIRST_PURCHASE_COUPON_SETTING_LABEL = "첫 구매 감사 쿠폰 할인율(%)";
+const FIRST_PURCHASE_COUPON_DEFAULT_PERCENT = 1;
+
+async function maybeIssueFirstPurchaseCoupon(order) {
+  const telDigits = normalizeTel(order.customer && order.customer.tel);
+  if (!telDigits) return;
+
+  const { data: priorOrders, error: priorError } = await supabaseAdmin
+    .from("orders")
+    .select("order_no, customer")
+    .neq("order_no", order.order_no)
+    .in("status", ["입금확인", "배송중", "완료"]);
+  if (priorError) {
+    console.error("[first-purchase-coupon] 기존 주문 조회 실패:", priorError.message);
+    return;
+  }
+  const hasPriorOrder = (priorOrders || []).some((o) => normalizeTel(o.customer && o.customer.tel) === telDigits);
+  if (hasPriorOrder) return;
+
+  const { data: setting } = await supabaseAdmin
+    .from("admin_settings")
+    .select("value")
+    .eq("label", FIRST_PURCHASE_COUPON_SETTING_LABEL)
+    .maybeSingle();
+  const parsedPercent = Math.floor(Number(setting && setting.value));
+  const percent = Number.isFinite(parsedPercent) && parsedPercent > 0 && parsedPercent <= 100 ? parsedPercent : FIRST_PURCHASE_COUPON_DEFAULT_PERCENT;
+
+  let code = null;
+  for (let i = 0; i < 5 && !code; i++) {
+    const candidate = `THANKS-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const { data: exists } = await supabaseAdmin.from("coupons").select("code").eq("code", candidate).maybeSingle();
+    if (!exists) code = candidate;
+  }
+  if (!code) {
+    console.error("[first-purchase-coupon] 고유 코드 생성 실패(5회 시도)");
+    return;
+  }
+
+  const { error: insertError } = await supabaseAdmin.from("coupons").insert({
+    code,
+    discount_type: "percent",
+    discount_value: percent,
+    scope: "all",
+    usage_limit: 1,
+    active: true,
+  });
+  if (insertError) {
+    console.error("[first-purchase-coupon] 쿠폰 생성 실패:", insertError.message);
+    return;
+  }
+
+  await sendCustomerFirstPurchaseThanks({ customer: order.customer, code, discountValue: percent }).catch((err) =>
+    console.error("[mailer] 첫 구매 감사 쿠폰 메일 발송 실패:", err.message)
+  );
 }
 
 app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
@@ -1473,6 +1543,27 @@ app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
   }
 });
 
+/* 상태가 (처음으로) "입금확인"이 되는 순간의 메일·알림톡·첫구매쿠폰, 운송장번호가 처음
+   채워지는 순간의 배송시작 메일·알림톡 — 건별 PATCH(/api/admin/orders/:no)와 일괄
+   PATCH(/api/admin/orders/bulk) 양쪽이 완전히 똑같은 조건으로 처리해야 해서 하나로 뽑았다. */
+async function notifyOrderStatusSideEffects(prev, saved, patch) {
+  if (patch.status === "입금확인" && prev?.status !== "입금확인") {
+    sendCustomerPaymentConfirmed(saved).catch((err) => {
+      console.error("[mailer] 입금 확인 메일 발송 실패:", err.message);
+    });
+    kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
+    maybeIssueFirstPurchaseCoupon(saved).catch((err) => console.error("[first-purchase-coupon] 처리 실패:", err.message));
+  }
+  if (!prev?.tracking_no && saved.tracking_no) {
+    sendCustomerShipped(saved).catch((err) => {
+      console.error("[mailer] 배송 시작 메일 발송 실패:", err.message);
+    });
+    kakao
+      .sendAlimtalk("SHIPPED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no, trackingNo: saved.tracking_no })
+      .catch(() => {});
+  }
+}
+
 /* status만 바꾸면 상태만, courier/trackingNo를 함께 보내면 배송정보도 같이 저장한다.
    status가 "입금확인"으로 바뀌는 순간에만 고객에게 입금 확인 메일을 보낸다(접수 메일은 /api/order에서 이미 발송됨).
    status가 (처음으로) "취소"가 되는 순간에는 미입금 자동취소·반품승인환불과 같은 원칙으로
@@ -1526,20 +1617,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   if (error) return res.status(500).json({ error: "저장에 실패했습니다." });
 
-  if (patch.status === "입금확인") {
-    sendCustomerPaymentConfirmed(saved).catch((err) => {
-      console.error("[mailer] 입금 확인 메일 발송 실패:", err.message);
-    });
-    kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
-  }
-  if (!prev?.tracking_no && saved.tracking_no) {
-    sendCustomerShipped(saved).catch((err) => {
-      console.error("[mailer] 배송 시작 메일 발송 실패:", err.message);
-    });
-    kakao
-      .sendAlimtalk("SHIPPED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no, trackingNo: saved.tracking_no })
-      .catch(() => {});
-  }
+  await notifyOrderStatusSideEffects(prev, saved, patch);
 
   let cancelResult = null;
   if (isNewCancel) {
@@ -1607,6 +1685,83 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   logAdminAction(req, "order.update", "order", req.params.no, patch);
   res.json({ ok: true, cancel: cancelResult, uncancel: uncancelResult });
+});
+
+const ORDER_BULK_MAX = 200;
+
+/* 여러 주문의 상태·배송정보를 한 번에 저장한다(운송장번호 CSV 일괄 입력, 입금확인 일괄 처리
+   용도). 건별 PATCH와 달리 "취소"는 여기서 지원하지 않는다 — 취소는 재고 복원·카드 환불이
+   자동으로 나가는 민감한 동작이라, 실수로 여러 건을 한꺼번에 취소·환불해버리는 사고를
+   구조적으로 막기 위해 일부러 뺐다(취소는 계속 건별로만 가능). 이미 취소된 주문을 되돌리는
+   것도 같은 이유로 여기선 막는다. 항목 하나가 실패해도 나머지는 계속 처리하고, 결과를
+   항목별로 돌려준다(CSV에 오타가 섞여 있어도 나머지는 정상 처리되게). */
+app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
+  const items = Array.isArray(req.body?.orders) ? req.body.orders : [];
+  if (!items.length) return res.status(400).json({ error: "orders가 필요합니다." });
+  if (items.length > ORDER_BULK_MAX) {
+    return res.status(400).json({ error: `한 번에 최대 ${ORDER_BULK_MAX}건까지 처리할 수 있습니다.` });
+  }
+
+  const results = [];
+  for (const item of items) {
+    const orderNo = String(item?.orderNo || "").trim();
+    if (!orderNo) {
+      results.push({ orderNo: null, ok: false, error: "orderNo가 필요합니다." });
+      continue;
+    }
+
+    const patch = {};
+    if (item.status !== undefined) {
+      const statusStr = String(item.status).trim();
+      if (!statusStr) {
+        results.push({ orderNo, ok: false, error: "status가 비어 있습니다." });
+        continue;
+      }
+      if (statusStr === "취소") {
+        results.push({ orderNo, ok: false, error: "일괄 처리에서는 취소를 지원하지 않습니다 — 개별로 처리해 주세요." });
+        continue;
+      }
+      patch.status = statusStr;
+    }
+    if (item.courier !== undefined) {
+      const courierStr = String(item.courier || "").trim();
+      if (courierStr && !COURIERS.some((c) => c.key === courierStr)) {
+        results.push({ orderNo, ok: false, error: "존재하지 않는 택배사입니다." });
+        continue;
+      }
+      patch.courier = courierStr || null;
+    }
+    if (item.trackingNo !== undefined) {
+      patch.tracking_no = String(item.trackingNo || "").trim().slice(0, 60) || null;
+    }
+    if (!Object.keys(patch).length) {
+      results.push({ orderNo, ok: false, error: "변경할 값이 없습니다." });
+      continue;
+    }
+
+    const { data: prev } = await supabaseAdmin.from("orders").select("status, tracking_no").eq("order_no", orderNo).maybeSingle();
+    if (!prev) {
+      results.push({ orderNo, ok: false, error: "존재하지 않는 주문입니다." });
+      continue;
+    }
+    if (prev.status === "취소") {
+      results.push({ orderNo, ok: false, error: "이미 취소된 주문은 일괄 처리로 되돌릴 수 없습니다 — 개별로 처리해 주세요." });
+      continue;
+    }
+
+    const { data: saved, error } = await supabaseAdmin.from("orders").update(patch).eq("order_no", orderNo).select().single();
+    if (error) {
+      results.push({ orderNo, ok: false, error: "저장에 실패했습니다." });
+      continue;
+    }
+
+    await notifyOrderStatusSideEffects(prev, saved, patch);
+    results.push({ orderNo, ok: true });
+  }
+
+  const successCount = results.filter((r) => r.ok).length;
+  logAdminAction(req, "order.bulk_update", "order", `${successCount}/${items.length}건`, { results });
+  res.json({ ok: true, results });
 });
 
 /* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
@@ -1752,35 +1907,6 @@ app.get("/api/admin/inventory", requireAdmin, async (req, res) => {
   res.json(data.map((r) => ({ productId: r.product_id, color: r.color, size: r.size, qty: r.qty })));
 });
 
-app.patch("/api/admin/inventory", requireAdmin, async (req, res) => {
-  const { productId, color, size, qty } = req.body || {};
-  const qtyNum = Math.floor(Number(qty));
-  const colorStr = String(color || "");
-  if (!productId || !colorStr || !size || !Number.isFinite(qtyNum) || qtyNum < 0) {
-    return res.status(400).json({ error: "productId, color, size, qty(0 이상)가 필요합니다." });
-  }
-
-  const { data: prev } = await supabaseAdmin
-    .from("inventory")
-    .select("qty")
-    .eq("product_id", productId)
-    .eq("color", colorStr)
-    .eq("size", size)
-    .maybeSingle();
-
-  const { error } = await supabaseAdmin
-    .from("inventory")
-    .upsert({ product_id: productId, color: colorStr, size, qty: qtyNum }, { onConflict: "product_id,color,size" });
-
-  if (error) return res.status(500).json({ error: "재고 저장에 실패했습니다." });
-
-  const delta = qtyNum - (prev ? prev.qty : 0);
-  if (delta !== 0) {
-    logInventoryChange([{ productId, color: colorStr, size, delta, reason: "admin_adjust", adminEmail: req.user.email }]);
-  }
-  logAdminAction(req, "inventory.update", "inventory", `${productId}:${colorStr}:${size}`, { qty: qtyNum });
-  res.json({ ok: true });
-});
 
 /* 재고 탭에서 칸마다 바로바로 저장하던 방식은 몇 칸만 고쳐도 토스트가 계속 뜨고 활동 로그도
    항목 수만큼 따로 쌓여 지저분했다 — Works가 "고치고 나서 저장 버튼 한 번"으로 통일되면서

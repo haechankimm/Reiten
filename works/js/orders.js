@@ -269,5 +269,49 @@
   }
   wireExportMenu("ord-export", "ord-export-menu", downloadOrdersExport);
 
+  /* 일괄 처리 — 운송장번호 CSV 붙여넣기, 입금확인 일괄 처리 용도. 서버(PATCH /api/admin/orders/bulk)가
+     "취소"는 구조적으로 거부한다(재고복원·카드환불이 자동으로 나가는 민감한 동작이라 실수로
+     여러 건을 한꺼번에 취소·환불하는 사고를 막기 위해 일부러 뺌 — 취소는 계속 건별로만). */
+  el("ord-bulk-toggle").addEventListener("click", () => {
+    el("ord-bulk-panel").hidden = !el("ord-bulk-panel").hidden;
+  });
+
+  function parseBulkOrderLines(text) {
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [orderNo, status, courier, trackingNo] = line.split(",").map((v) => v.trim());
+        const item = { orderNo };
+        if (status) item.status = status;
+        if (courier) item.courier = courier;
+        if (trackingNo) item.trackingNo = trackingNo;
+        return item;
+      });
+  }
+
+  el("ord-bulk-submit").addEventListener("click", async () => {
+    const orders = parseBulkOrderLines(el("ord-bulk-input").value);
+    if (!orders.length) { toast(t("붙여넣은 줄이 없습니다")); return; }
+
+    const btn = el("ord-bulk-submit");
+    btn.disabled = true;
+    const result = await adminFetch("/api/admin/orders/bulk", { method: "PATCH", body: JSON.stringify({ orders }) });
+    btn.disabled = false;
+    if (!result) return;
+
+    const okCount = result.results.filter((r) => r.ok).length;
+    const failed = result.results.filter((r) => !r.ok);
+    el("ord-bulk-result").textContent = t("{ok}건 성공, {fail}건 실패", { ok: okCount, fail: failed.length });
+    if (failed.length) {
+      toast(failed.map((r) => `${r.orderNo || "?"}: ${r.error}`).join("\n"));
+    } else {
+      toast(t("일괄 처리를 완료했습니다"));
+      el("ord-bulk-input").value = "";
+    }
+    paintAdminOrders();
+  });
+
   const returnsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
 

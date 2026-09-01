@@ -196,6 +196,15 @@
                   <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
                   <button type="button" class="btn btn--sm btn--ghost" data-format="pdf" style="justify-content:flex-start" data-i18n="PDF">PDF</button>
                 </div>
+                <button type="button" class="btn btn--sm btn--ghost" id="ord-bulk-toggle" data-i18n="일괄 처리">일괄 처리</button>
+              </div>
+            </div>
+            <div id="ord-bulk-panel" hidden style="margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-surface)">
+              <p class="small" data-i18n="한 줄에 하나씩, '주문번호,상태,택배사,운송장번호' 순서로 붙여넣으세요(뒤 항목은 비워도 됨). 예: R260801-000001,입금확인 / R260801-000002,,cj,123456789012. 취소는 여기서 할 수 없습니다 — 개별로 처리해 주세요.">한 줄에 하나씩, '주문번호,상태,택배사,운송장번호' 순서로 붙여넣으세요(뒤 항목은 비워도 됨). 예: R260801-000001,입금확인 / R260801-000002,,cj,123456789012. 취소는 여기서 할 수 없습니다 — 개별로 처리해 주세요.</p>
+              <textarea id="ord-bulk-input" rows="6" style="width:100%;margin-top:8px;font-family:monospace" placeholder="R260801-000001,입금확인&#10;R260801-000002,,cj,123456789012" data-i18n-attr="placeholder:R260801-000001,입금확인&#10;R260801-000002,,cj,123456789012"></textarea>
+              <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                <button type="button" class="btn btn--sm" id="ord-bulk-submit" data-i18n="일괄 적용">일괄 적용</button>
+                <span class="small" id="ord-bulk-result" style="color:var(--text-muted)"></span>
               </div>
             </div>
           </div>

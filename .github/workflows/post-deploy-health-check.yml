@@ -1,0 +1,32 @@
+name: Post-deploy health check
+
+# Render의 Auto-Deploy(On Commit)는 테스트 통과 여부와 무관하게 main에 push되는 순간 바로
+# 라이브 사이트로 나간다(실제 결제가 걸린 사이트인데도). 이 워크플로가 그 배포 게이트를
+# 대신하진 못하지만(Render 대시보드 설정을 바꿔야 하는 영역 — README 0번 섹션 참고), 최소한
+# "배포 후 실제로 살아있는지"는 자동으로 확인해서 조용히 넘어가지 않게 한다.
+# Test 워크플로(test.yml)가 main에서 성공한 뒤에만 실행되고, server/routes/health.js의
+# /health가 DB 연결까지 실제로 확인하므로 정적 파일만 살아있고 DB는 끊긴 상태도 잡아낸다.
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  health-check:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: reiten.kr /health가 정상으로 돌아올 때까지 확인(최대 5분, Render 빌드·무료플랜 슬립 대비)
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS --max-time 15 https://reiten.kr/health; then
+              echo ""
+              echo "정상 확인됨 (시도 $i/15)"
+              exit 0
+            fi
+            echo "아직 정상 응답 아님 (시도 $i/15) — 20초 후 재시도"
+            sleep 20
+          done
+          echo "::error::배포 후 https://reiten.kr/health 가 5분 넘게 정상 응답하지 않았습니다. Render Events 탭과 Supabase 상태를 확인하세요."
+          exit 1
