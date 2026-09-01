@@ -206,7 +206,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (/already registered|already exists/i.test(msg)) return t("이미 가입된 이메일입니다.");
     if (/password.*(least|weak)/i.test(msg)) return t("비밀번호는 6자 이상이어야 합니다.");
     if (/invalid.*email/i.test(msg)) return t("이메일 형식이 올바르지 않습니다.");
-    if (/rate limit/i.test(msg)) return t("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+    /* Supabase Auth가 상황에 따라 문구를 다르게 준다 — 이메일 발송 자체가 막히면
+       "email rate limit exceeded"(code: over_email_send_rate_limit), 짧은 시간에 요청이
+       몰리면 "Too many requests. Please try again shortly." 처럼 다른 문구가 온다(둘 다
+       429). "rate limit"만 걸러내던 정규식이 두 번째 문구를 못 잡아 영문 원문이 그대로
+       노출되던 것을 2026-09-01에 발견해 수정 — 실제 회원가입 요청으로 두 문구 다 재현해
+       확인함. */
+    if (/rate limit|too many requests/i.test(msg) || error?.code === "over_email_send_rate_limit") {
+      return t("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+    }
     return msg;
   }
 
