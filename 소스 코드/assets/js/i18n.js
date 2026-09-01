@@ -809,6 +809,10 @@ const I18N = {
   "리뷰를 삭제했습니다": { de: "Bewertung gelöscht" },
   "상품사진 {n}": { en: "Product photo {n}", ja: "商品写真 {n}", de: "Produktfoto {n}" },
   "사진 없음": { de: "Kein Foto" },
+  "이 사진의 컬러 (고르면 그 컬러 클릭 시 이 사진으로 바뀜)": {
+    de: "Farbe dieses Fotos (bei Auswahl wechselt das Bild, wenn diese Farbe angeklickt wird)",
+  },
+  "공통 (컬러 무관)": { de: "Allgemein (farbunabhängig)" },
   "사진 변경": { de: "Foto ändern" },
   "제거": { de: "Entfernen" },
   "사진 업로드에 실패했습니다": { de: "Foto-Upload fehlgeschlagen" },

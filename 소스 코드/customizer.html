@@ -184,14 +184,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     });
     const c = getCharm(state.charm);
     el("stage-caption").textContent =
-      `${t(state.base.nameKo)} · ${t(COLORS[state.color].label)}` +
+      `${productName(state.base)} · ${t(COLORS[state.color].label)}` +
       (state.charm === "none" ? " · " + t("참 없음") : ` · ${t(c.label)} (${t(getFinish(state.finish).label)})`);
   }
 
   function paintControls() {
     // base
     el("bases").innerHTML = BASES.map(b =>
-      `<button class="chip" type="button" data-b="${b.id}" aria-pressed="${b.id === state.base.id}">${esc(t(b.nameKo))}</button>`
+      `<button class="chip" type="button" data-b="${b.id}" aria-pressed="${b.id === state.base.id}">${esc(productName(b))}</button>`
     ).join("");
     el("base-name").textContent = money(state.base.price);
 
@@ -236,10 +236,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     el("qty").textContent = state.qty;
 
     // summary
-    el("sum-base").textContent = t(state.base.nameKo);
+    el("sum-base").textContent = productName(state.base);
     el("sum-base-v").textContent = money(state.base.price);
     el("sum-charm").textContent = state.charm === "none" ? t("지퍼 참 (선택 안 함)") : t("지퍼 참 — {charm}", { charm: t(getCharm(state.charm).label) });
-    el("sum-charm-v").textContent = state.charm === "none" ? "—" : t("무료");
+    el("sum-charm-v").textContent = state.charm === "none" ? "—" : (CHARM_PRICE ? money(CHARM_PRICE) : t("무료"));
     el("sum-extras-v").textContent = extrasCost() ? money(extrasCost()) : "—";
     el("sum-total").textContent = money(unitPrice() * state.qty);
   }
@@ -312,7 +312,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     return {
       sig: [state.base.id, state.color, state.size, state.charm, state.finish, ...state.extras].join("|"),
       productId: state.base.id,
-      name: t(state.base.nameKo),
+      name: productName(state.base),
       image: state.base.images.find(Boolean) || null,
       color: state.color,
       size: state.size,

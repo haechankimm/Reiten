@@ -556,7 +556,7 @@ function charmSVG(charmKey, finishKey, opts = {}) {
   const glowClass = silver ? " reflective" : isColor ? " reflective-soft" : "";
 
   return `
-<svg class="charm-svg${glowClass}" viewBox="0 0 100 120" ${opts.attrs || ""} role="img" aria-label="${esc(t("{label} 참", { label: t(c.label) }))}"
+<svg class="charm-svg${glowClass}" viewBox="0 0 100 120" ${opts.attrs || ""} role="img" aria-label="${esc(t("{label} 참", { label: t(c.label) }))}">
   <defs>
     <linearGradient id="g${id}" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#c3c9cf"/>
