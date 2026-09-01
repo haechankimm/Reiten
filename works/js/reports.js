@@ -198,6 +198,7 @@
     el("admin-name").textContent = name;
     el("admin-avatar").textContent = name.slice(0, 1).toUpperCase();
     currentAdminId = profile.id;
+    isMasterAdmin = (profile.email || "").toLowerCase() === "haechankimm@gmail.com";
     paintNotifications();
     /* 로그인 시점 조회만으로는 Works를 계속 켜둔 사이 들어온 신규 알림을 새로고침 전까지
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */

@@ -196,8 +196,20 @@ function createFakeSupabase(seed = {}) {
           return { data: {}, error: null };
         },
         async inviteUserByEmail(email) {
+          /* 실제 Supabase는 이미 가입된 이메일을 다시 초대하면 에러를 준다 — routes/admins.js가
+             그 에러를 감지해 "관리자로 승격할까요?" 흐름으로 넘기는지 테스트하려면 이 흉내도
+             똑같이 거부해야 한다. */
+          if (authUsers.some((u) => (u.email || "").toLowerCase() === String(email || "").toLowerCase())) {
+            return { data: null, error: { message: "A user with this email address has already been registered", code: "email_exists" } };
+          }
           const u = { id: genId(), email, email_confirmed_at: null, last_sign_in_at: null, created_at: new Date().toISOString() };
           authUsers.push(u);
+          /* 001_init.sql의 handle_new_user() 트리거 흉내 — auth.users에 새로 생기는 즉시
+             profiles 행이 자동으로 하나 생긴다(기본 role='customer'). 이걸 빼먹으면
+             routes/admins.js가 뒤이어 하는 profiles.update({role:'admin'})가 매칭되는
+             행이 없어 조용히 아무 효과가 없는 채로 "성공"해버린다. */
+          if (!store.profiles) store.profiles = [];
+          store.profiles.push({ id: u.id, name: "", role: "customer", created_at: u.created_at });
           return { data: { user: u }, error: null };
         },
       },

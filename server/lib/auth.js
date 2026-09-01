@@ -48,4 +48,22 @@ async function requireAdmin(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, optionalAuth, requireAdmin };
+/* 관리자 계정 자체를 다루는(새 관리자 초대, 기존 관리자 권한 해제, 회원을 관리자로 승격)
+   동작만 이 이메일 한 명으로 제한한다(2026-09-01 사용자 요청) — 관리자가 여러 명이 되면
+   그중 누구든 서로를 관리자로 만들거나 끌어내릴 수 있는 게 사고 위험이 크다고 판단해서,
+   "누가 관리자가 될 수 있는지"를 정하는 권한만 한 명에게 모아뒀다. 그 외 주문·재고·상품·
+   일반 회원 관리는 기존처럼 관리자 전원이 그대로 할 수 있다 — requireAdmin 위에 이 검사
+   하나만 얹는 구조라 나머지 권한 로직은 전혀 안 건드림. 이 계정 자체(마스터 관리자가 누구인지)는
+   README에서만 다루고 사용설명서(비개발자용 문서)에는 남기지 않는다(사용자 지시). */
+const MASTER_ADMIN_EMAIL = "haechankimm@gmail.com";
+
+async function requireMasterAdmin(req, res, next) {
+  requireAdmin(req, res, () => {
+    if ((req.user.email || "").toLowerCase() !== MASTER_ADMIN_EMAIL) {
+      return res.status(403).json({ error: "이 작업은 마스터 관리자만 할 수 있습니다." });
+    }
+    next();
+  });
+}
+
+module.exports = { requireAuth, optionalAuth, requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL };

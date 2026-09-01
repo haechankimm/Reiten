@@ -21,7 +21,7 @@
           <button type="button" class="btn btn--sm member-view-orders">${esc(t("주문 보기"))}</button>
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm member-resend">${esc(t("인증 메일 재발송"))}</button>` : ""}
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm btn--ghost member-verify">${esc(t("수동으로 인증 처리"))}</button>` : ""}
-          <button type="button" class="btn btn--sm member-promote">${esc(t("관리자로 승격"))}</button>
+          ${isMasterAdmin ? `<button type="button" class="btn btn--sm member-promote">${esc(t("관리자로 승격"))}</button>` : ""}
           <button type="button" class="btn btn--sm member-ban-toggle">${esc(m.banned ? t("차단 해제") : t("차단"))}</button>
           <button type="button" class="btn btn--sm btn--danger member-delete">${esc(t("삭제"))}</button>
         </div>

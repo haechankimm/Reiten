@@ -68,6 +68,10 @@
      들어간 account.html에서 본인이 직접 비밀번호를 정하면 끝난다(관리자가 임시 비밀번호를
      만들어 전달할 필요 없음). */
   let currentAdminId = null;
+  /* 마스터 관리자(lib/auth.js의 MASTER_ADMIN_EMAIL)인지 — 서버는 이미 requireMasterAdmin으로
+     막고 있으니 이 프런트 쪽 숨김은 실제 방어선이 아니라, 권한 없는 관리자에게 눌러도 되는
+     것처럼 보이는 버튼을 안 보여줘 헷갈리지 않게 하는 용도일 뿐이다. */
+  let isMasterAdmin = false;
   let notifPollTimer = null;
 
   function adminRowHTML(a) {
@@ -78,11 +82,12 @@
           <b>${esc(a.name || a.email)}</b>${isSelf ? ` <span class="small" style="color:var(--text-muted)">(${esc(t("나"))})</span>` : ""}
           <div class="small tnum" style="color:var(--text-muted)">${esc(a.email)}</div>
         </div>
-        ${isSelf ? "" : `<button type="button" class="btn btn--sm btn--danger admin-revoke">${esc(t("권한 해제"))}</button>`}
+        ${!isSelf && isMasterAdmin ? `<button type="button" class="btn btn--sm btn--danger admin-revoke">${esc(t("권한 해제"))}</button>` : ""}
       </div>`;
   }
 
   async function paintAdminAccounts() {
+    el("admin-invite-form").hidden = !isMasterAdmin;
     const result = await adminFetch("/api/admin/admins");
     if (!result) return;
     el("admin-list").innerHTML = result.items.map(adminRowHTML).join("");
@@ -108,9 +113,44 @@
     btn.disabled = true;
     const email = el("ai-email").value.trim();
     const name = el("ai-name").value.trim();
-    const result = await adminFetch("/api/admin/admins", { method: "POST", body: JSON.stringify({ email, name }) });
+
+    /* 이미 가입된 이메일(고객으로 먼저 가입한 사람 등)이면 서버가 409 + code:"already_registered"
+       + existingId를 준다(routes/admins.js 참고) — "관리자로 승격할까요?"로 물어보고 확인되면
+       members.js의 승격 엔드포인트를 그대로 재사용해야 해서, adminFetch(실패 시 토스트만 띄우고
+       본문을 버림)로는 이 분기를 못 잡는다. 이 호출만 fetch를 직접 써서 응답 본문을 그대로 본다. */
+    const token = await getAccessToken();
+    if (!token) { toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요.")); btn.disabled = false; return; }
+
+    let res, body;
+    try {
+      res = await fetch("/api/admin/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ email, name }),
+      });
+      body = await res.json().catch(() => ({}));
+    } catch (err) {
+      toast(t("요청이 실패했습니다"));
+      btn.disabled = false;
+      return;
+    }
+
+    if (res.status === 409 && body.code === "already_registered" && body.existingId) {
+      btn.disabled = false;
+      if (!confirm(body.error)) return;
+      const promoted = await adminFetch(`/api/admin/members/${encodeURIComponent(body.existingId)}/promote`, { method: "PATCH" });
+      if (!promoted) return;
+      toast(t("관리자로 승격했습니다"));
+      el("admin-invite-form").reset();
+      paintAdminAccounts();
+      return;
+    }
+
     btn.disabled = false;
-    if (!result) return;
+    if (!res.ok) {
+      toast(body.error || t("요청이 실패했습니다") + ` (${res.status})`);
+      return;
+    }
     toast(t("초대 메일을 보냈습니다"));
     el("admin-invite-form").reset();
     paintAdminAccounts();

@@ -16,7 +16,7 @@
    cascade라 자동으로 같이 없어짐). */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
-const { requireAdmin } = require("../lib/auth");
+const { requireAdmin, requireMasterAdmin } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { paginationParams } = require("../lib/pagination");
 const { toCsvGeneric } = require("../lib/orderExport");
@@ -135,8 +135,9 @@ router.patch("/api/admin/members/:id/ban", requireAdmin, async (req, res) => {
    길밖에 없어서, 이미 가입된 고객을 관리자로 올리려면 그 사람이 다시 초대 메일을 받아 새
    비밀번호를 정하는 번거로운 과정을 거쳐야 했다 — 있는 계정의 role만 바꾸면 되는 일이라
    여기서 바로 처리한다(2026-09-01). 반대 방향(관리자 → 일반 고객)은 이미 admins.js의
-   "권한 해제"가 담당하므로 여기서 다시 만들지 않는다. */
-router.patch("/api/admin/members/:id/promote", requireAdmin, async (req, res) => {
+   "권한 해제"가 담당하므로 여기서 다시 만들지 않는다. "누가 관리자가 될 수 있는지"는
+   마스터 관리자만 정할 수 있어(lib/auth.js 참고) requireMasterAdmin으로 막는다. */
+router.patch("/api/admin/members/:id/promote", requireMasterAdmin, async (req, res) => {
   const id = req.params.id;
   if (!(await requireCustomerTarget(id, res))) return;
 

@@ -14,6 +14,12 @@ const membersRouter = require("../routes/members");
 
 const ADMIN = { id: "admin-1", email: "admin@example.com" };
 const TOKEN = fakeAdminToken(ADMIN.id, ADMIN.email);
+/* 승격(promote)은 requireMasterAdmin이라 lib/auth.js의 MASTER_ADMIN_EMAIL과 정확히 같은
+   이메일이어야 통과한다 — 실제 하드코딩된 값을 그대로 가져와, 그 상수가 바뀌면 이 테스트도
+   같이 깨지게 한다(값이 서로 어긋나는 걸 조용히 놓치지 않기 위함). */
+const { MASTER_ADMIN_EMAIL } = require("../lib/auth");
+const MASTER = { id: "master-1", email: MASTER_ADMIN_EMAIL };
+const MASTER_TOKEN = fakeAdminToken(MASTER.id, MASTER.email);
 const CUSTOMER = { id: "cust-1", email: "customer@example.com" };
 const OTHER_ADMIN_PROFILE = { id: "admin-2", role: "admin", created_at: "2026-01-01T00:00:00.000Z" };
 
@@ -28,11 +34,13 @@ function seedDefault(extra = {}) {
   supabaseAdmin.__reset({
     profiles: [
       { id: ADMIN.id, role: "admin", created_at: "2026-01-01T00:00:00.000Z" },
+      { id: MASTER.id, role: "admin", created_at: "2026-01-01T00:00:00.000Z" },
       OTHER_ADMIN_PROFILE,
       { id: CUSTOMER.id, name: "홍길동", role: "customer", created_at: "2026-02-01T00:00:00.000Z" },
     ],
     authUsers: [
       { id: ADMIN.id, email: ADMIN.email, email_confirmed_at: "2026-01-01T00:00:00.000Z" },
+      { id: MASTER.id, email: MASTER.email, email_confirmed_at: "2026-01-01T00:00:00.000Z" },
       { id: OTHER_ADMIN_PROFILE.id, email: "admin2@example.com", email_confirmed_at: "2026-01-01T00:00:00.000Z" },
       { id: CUSTOMER.id, email: CUSTOMER.email, email_confirmed_at: "2026-02-01T00:00:00.000Z" },
     ],
@@ -137,9 +145,19 @@ test("DELETE /api/admin/members/:id — 주문·반품·문의는 남기고 회�
   assert.strictEqual(profile.data, null);
 });
 
-test("PATCH /api/admin/members/:id/promote — 관리자로 승격하면 목록에서 사라진다", async () => {
+test("PATCH /api/admin/members/:id/promote — 마스터 관리자가 아니면 403(다른 관리자도 승격 못 시킨다)", async () => {
+  const res = await request(buildApp())
+    .patch(`/api/admin/members/${CUSTOMER.id}/promote`)
+    .set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 403);
+
+  const profile = await supabaseAdmin.from("profiles").select("role").eq("id", CUSTOMER.id).maybeSingle();
+  assert.strictEqual(profile.data.role, "customer");
+});
+
+test("PATCH /api/admin/members/:id/promote — 마스터 관리자가 승격하면 목록에서 사라진다", async () => {
   const app = buildApp();
-  const res = await request(app).patch(`/api/admin/members/${CUSTOMER.id}/promote`).set("Authorization", `Bearer ${TOKEN}`);
+  const res = await request(app).patch(`/api/admin/members/${CUSTOMER.id}/promote`).set("Authorization", `Bearer ${MASTER_TOKEN}`);
   assert.strictEqual(res.status, 200);
 
   const listed = await request(app).get("/api/admin/members").set("Authorization", `Bearer ${TOKEN}`);
@@ -152,7 +170,7 @@ test("PATCH /api/admin/members/:id/promote — 관리자로 승격하면 목록�
 test("PATCH /api/admin/members/:id/promote — 이미 관리자인 계정은 다시 승격 대상이 될 수 없다", async () => {
   const res = await request(buildApp())
     .patch(`/api/admin/members/${OTHER_ADMIN_PROFILE.id}/promote`)
-    .set("Authorization", `Bearer ${TOKEN}`);
+    .set("Authorization", `Bearer ${MASTER_TOKEN}`);
   assert.strictEqual(res.status, 400);
 });
 
