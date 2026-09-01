@@ -21,6 +21,14 @@
     el("sf-cancel").hidden = false;
     el("sf-delete").hidden = false;
     el("settings-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    /* 목록 맨 아래쪽 항목에서 "수정"을 눌러도 이 폼이 이미 화면 안에 있으면 스크롤이 아예
+       안 움직여서(scrollIntoView가 할 일이 없음), "새 정보 추가"가 갑자기 "정보 수정"으로
+       바뀌는 게 어디서 왜 일어난 건지 바로 눈에 안 띈다는 피드백(2026-09-01) — 짧게 테두리를
+       반짝여서 스크롤 여부와 상관없이 시선이 가게 한다(returns-inventory.js의 저장 완료
+       표시와 같은 원리: 클래스 잠깐 추가 후 제거). */
+    const panel = el("settings-form").closest(".panel");
+    panel.classList.add("panel--highlight");
+    setTimeout(() => panel.classList.remove("panel--highlight"), 1200);
   }
 
   el("settings-form").addEventListener("submit", async (e) => {

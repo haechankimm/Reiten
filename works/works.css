@@ -207,12 +207,20 @@
   /* 저장 직후 "정말 반영됐다"는 걸 눈으로 바로 알 수 있게 뱃지에 잠깐 테두리를 준다(반품·교환
      신청 탭에서 저장해도 화면이 안 바뀌는 것처럼 보인다는 피드백으로 추가). */
   .status-chip--saved { box-shadow: 0 0 0 3px var(--accent-soft, rgba(90,110,220,.25)); }
+  /* "정보" 탭처럼 화면 다른 곳의 "수정" 버튼이 멀리 떨어진 공용 폼 패널의 내용을 바꿀 때,
+     그 패널이 이미 화면 안에 있으면 스크롤이 안 움직여서 뭐가 바뀐 건지 눈에 안 띈다는
+     피드백(2026-09-01) — 위 상태칩 저장 표시와 같은 원리로 패널 테두리를 잠깐 반짝인다. */
+  .panel--highlight { box-shadow: 0 0 0 3px var(--accent-soft, rgba(90,110,220,.25)); transition: box-shadow .2s ease; }
   .status-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   .st-pending { color: var(--status-pending-ink); background: var(--status-pending-bg); }
   .st-confirmed { color: var(--status-confirmed-ink); background: var(--status-confirmed-bg); }
   .st-shipping { color: var(--status-shipping-ink); background: var(--status-shipping-bg); }
   .st-done { color: var(--status-done-ink); background: var(--status-done-bg); }
   .st-neutral { color: var(--status-neutral-ink); background: var(--status-neutral-bg); }
+  .st-admin { color: var(--accent); background: var(--accent-soft); }
+  /* "회원 계정 관리" 탭에서 마스터 관리자에게만 관리자 계정도 같이 보여줄 때(2026-09-01),
+     일반 회원 카드와 한눈에 구분되도록 포인트 컬러 왼쪽 테두리를 준다. */
+  .member-admin-row { border-left: 3px solid var(--accent); }
   .st-overdue { color: var(--danger); background: var(--danger-soft, rgba(220,60,60,.14)); }
 
   .split { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }

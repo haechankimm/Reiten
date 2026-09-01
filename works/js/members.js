@@ -2,7 +2,24 @@
      admins.js의 "관리자 계정 관리"와 짝을 이루는 화면이지만 대상은 반대다 — 이쪽은 일반
      고객(role=customer) 계정만 다룬다. 차단·승격·삭제처럼 되돌리기 어렵거나 민감한 동작은
      다른 탭의 삭제류 버튼과 같은 원칙으로 confirm()에 결과를 분명히 적어 한 번 더 확인시킨다. */
-  const membersState = { page: 0, pageSize: 20, total: 0, items: [], q: "" };
+  const membersState = { page: 0, pageSize: 20, total: 0, items: [], adminItems: [], q: "" };
+
+  /* 마스터 관리자에게만 서버가 함께 내려주는 관리자 계정 행(2026-09-01) — 페이지네이션
+     대상인 일반 회원과 섞이지 않도록 항상 목록 맨 위에 별도로 그린다. 계정 삭제·차단 같은
+     동작은 전부 role=customer 대상으로만 만들어져 있어(members.js 서버 쪽 참고) 관리자
+     행에는 버튼을 아예 안 붙인다 — 눌러도 서버가 거부할 버튼을 보여주지 않기 위함. */
+  function adminMemberRowHTML(m) {
+    return `
+      <div class="panel member-admin-row" data-id="${esc(m.id)}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <b>${esc(m.email)}</b>${m.name ? ` <span class="small" style="color:var(--text-muted)">(${esc(m.name)})</span>` : ""}
+          <span class="status-chip st-admin" style="margin-left:6px">${esc(t("관리자"))}</span>
+          <div class="small tnum" style="color:var(--text-muted);margin-top:2px">
+            ${esc(t("가입일"))} ${fmtDate(m.createdAt)}${m.phone ? ` · ${esc(m.phone)}` : ""}
+          </div>
+        </div>
+      </div>`;
+  }
 
   function memberRowHTML(m) {
     const lastSignIn = m.lastSignInAt ? fmtDate(m.lastSignInAt) : t("로그인 기록 없음");
@@ -31,9 +48,11 @@
   function renderAdminMembers() {
     el("members-summary").textContent = t("총 {n}명", { n: membersState.total });
     const hasMore = membersState.items.length < membersState.total;
-    el("admin-members-list").innerHTML = membersState.items.length
+    const adminRows = (membersState.adminItems || []).map(adminMemberRowHTML).join("");
+    const customerRows = membersState.items.length
       ? membersState.items.map(memberRowHTML).join("") + loadMoreHTML(hasMore, "admin-members-more")
       : `<p class="small">${esc(t("조건에 맞는 회원이 없습니다"))}</p>`;
+    el("admin-members-list").innerHTML = adminRows + customerRows;
 
     el("admin-members-list").querySelectorAll(".member-view-orders").forEach((btn) =>
       btn.addEventListener("click", () => {
@@ -135,6 +154,7 @@
     if (!result) return;
     membersState.total = result.total;
     membersState.items = loadMore ? membersState.items.concat(result.items) : result.items;
+    membersState.adminItems = result.adminItems || []; // 마스터 관리자에게만 옴(server 참고), 매번 전체 목록이라 그대로 덮어씀
     renderAdminMembers();
   }
 

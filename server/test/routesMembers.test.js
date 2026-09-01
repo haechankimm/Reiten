@@ -71,6 +71,30 @@ test("GET /api/admin/members — 관리자 계정은 목록에서 빠지고 일�
   assert.strictEqual(res.body.items[0].name, "홍길동");
 });
 
+test("GET /api/admin/members — 마스터가 아닌 관리자에게는 adminItems가 아예 안 온다", async () => {
+  const res = await request(buildApp()).get("/api/admin/members").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.body.adminItems, undefined);
+});
+
+/* 2026-09-01 사용자 요청: 마스터 관리자에게는 회원 계정 관리 탭에 관리자 계정도 같이 보여주고,
+   customer 목록의 페이지네이션(total/items)은 그대로 회원 수만 기준으로 유지해야 한다 —
+   관리자 3명이 섞여 들어가 "총 인원"이 뒤틀리면 안 됨. */
+test("GET /api/admin/members — 마스터 관리자에게는 adminItems가 따로 오고, customer 페이지네이션은 그대로다", async () => {
+  const res = await request(buildApp()).get("/api/admin/members").set("Authorization", `Bearer ${MASTER_TOKEN}`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.total, 1); // customer는 여전히 1명 기준
+  assert.strictEqual(res.body.items.length, 1);
+  assert.strictEqual(res.body.adminItems.length, 3); // ADMIN, MASTER, OTHER_ADMIN_PROFILE
+  assert.ok(res.body.adminItems.some((a) => a.email === ADMIN.email));
+});
+
+test("GET /api/admin/members/export — 마스터 관리자면 CSV에 '관리자' 섹션도 같이 들어간다", async () => {
+  const res = await request(buildApp()).get("/api/admin/members/export").set("Authorization", `Bearer ${MASTER_TOKEN}`);
+  assert.strictEqual(res.status, 200);
+  assert.match(res.text, /관리자/);
+  assert.match(res.text, new RegExp(ADMIN.email));
+});
+
 test("GET /api/admin/members?q= — 이메일·이름으로 검색된다", async () => {
   const app = buildApp();
   const hit = await request(app).get("/api/admin/members?q=길동").set("Authorization", `Bearer ${TOKEN}`);

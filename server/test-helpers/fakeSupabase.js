@@ -32,6 +32,14 @@ class FakeQuery {
     this.filters.push([col, val]);
     return this;
   }
+  /* routes/members.js가 "customer만" 또는 "customer+admin" 중 하나를 한 번의 쿼리로
+     고르는 데 쓰는 .in() 대응(2026-09-01) — eq처럼 값 하나가 아니라 배열 중 하나와 맞으면
+     매칭시킨다. */
+  in(col, values) {
+    this.inFilters = this.inFilters || [];
+    this.inFilters.push([col, values]);
+    return this;
+  }
   /* routes/colors.js가 jsonb 배열 컬럼에 특정 값이 들어있는지 확인할 때 쓰는 .contains() 대응
      ("cs" 연산자, value는 JSON 문자열) — 지금은 이 조합 하나만 지원한다. */
   filter(col, op, value) {
@@ -78,6 +86,7 @@ class FakeQuery {
     return this.store.filter(
       (r) =>
         this.filters.every(([col, val]) => r[col] === val) &&
+        (this.inFilters || []).every(([col, values]) => values.includes(r[col])) &&
         (this.jsonContainsFilters || []).every(([col, needle]) => needle.every((v) => (r[col] || []).includes(v)))
     );
   }

@@ -16,7 +16,7 @@
    cascade라 자동으로 같이 없어짐). */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
-const { requireAdmin, requireMasterAdmin } = require("../lib/auth");
+const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { paginationParams } = require("../lib/pagination");
 const { toCsvGeneric } = require("../lib/orderExport");
@@ -36,13 +36,16 @@ const MEMBER_EXPORT_COLUMNS = [
 // 영구 차단은 GoTrue가 "언제까지" 형태로만 받아서 값이 필요하다 — 100년을 사실상 영구로 쓴다(Supabase 공식 예시와 동일).
 const PERMANENT_BAN = "876000h";
 
-/* GET 목록과 CSV 내보내기가 "customer 프로필 + auth 사용자 정보 합치고 검색어로 거르기"를
-   똑같이 해야 해서 한 곳으로 뺐다(운영 규칙 2 — 같은 로직 두 곳에 복붙하지 않기). */
-async function loadFilteredMembers(q) {
+/* GET 목록과 CSV 내보내기가 "프로필 + auth 사용자 정보 합치고 검색어로 거르기"를 똑같이
+   해야 해서 한 곳으로 뺐다(운영 규칙 2 — 같은 로직 두 곳에 복붙하지 않기). roles를 배열로
+   받아 customer만/또는 customer+admin을 한 번의 listUsers() 호출로 같이 가져올 수 있게
+   했다(2026-09-01 — 마스터 관리자에게는 관리자 계정도 같은 화면에서 보여달라는 요청, 아래
+   참고) — role별로 따로 두 번 부르면 listUsers()가 그만큼 낭비된다. */
+async function loadMemberRows(roles, q) {
   const { data: profiles, error: profileError } = await supabaseAdmin
     .from("profiles")
-    .select("id, name, phone, created_at")
-    .eq("role", "customer");
+    .select("id, name, phone, role, created_at")
+    .in("role", roles);
   if (profileError) return { error: profileError };
 
   /* admins.js와 같은 이유로 listUsers 한 번(최대 1000명)으로 이메일·인증 여부·마지막 로그인·
@@ -55,6 +58,7 @@ async function loadFilteredMembers(q) {
     const u = userById.get(p.id);
     return {
       id: p.id,
+      role: p.role,
       name: p.name || "",
       phone: p.phone || "",
       email: (u && u.email) || "",
@@ -71,21 +75,39 @@ async function loadFilteredMembers(q) {
   return { items };
 }
 
+function isMasterRequester(req) {
+  return (req.user.email || "").toLowerCase() === MASTER_ADMIN_EMAIL;
+}
+
+/* 원래는 일반 회원(role=customer)만 보여주는 화면이었는데, 마스터 관리자가 "관리자 계정도
+   같은 화면에서, 맨 위에, 구분되게 보고 싶다"고 요청(2026-09-01) — 그 대상이 정말 마스터
+   관리자일 때만 관리자 프로필도 같이 불러와 `adminItems`로 따로 얹어 보낸다(customer용
+   페이지네이션에 관리자가 섞여 들어가 "몇 명 중 몇 페이지"가 뒤틀리는 걸 피하려고, 관리자
+   목록은 페이지네이션 없이 항상 전체를 통째로 준다 — 어차피 관리자 수는 몇 명 안 됨).
+   일반 관리자가 요청하면 예전처럼 customer만 온다. */
 router.get("/api/admin/members", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query, { defaultSize: 20 });
-  const { items: allItems, error } = await loadFilteredMembers(req.query.q);
+  const master = isMasterRequester(req);
+  const roles = master ? ["customer", "admin"] : ["customer"];
+  const { items: allRows, error } = await loadMemberRows(roles, req.query.q);
   if (error) return res.status(500).json({ error: "회원 목록을 불러오지 못했습니다." });
 
-  const total = allItems.length;
-  const items = allItems.slice(from, to + 1);
-  res.json({ items, page, pageSize, total });
+  const customers = allRows.filter((r) => r.role === "customer");
+  const total = customers.length;
+  const items = customers.slice(from, to + 1);
+
+  const response = { items, page, pageSize, total };
+  if (master) response.adminItems = allRows.filter((r) => r.role === "admin");
+  res.json(response);
 });
 
 router.get("/api/admin/members/export", requireAdmin, async (req, res) => {
-  const { items, error } = await loadFilteredMembers(req.query.q);
+  const master = isMasterRequester(req);
+  const roles = master ? ["customer", "admin"] : ["customer"];
+  const { items: allRows, error } = await loadMemberRows(roles, req.query.q);
   if (error) return res.status(500).json({ error: "회원 목록을 불러오지 못했습니다." });
 
-  const rows = items.map((it) => ({
+  const toExportRow = (it) => ({
     email: it.email,
     name: it.name,
     phone: it.phone,
@@ -93,13 +115,16 @@ router.get("/api/admin/members/export", requireAdmin, async (req, res) => {
     emailConfirmed: it.emailConfirmed ? "인증됨" : "미인증",
     lastSignInAt: it.lastSignInAt ? it.lastSignInAt.slice(0, 10) : "없음",
     banned: it.banned ? "차단됨" : "정상",
-  }));
+  });
+
+  const sections = [{ title: "회원", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "customer").map(toExportRow) }];
+  if (master) sections.push({ title: "관리자", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "admin").map(toExportRow) });
 
   const filename = `reiten-members-${new Date().toISOString().slice(0, 10)}.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(toCsvGeneric([{ title: "회원", columns: MEMBER_EXPORT_COLUMNS, rows }]));
-  logAdminAction(req, "member.export", "member", "export", { count: rows.length, q: req.query.q || null });
+  res.send(toCsvGeneric(sections));
+  logAdminAction(req, "member.export", "member", "export", { count: sections.reduce((n, s) => n + s.rows.length, 0), q: req.query.q || null });
 });
 
 /* role이 customer인 계정만 통과시킨다 — profiles 행이 없거나(가입 트리거 미실행 등) admin이면

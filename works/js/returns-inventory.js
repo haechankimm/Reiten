@@ -361,6 +361,24 @@
       updateSaveBtn();
     });
 
+    /* 사이즈가 5~6개인 상품이 여러 개 쌓이면 마우스로 매번 칸을 클릭해서 화살표를 누르거나
+       숫자를 다시 치는 게 번거롭다는 피드백(2026-09-01, 마우스 환경 한정 — 트랙패드 스크롤은
+       손을 안 대도 됨) — 칸에 포커스가 있는 동안만 휠로 1씩 오르내리게 한다. 그냥 마우스를
+       올리기만 해도 반응하면 페이지를 스크롤하려다 실수로 값이 바뀌는 사고가 나서, 일부러
+       클릭해서 포커스를 준 경우에만 동작하게 제한했다(Firefox의 number input 기본 동작과
+       같은 원칙). 값 변경은 기존 "change" 핸들러가 그대로 처리하도록 이벤트만 발생시킨다. */
+    el("admin-inventory-body").addEventListener(
+      "wheel",
+      (e) => {
+        const input = e.target.closest(".admin-inv-qty");
+        if (!input || document.activeElement !== input) return;
+        e.preventDefault();
+        input.value = Math.max(0, Number(input.value || 0) + (e.deltaY < 0 ? 1 : -1));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      },
+      { passive: false }
+    );
+
     saveBtn.onclick = async () => {
       if (!pendingChanges.size) return;
       const items = [...pendingChanges.values()];
