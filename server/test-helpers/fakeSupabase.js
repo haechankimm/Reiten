@@ -126,15 +126,19 @@ class FakeQuery {
   }
 }
 
-/* seed: { coupons: [...], orders: [...], profiles: [...], ... } — 테이블별 초기 행.
-   얕은 복사해서 테스트끼리 서로 상태를 공유하지 않게 한다. */
+/* seed: { coupons: [...], orders: [...], profiles: [...], ..., authUsers: [...] } — 테이블별
+   초기 행. authUsers는 일반 테이블이 아니라 auth.users를 흉내내는 별도 목록(.from()이 아니라
+   .auth.admin.*으로만 접근) — 얕은 복사해서 테스트끼리 서로 상태를 공유하지 않게 한다. */
 function createFakeSupabase(seed = {}) {
   let store = {};
+  let authUsers = [];
   function reseed(newSeed = {}) {
     store = {};
     Object.keys(newSeed).forEach((table) => {
+      if (table === "authUsers") return;
       store[table] = newSeed[table].map((row) => ({ ...row }));
     });
+    authUsers = (newSeed.authUsers || []).map((row) => ({ ...row }));
   }
   reseed(seed);
 
@@ -151,6 +155,36 @@ function createFakeSupabase(seed = {}) {
         const m = /^fake-token:([^:]+):(.+)$/.exec(token || "");
         if (!m) return { data: { user: null }, error: { message: "invalid token" } };
         return { data: { user: { id: m[1], email: m[2] } }, error: null };
+      },
+      /* routes/admins.js·routes/members.js가 쓰는 Admin API 최소 흉내. 실제 Supabase는
+         auth.users를 지우면 profiles.id의 on delete cascade가 같이 지워주는데, 그 동작까지
+         재현해야 "삭제 전 user_id를 null로 끊어두지 않으면 orders/qna가 문제된다"는 실제
+         제약과 같은 조건에서 라우트를 테스트할 수 있다(001_init.sql 참고). */
+      admin: {
+        async listUsers({ page = 1, perPage = 1000 } = {}) {
+          const from = (page - 1) * perPage;
+          return { data: { users: authUsers.slice(from, from + perPage) }, error: null };
+        },
+        async updateUserById(id, patch) {
+          const u = authUsers.find((x) => x.id === id);
+          if (!u) return { data: null, error: { message: "user not found" } };
+          if ("ban_duration" in patch) {
+            u.banned_until = patch.ban_duration === "none" ? null : new Date(Date.now() + 3e12).toISOString();
+          }
+          return { data: { user: u }, error: null };
+        },
+        async deleteUser(id) {
+          const i = authUsers.findIndex((x) => x.id === id);
+          if (i < 0) return { data: null, error: { message: "user not found" } };
+          authUsers.splice(i, 1);
+          if (store.profiles) store.profiles = store.profiles.filter((p) => p.id !== id);
+          return { data: {}, error: null };
+        },
+        async inviteUserByEmail(email) {
+          const u = { id: genId(), email, email_confirmed_at: null, last_sign_in_at: null, created_at: new Date().toISOString() };
+          authUsers.push(u);
+          return { data: { user: u }, error: null };
+        },
       },
     },
     /* 테스트 beforeEach에서 매번 깨끗한 상태로 되돌릴 때 쓴다(server/lib/supabase.js가

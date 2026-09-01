@@ -61,6 +61,7 @@ const colorsRoutes = require("./routes/colors");
 const qnaRoutes = require("./routes/qna");
 const healthRoutes = require("./routes/health");
 const adminsRoutes = require("./routes/admins");
+const membersRoutes = require("./routes/members");
 const dashboardRoutes = require("./routes/dashboard");
 const productsRoutes = require("./routes/products");
 const reviewsRoutes = require("./routes/reviews");
@@ -1363,6 +1364,10 @@ app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) 
 /* 관리자 계정 관리(GET/POST /api/admin/admins, DELETE /api/admin/admins/:id) — 돈·재고를
    건드리지 않는 순수 CRUD라 routes/admins.js로 분리했다(2026-09-01, 라우트 분리 다음 라운드). */
 app.use(adminsRoutes);
+
+/* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
+   이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */
+app.use(membersRoutes);
 
 /* ---------- 관리자 ---------- */
 /* 필터: q(주문번호·주문자명·연락처 중 아무 데나 부분 일치) · status(정확히 일치) ·

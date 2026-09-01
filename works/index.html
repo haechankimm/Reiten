@@ -52,6 +52,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.4"/><rect x="13" y="3.5" width="7.5" height="17" rx="1.4"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.4"/></svg>
       <span data-i18n="룩북">룩북</span>
     </button>
+    <button type="button" class="nav-item" data-tab="members">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3.3"/><path d="M3.5 20c0-3.3 2.6-5.8 5.8-5.8s5.8 2.5 5.8 5.8"/><circle cx="17.2" cy="8.6" r="2.4"/><path d="M16 14.5c2.5.2 4.5 2.3 4.5 5.1"/></svg>
+      <span data-i18n="회원 계정 관리">회원 계정 관리</span>
+    </button>
     <button type="button" class="nav-item" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z"/></svg>
       <span data-i18n="정보">정보</span>
@@ -582,6 +586,29 @@
           </div>
         </div>
 
+        <div id="admin-members" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="회원 계정 관리">회원 계정 관리</div>
+              <div class="content-sub" id="members-summary"></div>
+            </div>
+          </div>
+          <p class="small" style="margin-bottom:14px;color:var(--text-muted)" data-i18n="가입한 고객 회원 계정을 조회하고, 문제가 있는 계정을 차단하거나 삭제할 수 있습니다.">가입한 고객 회원 계정을 조회하고, 문제가 있는 계정을 차단하거나 삭제할 수 있습니다.</p>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+              <div class="field" style="margin:0;flex:1;min-width:200px">
+                <label for="mb-q" data-i18n="이메일·이름 검색">이메일·이름 검색</label>
+                <input id="mb-q">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="mb-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="mb-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-members-list" style="display:grid;gap:10px"></div>
+        </div>
+
         <div id="admin-settings" style="display:grid;gap:24px" hidden>
           <div class="panel" id="push-panel" hidden>
             <b data-i18n="브라우저 푸시 알림">브라우저 푸시 알림</b>
@@ -797,6 +824,7 @@
 <script src="js/reviews-coupons.js"></script>
 <script src="js/products.js"></script>
 <script src="js/lookbook.js"></script>
+<script src="js/members.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/push.js"></script>
 <script src="js/reports.js"></script>

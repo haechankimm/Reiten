@@ -1093,6 +1093,32 @@ const I18N = {
     en: "Chest-room figures will be updated once we measure with real body armor on.",
     ja: "胸まわりの余裕分は、実際にプロテクターを着用させて計測した後に更新される予定です。",
   },
+
+  /* ---------- 회원 계정 관리 (Works 전용) ---------- */
+  "회원 계정 관리": { de: "Mitgliedskonten verwalten" },
+  "가입한 고객 회원 계정을 조회하고, 문제가 있는 계정을 차단하거나 삭제할 수 있습니다.": {
+    de: "Zeigt registrierte Kundenkonten an und ermöglicht es, problematische Konten zu sperren oder zu löschen.",
+  },
+  "이메일·이름 검색": { de: "Nach E-Mail oder Name suchen" },
+  "총 {n}명": { de: "{n} insgesamt" },
+  "차단됨": { de: "Gesperrt" },
+  "가입일": { de: "Registriert am" },
+  "이메일 인증됨": { de: "E-Mail bestätigt" },
+  "이메일 미인증": { de: "E-Mail nicht bestätigt" },
+  "마지막 로그인": { de: "Letzte Anmeldung" },
+  "로그인 기록 없음": { de: "Noch nie angemeldet" },
+  "차단 해제": { de: "Sperre aufheben" },
+  "차단": { de: "Sperren" },
+  "조건에 맞는 회원이 없습니다": { de: "Keine passenden Mitglieder gefunden" },
+  "이 계정을 차단할까요? 차단하면 이 이메일로 로그인할 수 없게 됩니다.": {
+    de: "Dieses Konto sperren? Danach kann sich diese E-Mail-Adresse nicht mehr anmelden.",
+  },
+  "계정을 차단했습니다": { de: "Konto gesperrt" },
+  "차단을 해제했습니다": { de: "Sperre aufgehoben" },
+  "이 회원 계정을 삭제하시겠습니까? 되돌릴 수 없습니다. 과거 주문·문의 기록은 회원 정보 없이 그대로 남습니다.": {
+    de: "Dieses Mitgliedskonto löschen? Das kann nicht rückgängig gemacht werden. Frühere Bestellungen und Anfragen bleiben ohne Kontobezug erhalten.",
+  },
+  "회원 계정을 삭제했습니다": { de: "Mitgliedskonto gelöscht" },
 };
 
 /**

@@ -203,6 +203,7 @@
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */
     if (!notifPollTimer) notifPollTimer = setInterval(paintNotifications, 60000);
     paintAdminAccounts();
+    paintAdminMembers();
     paintAdminOrders();
     paintAdminReturns();
     paintAdminInventory();

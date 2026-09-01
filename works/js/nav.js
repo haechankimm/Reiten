@@ -7,7 +7,7 @@
       })
     );
   }
-  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
+  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", members: "admin-members", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
 
   /* ---------- 모바일 사이드바 서랍(drawer) 열기/닫기 ----------
      좁은 화면에서만 CSS로 실제 서랍처럼 보이고(위 @media 참고), 넓은 화면에서는
