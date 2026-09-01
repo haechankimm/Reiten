@@ -92,9 +92,13 @@ test("priceItem — 참만 담기(charm-*)는 참 가격만 청구, charm 없이
   assert.equal(invalid, null);
 });
 
-test("priceItem — 수량은 1~99로 clamp된다", () => {
-  const low = priceItem({ productId: "core-zip-hoodie", qty: 0 }, PRODUCTS, PRICE_OPTS);
-  assert.equal(low.qty, 1);
+test("priceItem — 수량 0 이하·숫자가 아닌 값은 거부된다(1개로 조용히 둔갑하지 않음)", () => {
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: 0 }, PRODUCTS, PRICE_OPTS), null);
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: -1 }, PRODUCTS, PRICE_OPTS), null);
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: "abc" }, PRODUCTS, PRICE_OPTS), null);
+});
+
+test("priceItem — 수량 상한은 99로 clamp된다", () => {
   const high = priceItem({ productId: "core-zip-hoodie", qty: 500 }, PRODUCTS, PRICE_OPTS);
   assert.equal(high.qty, 99);
 });

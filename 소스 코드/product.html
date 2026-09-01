@@ -160,6 +160,26 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <button class="btn btn--ghost" type="button" id="buy" ${soldAll ? "disabled" : ""}>${t("바로 주문")}</button>
         </div>
 
+        ${(() => {
+          /* 사이즈 칩은 품절이면 disabled(pointer-events:none)라 클릭으로 state.size가 될 수
+             없다 — 그래서 "지금 고른 사이즈"가 아니라 "이 컬러에서 품절인 사이즈 전체"를 따로
+             모아서 드롭다운으로 고르게 한다(다른 사이즈는 정상 구매 가능해도 신청 가능). */
+          const outSizesNow = p.sizes.filter((s) => p.soldOut.includes(s) || outForColor.includes(s));
+          if (!outSizesNow.length) return "";
+          return `
+        <div class="notice" id="restock-notify-box" style="margin-top:20px">
+          <b>${t("품절된 사이즈가 있나요?")}</b>
+          <p class="small" style="margin-top:6px">${t("재입고되면 이메일로 알려드릴게요.")}</p>
+          <form id="restock-form" novalidate style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <select id="restock-size">
+              ${outSizesNow.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}
+            </select>
+            <input type="email" id="restock-email" placeholder="${esc(t("이메일 주소"))}" required style="flex:1;min-width:200px">
+            <button class="btn btn--sm" type="submit">${t("알림 신청")}</button>
+          </form>
+        </div>`;
+        })()}
+
         <div class="acc">
           <div class="acc__item">
             <button class="acc__btn" type="button" aria-expanded="true"><span>${t("제품 정보")}</span><span>+</span></button>
@@ -291,6 +311,30 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     document.getElementById("buy")?.addEventListener("click", () => {
       Cart.add(item());
       location.href = "cart.html";
+    });
+
+    // 품절 알림 신청 — 지금 고른 컬러에 품절 사이즈가 하나라도 있으면 위에서 폼이 그려진다.
+    document.getElementById("restock-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const size = document.getElementById("restock-size").value;
+      const email = document.getElementById("restock-email").value.trim();
+      if (!email) return;
+      const btn = form.querySelector("button");
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/restock-subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: p.id, color: state.color, size, email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "");
+        form.innerHTML = `<p class="small">${esc(t("신청 완료! 재입고되면 알려드릴게요."))}</p>`;
+      } catch (err) {
+        toast(err.message || t("신청에 실패했습니다"));
+        btn.disabled = false;
+      }
     });
 
     initBeams();

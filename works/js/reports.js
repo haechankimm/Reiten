@@ -85,6 +85,27 @@
           )
           .join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 반품 신청이 없습니다"))}</p>`;
+
+    /* 첫 구매·재구매 감사 쿠폰 발급/사용 현황 — server.js의 computeDashboardStats가
+       coupons(발급)·orders.coupon_code(사용)만으로 집계해서 내려준다. 새 쿠폰이 하나도
+       안 나갔으면(issued=0) 발급률 계산이 무의미하니 "아직 없음" 문구만 보여준다. */
+    const thanksRows = [
+      { label: "첫 구매 감사 쿠폰", stat: d.firstPurchaseCoupon },
+      { label: "재구매 감사 쿠폰", stat: d.repeatPurchaseCoupon },
+    ].filter((r) => r.stat);
+    el("dashboard-thanks-coupons").innerHTML = thanksRows.some((r) => r.stat.issued > 0)
+      ? thanksRows
+          .map(
+            (r) => `
+          <div class="best-row">
+            <span></span>
+            <span>${esc(t(r.label))}</span>
+            <span class="tnum">${esc(t("발급 {issued}건 · 사용 {used}건 ({rate}%)", { issued: r.stat.issued, used: r.stat.used, rate: r.stat.usageRate }))}</span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${r.stat.issued ? Math.round((r.stat.used / r.stat.issued) * 100) : 0}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 발급된 감사 쿠폰이 없습니다"))}</p>`;
   }
 
   const DEVICE_LABEL = { mobile: "모바일", desktop: "PC", tablet: "태블릿" };
@@ -193,6 +214,7 @@
     paintAdminSettings();
     paintAdminAuditLog();
     paintAdminDashboard();
+    initPush();
     return true;
   }
 

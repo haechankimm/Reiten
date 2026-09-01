@@ -59,6 +59,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <textarea id="q-question" name="question" maxlength="1000" required></textarea>
             <p class="err" data-i18n="문의 내용을 입력해 주세요.">문의 내용을 입력해 주세요.</p>
           </div>
+          <div id="similar-qna" style="margin:-8px 0 18px" hidden></div>
           <div class="field">
             <label class="checkbox">
               <input type="checkbox" id="q-secret">
@@ -147,6 +148,53 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (profile && profile.name) el("q-name").value = profile.name;
   })();
 
+  /* 비슷한 질문 먼저 보여주기 — 문의를 입력하는 동안 이미 답변된 과거 문의 중 겹치는 단어가
+     있는 것을 미리 보여줘서, 같은 질문이 반복 등록되는 걸 줄이고 고객도 더 빨리 답을 얻게
+     한다(완전 자동응답이 아니라 참고용 — 그래도 등록은 자유롭게 할 수 있음). 새 API 없이
+     이미 받아온 items(GET /api/qna)만으로 클라이언트에서 계산한다. */
+  function tokenize(text) {
+    return [...new Set(
+      String(text || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length >= 2)
+    )];
+  }
+
+  function findSimilarQna(text) {
+    const tokens = tokenize(text);
+    if (!tokens.length) return [];
+    const candidates = items.filter((q) => q.answer && !(q.secret && q.question === null));
+    return candidates
+      .map((q) => ({ q, score: tokens.filter((tok) => tokenize(q.question).includes(tok)).length }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score || new Date(b.q.at) - new Date(a.q.at))
+      .slice(0, 3)
+      .map((s) => s.q);
+  }
+
+  function paintSimilarQna() {
+    const matches = findSimilarQna(el("q-question").value);
+    const box = el("similar-qna");
+    if (!matches.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="notice">
+        <b data-i18n="이미 비슷한 질문에 답변드린 적이 있어요">이미 비슷한 질문에 답변드린 적이 있어요</b>
+        <div style="margin-top:10px;display:grid;gap:10px">
+          ${matches.map((q) => `
+            <div>
+              <p style="font-weight:600">${esc(q.question)}</p>
+              <p class="small" style="margin-top:4px">${esc(q.answer)}</p>
+            </div>`).join("")}
+        </div>
+        <p class="small" style="margin-top:10px;color:var(--muted,#888)" data-i18n="원하는 답을 못 찾으셨다면 그대로 등록해 주세요.">원하는 답을 못 찾으셨다면 그대로 등록해 주세요.</p>
+      </div>`;
+  }
+
+  let similarQnaTimer = null;
+  el("q-question").addEventListener("input", () => {
+    clearTimeout(similarQnaTimer);
+    similarQnaTimer = setTimeout(paintSimilarQna, 400);
+  });
+
   el("qna-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = el("q-name");
@@ -180,6 +228,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       items = [created, ...items];
       question.value = "";
       el("q-secret").checked = false;
+      el("similar-qna").hidden = true;
       paintList();
       toast(t("문의가 등록되었습니다"));
     } catch (err) {

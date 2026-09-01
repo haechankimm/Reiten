@@ -15,7 +15,12 @@ function orderNo(seq, date = new Date()) {
 /* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.
    productId + charm + extras 조합만으로 상품/참/추가아이템 가격을 다시 계산한다. */
 function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
-  const qty = Math.max(1, Math.min(99, Math.floor(Number(raw.qty) || 1)));
+  /* `Number(raw.qty) || 1`처럼 falsy 체크로 기본값을 주면 qty:0(명시적으로 보낸 잘못된 값)이
+     0은 falsy라서 조용히 1개로 둔갑해버린다(2026-09-01 코드 감사에서 발견) — 그래서 0 이하·
+     숫자가 아닌 값은 아예 거부(null)하고, 상한(99)만 clamp한다. */
+  const qtyNum = Math.floor(Number(raw.qty));
+  if (!Number.isFinite(qtyNum) || qtyNum < 1) return null;
+  const qty = Math.min(99, qtyNum);
   const charmKey = raw.charm && raw.charm.key && raw.charm.key !== "none" ? raw.charm.key : null;
 
   const extraKeys = Array.isArray(raw.extras) ? raw.extras : [];

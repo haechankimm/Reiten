@@ -52,7 +52,7 @@ async function sendCustomerOrderReceived(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 주문이 접수되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 접수되었습니다</h2>
@@ -76,7 +76,7 @@ async function sendCustomerPaymentConfirmed(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 입금이 확인되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 입금이 확인되었습니다</h2>
@@ -102,7 +102,7 @@ async function sendCustomerShipped(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 배송이 시작되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 배송이 시작되었습니다</h2>
@@ -196,7 +196,7 @@ async function sendCustomerCardPaid(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 결제가 완료되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 결제가 완료되었습니다</h2>
@@ -216,7 +216,7 @@ async function sendCustomerAutoCancelled(order) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 미입금으로 주문이 취소되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 자동 취소되었습니다</h2>
@@ -237,7 +237,7 @@ async function sendCustomerOrderCancelled(order, reason) {
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] 주문이 취소되었습니다 — ${order.order_no}`,
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 취소되었습니다</h2>
@@ -373,7 +373,7 @@ async function sendCustomerFirstPurchaseThanks({ customer, code, discountValue }
   await resend.emails.send({
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: customer.email,
-    replyTo: SITE.email,
+    replyTo: SITE.order.email,
     subject: `[REITEN] ${customer.name}님, 첫 구매 감사드려요 — 다음 주문에 쓸 쿠폰을 드립니다`,
     html: `
       <h2>${escHtml(customer.name)}님, 첫 구매 감사드립니다</h2>
@@ -382,6 +382,45 @@ async function sendCustomerFirstPurchaseThanks({ customer, code, discountValue }
         <b>${escHtml(code)}</b>
       </p>
       <p style="margin-top:16px;color:#666">이 코드는 회원님께만 발급된 1회용 쿠폰입니다. 장바구니의 쿠폰 코드 입력란에 그대로 입력해 주세요.</p>
+    `,
+  });
+}
+
+/* 재구매 감사 쿠폰 안내 메일(고객용) — 첫 구매 감사 메일과 같은 형식, 몇 번째 구매인지만 다르게 안내. */
+async function sendCustomerRepeatPurchaseThanks({ customer, code, discountValue, purchaseCount }) {
+  if (!resend || !customer.email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: customer.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] ${customer.name}님, ${purchaseCount}번째 구매 감사드려요 — 다음 주문에 쓸 쿠폰을 드립니다`,
+    html: `
+      <h2>${escHtml(customer.name)}님, ${purchaseCount}번째 구매 감사드립니다</h2>
+      <p>계속 찾아주셔서 감사해요. 다음 주문에서 쓰실 수 있는 <b>${discountValue}% 할인 쿠폰</b>을 드립니다.</p>
+      <p style="margin-top:12px;padding:12px 16px;background:#f4f4f4;border-radius:8px;font-size:18px;letter-spacing:1px">
+        <b>${escHtml(code)}</b>
+      </p>
+      <p style="margin-top:16px;color:#666">이 코드는 회원님께만 발급된 1회용 쿠폰입니다. 장바구니의 쿠폰 코드 입력란에 그대로 입력해 주세요.</p>
+    `,
+  });
+}
+
+/* 품절 알림 신청 고객에게 재입고 안내(025_restock_subscriptions.sql) — 관리자가 재고 탭에서
+   해당 컬러·사이즈 수량을 0 이하 → 양수로 저장하는 순간 발송된다. */
+async function sendCustomerRestockNotice({ email, productId, productName, color, size }) {
+  if (!resend || !email) return;
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] ${productName} 재입고 알림`,
+    html: `
+      <h2>${escHtml(productName)} 재입고 안내</h2>
+      <p>신청하신 <b>${escHtml(color)} · ${escHtml(size)}</b> 옵션이 다시 입고됐어요.</p>
+      <p style="margin-top:16px"><a href="https://reiten.kr/product.html?id=${encodeURIComponent(productId)}">지금 확인하기</a></p>
+      <p style="margin-top:16px;color:#666">품절되기 쉬운 옵션이라 빨리 마감될 수 있어요.</p>
     `,
   });
 }
@@ -403,4 +442,6 @@ module.exports = {
   sendAdminSettlementReport,
   sendCustomerOrderCancelled,
   sendCustomerFirstPurchaseThanks,
+  sendCustomerRepeatPurchaseThanks,
+  sendCustomerRestockNotice,
 };

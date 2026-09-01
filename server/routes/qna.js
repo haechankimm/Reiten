@@ -1,22 +1,15 @@
 /* ---------- 상품 Q&A + CS 빠른 답변 템플릿 ---------- */
 const express = require("express");
-const { PRODUCTS: STATIC_PRODUCTS } = require("../../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, optionalAuth } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { writeLimiter } = require("../lib/rateLimiters");
 const { paginationParams } = require("../lib/pagination");
 const { applyKstDateRangeFilter } = require("../lib/kst");
+const { getAllProductIds } = require("../lib/productIds");
+const { isMissingColumnError } = require("../lib/pgErrors");
 
 const router = express.Router();
-
-/* server.js의 리뷰 라우트도 똑같은 함수를 갖고 있다(4줄짜리 정적 폴백 조회라 굳이 별도
-   공용 모듈로 안 뺐음 — 리뷰까지 분리할 때 같이 lib로 옮기면 됨). */
-async function getAllProductIds() {
-  const { data, error } = await supabaseAdmin.from("products").select("id");
-  if (error) return STATIC_PRODUCTS.map((p) => p.id);
-  return data.map((r) => r.id);
-}
 
 function toQnaDto(q, { redact } = {}) {
   const hide = redact && q.secret;
@@ -142,7 +135,7 @@ router.post("/api/admin/qna-templates", requireAdmin, async (req, res) => {
   if (!label || !body) return res.status(400).json({ error: "이름과 답변 내용을 입력해 주세요." });
 
   let { data, error } = await supabaseAdmin.from("qna_templates").insert({ label, body, keywords }).select().single();
-  if (error && error.code === "PGRST204") {
+  if (isMissingColumnError(error)) {
     // keywords 컬럼 없음(마이그레이션 024 미실행) — 키워드 없이 재시도.
     ({ data, error } = await supabaseAdmin.from("qna_templates").insert({ label, body }).select().single());
   }

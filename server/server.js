@@ -28,23 +28,31 @@ const {
   sendAdminSettlementReport,
   sendCustomerOrderCancelled,
   sendCustomerFirstPurchaseThanks,
+  sendCustomerRepeatPurchaseThanks,
+  sendCustomerRestockNotice,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
-const { uploadReviewPhoto, uploadProductPhoto } = require("./lib/cloudinary");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { resolveCoupon } = require("./lib/coupons");
-const { toProductDto, productPatchFromBody } = require("./lib/products");
+const { toProductDto } = require("./lib/products");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
 const portone = require("./lib/portone");
-const { getVisitorStats } = require("./lib/analytics");
-const { kstDateKey, kstMonthKey, kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
+const { kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
 const { logAdminAction, logInventoryChange, logSystemError } = require("./lib/adminLog");
 const { writeLimiter } = require("./lib/rateLimiters");
-const { getValidColorMap } = require("./lib/colors");
-/* 아래 4개는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
-   각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1단계). 결제·주문·재고·
+const {
+  FIRST_PURCHASE_COUPON_CODE_PREFIX,
+  REPEAT_PURCHASE_COUPON_CODE_PREFIX,
+  FIRST_PURCHASE_COUPON_SETTING_LABEL,
+  REPEAT_PURCHASE_COUPON_THRESHOLD_LABEL,
+  REPEAT_PURCHASE_COUPON_PERCENT_LABEL,
+} = require("./lib/thanksCoupons");
+const { isMissingSchemaError, isMissingColumnError } = require("./lib/pgErrors");
+const { normalizeTel } = require("./lib/phone");
+/* 아래는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
+   각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1·2단계). 결제·주문·재고·
    반품환불처럼 실제 돈이 걸린 라우트는 아직 이 파일에 그대로 남아있다 — README 0번 섹션
    "server.js 라우트 분리" 참고. */
 const settingsRoutes = require("./routes/settings");
@@ -52,6 +60,13 @@ const lookbookRoutes = require("./routes/lookbook");
 const colorsRoutes = require("./routes/colors");
 const qnaRoutes = require("./routes/qna");
 const healthRoutes = require("./routes/health");
+const adminsRoutes = require("./routes/admins");
+const dashboardRoutes = require("./routes/dashboard");
+const productsRoutes = require("./routes/products");
+const reviewsRoutes = require("./routes/reviews");
+const restockRoutes = require("./routes/restock");
+const pushRoutes = require("./routes/push");
+const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
    README 02번 "에러를 관리자가 아니라 고객이 먼저 발견하는 구조"를 메우기 위한 최소 계측. */
@@ -314,8 +329,12 @@ async function getActiveProducts() {
     console.error("[products] DB 조회 실패, 정적 목록으로 폴백:", error.message);
     return STATIC_PRODUCTS;
   }
-  const result = await withRealSoldOut(data.map(toProductDto));
-  productsCache = { data: result, at: Date.now() };
+  const { products: result, degraded } = await withRealSoldOut(data.map(toProductDto));
+  /* 재고 조회가 실패해 품절 정보가 부정확한 상태(degraded)로는 캐시에 쓰지 않는다 — 그대로
+     캐시하면 일시적인 DB 오류 한 번이 실제로는 재고 조회 자체가 복구된 뒤에도 남은 15초
+     동안 "품절 정보 없음" 상태를 그대로 밀어붙이게 된다. 캐시를 안 쓰면 바로 다음 요청이
+     새로 시도해서 이 창이 넓어지지 않는다(2026-09-01 코드 감사에서 발견). */
+  if (!degraded) productsCache = { data: result, at: Date.now() };
   return result;
 }
 
@@ -327,19 +346,19 @@ async function getActiveProducts() {
    두고(전체 컬러 공통 품절), 특정 컬러만 재고가 없는 경우는 product.html이 "지금 고른 컬러"에
    한해 그 사이즈를 막는 데 이 필드를 쓴다. */
 async function withRealSoldOut(products) {
-  if (!products.length) return products;
+  if (!products.length) return { products, degraded: false };
   const ids = products.map((p) => p.id);
   const { data, error } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").in("product_id", ids);
   if (error) {
     console.error("[products] 재고 조회 실패, 관리자가 입력한 품절 정보만 사용:", error.message);
-    return products;
+    return { products, degraded: true };
   }
   const qtyByProduct = new Map();
   for (const row of data) {
     if (!qtyByProduct.has(row.product_id)) qtyByProduct.set(row.product_id, new Map());
     qtyByProduct.get(row.product_id).set(`${row.color}:${row.size}`, row.qty);
   }
-  return products.map((p) => {
+  const withStock = products.map((p) => {
     const qtyByColorSize = qtyByProduct.get(p.id);
     const outOfStockByColor = {};
     for (const color of p.colors || []) {
@@ -351,12 +370,7 @@ async function withRealSoldOut(products) {
     }
     return { ...p, outOfStockByColor };
   });
-}
-
-async function getAllProductIds() {
-  const { data, error } = await supabaseAdmin.from("products").select("id");
-  if (error) return STATIC_PRODUCTS.map((p) => p.id);
-  return data.map((r) => r.id);
+  return { products: withStock, degraded: false };
 }
 
 app.get("/api/products", async (req, res) => {
@@ -387,7 +401,7 @@ async function validateAndPriceOrder(body, products) {
 
   const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
   if (items.some((it) => it === null)) {
-    return { error: { status: 400, body: { error: "존재하지 않는 상품 또는 참(charm)이 포함되어 있습니다." } } };
+    return { error: { status: 400, body: { error: "존재하지 않는 상품·참(charm) 또는 잘못된 수량이 포함되어 있습니다." } } };
   }
 
   const subtotal = items.reduce((s, it) => s + it.sum, 0);
@@ -489,7 +503,7 @@ async function insertOrderRow(table, row, { returning = false } = {}) {
     return returning ? q.select().single() : q;
   };
   let result = await run(row);
-  if (result.error && result.error.code === "PGRST204" && "device" in row) {
+  if (isMissingColumnError(result.error) && "device" in row) {
     console.warn(`[${table}] 'device' 컬럼 없음(마이그레이션 022 미실행) — device 없이 재시도`);
     const { device, ...rest } = row;
     result = await run(rest);
@@ -692,9 +706,45 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   sendAdminCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 관리자 알림 메일 발송 실패:", err.message));
   sendCustomerCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 완료 메일 발송 실패:", err.message));
   kakao.sendAlimtalk("CARD_PAID", customer.tel, { name: customer.name, orderNo: saved.order_no }).catch(() => {});
-  maybeIssueFirstPurchaseCoupon(saved).catch((err) => console.error("[first-purchase-coupon] 처리 실패:", err.message));
+  sendPushToAdmins({ title: "새 주문 접수", body: `${saved.order_no} · 카드결제 완료`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
+  issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
 
   return { ok: true, saved };
+}
+
+/* 고객 전용 1회용 감사 쿠폰(THANKS-/LOYAL- 접두사)에 공통으로 쓰는 고유 코드 생성 — 첫 구매·
+   재구매 감사 쿠폰 둘 다 같은 규칙(접두사+무작위 6자리 hex, 충돌 시 최대 5회 재시도)이라
+   하나로 뽑았다(재고 차감 로직을 통합했던 것과 같은 원칙 — 위 운영 규칙 2번 참고). */
+async function generateUniqueCouponCode(prefix) {
+  for (let i = 0; i < 5; i++) {
+    const candidate = `${prefix}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const { data: exists } = await supabaseAdmin.from("coupons").select("code").eq("code", candidate).maybeSingle();
+    if (!exists) return candidate;
+  }
+  return null;
+}
+
+/* 첫 구매/재구매 감사 쿠폰이 "이 고객이 이 마일스톤(첫 구매, 5번째 구매 등)에 도달했다"는
+   판정을 두 번 하지 않도록 원자적으로 선점한다(028_coupon_milestones.sql). SELECT로 먼저
+   확인하고 나서 INSERT하는 방식은 두 주문이 거의 동시에 확정되면(카드결제 웹훅과 프론트엔드
+   확인이 겹치는 경우, 관리자가 여러 건을 빠르게 입금확인 처리하는 경우 등) 둘 다 SELECT를
+   통과해버려 같은 마일스톤 쿠폰이 중복 발급될 수 있다(2026-09-01 코드 감사에서 발견) —
+   tel+milestone에 유니크 제약을 건 테이블에 INSERT를 시도해서, 유니크 위반(23505)이 나면
+   "이미 다른 요청이 선점했다"는 뜻으로 조용히 포기한다. 마이그레이션 미실행 시엔 잠금 없이
+   진행(예전과 같은 경합 위험이 남지만, 이 기능 자체가 막히지는 않음 — 다른 선택 기능과 같은
+   "미실행 시 조용히 저하" 원칙). */
+async function claimCouponMilestone(tel, milestone) {
+  const { error } = await supabaseAdmin.from("coupon_milestones").insert({ tel, milestone });
+  if (!error) return true;
+  if (error.code === "23505") return false;
+  if (isMissingSchemaError(error)) {
+    console.warn("[coupon-milestone] coupon_milestones 테이블 없음(마이그레이션 028 미실행) — 잠금 없이 진행");
+    return true;
+  }
+  console.error("[coupon-milestone] 잠금 시도 실패:", error.message);
+  return true;
 }
 
 /* ---------- 첫 구매 감사 쿠폰 ----------
@@ -705,25 +755,23 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
    resolveCoupon()이 그대로 처리) 메일로 안내한다.
    할인율은 새 설정 테이블을 만들지 않고 기존 admin_settings(Works "정보" 탭)를 재사용한다 —
    관리자가 그 탭에서 이 라벨의 값을 숫자로 바꾸면 다음 발급부터 바로 반영된다. 설정 자체가
-   없으면(처음 배포 시) 기본값 1%로 폴백한다. */
-const FIRST_PURCHASE_COUPON_SETTING_LABEL = "첫 구매 감사 쿠폰 할인율(%)";
+   없으면(처음 배포 시) 기본값 1%로 폴백한다.
+   코드 접두사(THANKS-)는 Works 대시보드 "첫 구매 쿠폰 발급 현황"(computeDashboardStats)이
+   발급/사용 건수를 집계할 때도 그대로 쓰인다 — 접두사를 바꾸면 그쪽 집계도 같이 바꿔야 한다.
+   ⚠️ 이 항목의 label은 free-text인 admin_settings에서 정확히 문자열이 일치해야 찾아진다 —
+   routes/settings.js가 이 라벨(과 아래 재구매 라벨)의 이름 변경·삭제를 막아둔 이유가 이것
+   (2026-09-01 코드 감사에서 발견: 이름을 조금이라도 고치면 조용히 기본값으로 되돌아감). */
 const FIRST_PURCHASE_COUPON_DEFAULT_PERCENT = 1;
 
-async function maybeIssueFirstPurchaseCoupon(order) {
+/* hasPriorOrder는 호출부(issueThanksCouponsIfEligible)가 한 번의 쿼리로 미리 계산해서 넘겨준다
+   — 재구매 감사 쿠폰과 거의 같은 대상 집합을 각자 따로 조회하던 것을 통합함(2026-09-01 코드
+   감사에서 발견한 비효율). */
+async function maybeIssueFirstPurchaseCoupon(order, hasPriorOrder) {
+  if (hasPriorOrder) return;
+
   const telDigits = normalizeTel(order.customer && order.customer.tel);
   if (!telDigits) return;
-
-  const { data: priorOrders, error: priorError } = await supabaseAdmin
-    .from("orders")
-    .select("order_no, customer")
-    .neq("order_no", order.order_no)
-    .in("status", ["입금확인", "배송중", "완료"]);
-  if (priorError) {
-    console.error("[first-purchase-coupon] 기존 주문 조회 실패:", priorError.message);
-    return;
-  }
-  const hasPriorOrder = (priorOrders || []).some((o) => normalizeTel(o.customer && o.customer.tel) === telDigits);
-  if (hasPriorOrder) return;
+  if (!(await claimCouponMilestone(telDigits, "first_purchase"))) return;
 
   const { data: setting } = await supabaseAdmin
     .from("admin_settings")
@@ -733,14 +781,10 @@ async function maybeIssueFirstPurchaseCoupon(order) {
   const parsedPercent = Math.floor(Number(setting && setting.value));
   const percent = Number.isFinite(parsedPercent) && parsedPercent > 0 && parsedPercent <= 100 ? parsedPercent : FIRST_PURCHASE_COUPON_DEFAULT_PERCENT;
 
-  let code = null;
-  for (let i = 0; i < 5 && !code; i++) {
-    const candidate = `THANKS-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-    const { data: exists } = await supabaseAdmin.from("coupons").select("code").eq("code", candidate).maybeSingle();
-    if (!exists) code = candidate;
-  }
+  const code = await generateUniqueCouponCode(FIRST_PURCHASE_COUPON_CODE_PREFIX);
   if (!code) {
     console.error("[first-purchase-coupon] 고유 코드 생성 실패(5회 시도)");
+    logSystemError("first_purchase_coupon_failed", { orderNo: order.order_no, stage: "code_generation" });
     return;
   }
 
@@ -754,12 +798,101 @@ async function maybeIssueFirstPurchaseCoupon(order) {
   });
   if (insertError) {
     console.error("[first-purchase-coupon] 쿠폰 생성 실패:", insertError.message);
+    logSystemError("first_purchase_coupon_failed", { orderNo: order.order_no, stage: "coupon_insert", error: insertError.message });
     return;
   }
 
   await sendCustomerFirstPurchaseThanks({ customer: order.customer, code, discountValue: percent }).catch((err) =>
     console.error("[mailer] 첫 구매 감사 쿠폰 메일 발송 실패:", err.message)
   );
+}
+
+/* ---------- 재구매 감사 쿠폰 ----------
+   첫 구매 감사 쿠폰과 똑같은 자리(카드결제 확정·관리자의 "입금확인" 처리)에서 같이 호출된다.
+   이 고객의 확정 주문 수(취소·입금대기 제외, 이번 주문 포함)가 정확히 기준 횟수(기본 5회)에
+   "막 도달한" 순간에만 1회 발급한다 — 매번 세는 게 아니라 "==threshold"로만 판정해서 6번째·
+   7번째 구매에서 또 발급되는 걸 막는다(그 다음은 10번째·15번째처럼 다음 단계를 원하면 관리자가
+   기준 횟수 자체를 나중에 조정하면 된다 — 지금은 "5번째"만 지원). 할인율·기준 횟수 모두 첫
+   구매 쿠폰과 같은 원칙으로 새 테이블 없이 admin_settings를 재사용한다. */
+const REPEAT_PURCHASE_COUPON_DEFAULT_THRESHOLD = 5;
+const REPEAT_PURCHASE_COUPON_DEFAULT_PERCENT = 5;
+
+/* confirmedCount도 호출부가 미리 계산해서 넘겨준다(위 첫 구매 쿠폰 참고). */
+async function maybeIssueRepeatPurchaseCoupon(order, confirmedCount) {
+  const telDigits = normalizeTel(order.customer && order.customer.tel);
+  if (!telDigits) return;
+
+  const { data: thresholdSetting } = await supabaseAdmin
+    .from("admin_settings")
+    .select("value")
+    .eq("label", REPEAT_PURCHASE_COUPON_THRESHOLD_LABEL)
+    .maybeSingle();
+  const parsedThreshold = Math.floor(Number(thresholdSetting && thresholdSetting.value));
+  const threshold = Number.isFinite(parsedThreshold) && parsedThreshold > 1 ? parsedThreshold : REPEAT_PURCHASE_COUPON_DEFAULT_THRESHOLD;
+
+  if (confirmedCount !== threshold) return;
+  if (!(await claimCouponMilestone(telDigits, `repeat_${threshold}`))) return;
+
+  const { data: percentSetting } = await supabaseAdmin
+    .from("admin_settings")
+    .select("value")
+    .eq("label", REPEAT_PURCHASE_COUPON_PERCENT_LABEL)
+    .maybeSingle();
+  const parsedPercent = Math.floor(Number(percentSetting && percentSetting.value));
+  const percent = Number.isFinite(parsedPercent) && parsedPercent > 0 && parsedPercent <= 100 ? parsedPercent : REPEAT_PURCHASE_COUPON_DEFAULT_PERCENT;
+
+  const code = await generateUniqueCouponCode(REPEAT_PURCHASE_COUPON_CODE_PREFIX);
+  if (!code) {
+    console.error("[repeat-purchase-coupon] 고유 코드 생성 실패(5회 시도)");
+    logSystemError("repeat_purchase_coupon_failed", { orderNo: order.order_no, stage: "code_generation" });
+    return;
+  }
+
+  const { error: insertError } = await supabaseAdmin.from("coupons").insert({
+    code,
+    discount_type: "percent",
+    discount_value: percent,
+    scope: "all",
+    usage_limit: 1,
+    active: true,
+  });
+  if (insertError) {
+    console.error("[repeat-purchase-coupon] 쿠폰 생성 실패:", insertError.message);
+    logSystemError("repeat_purchase_coupon_failed", { orderNo: order.order_no, stage: "coupon_insert", error: insertError.message });
+    return;
+  }
+
+  await sendCustomerRepeatPurchaseThanks({ customer: order.customer, code, discountValue: percent, purchaseCount: threshold }).catch((err) =>
+    console.error("[mailer] 재구매 감사 쿠폰 메일 발송 실패:", err.message)
+  );
+}
+
+/* 첫 구매·재구매 감사 쿠폰 둘 다 "이 고객의 확정 주문이 몇 건이고 그중 이번 주문이 처음인지"를
+   판단해야 하는데, 예전엔 거의 같은 조건(입금확인/배송중/완료 상태의 orders 전체)으로 각자
+   따로 조회하고 있었다(2026-09-01 코드 감사에서 발견한 비효율 — 주문이 확정될 때마다 매번
+   두 번 왕복). 한 번만 조회해서 두 판정에 그대로 나눠 쓴다. */
+async function issueThanksCouponsIfEligible(order) {
+  const telDigits = normalizeTel(order.customer && order.customer.tel);
+  if (!telDigits) return;
+
+  const { data: matchingOrders, error } = await supabaseAdmin
+    .from("orders")
+    .select("order_no, customer")
+    .in("status", ["입금확인", "배송중", "완료"]);
+  if (error) {
+    console.error("[thanks-coupon] 기존 주문 조회 실패:", error.message);
+    logSystemError("thanks_coupon_failed", { orderNo: order.order_no, stage: "order_lookup", error: error.message });
+    return;
+  }
+
+  const sameCustomer = (matchingOrders || []).filter((o) => normalizeTel(o.customer && o.customer.tel) === telDigits);
+  const hasPriorOrder = sameCustomer.some((o) => o.order_no !== order.order_no);
+  const confirmedCount = sameCustomer.length;
+
+  await Promise.all([
+    maybeIssueFirstPurchaseCoupon(order, hasPriorOrder).catch((err) => console.error("[first-purchase-coupon] 처리 실패:", err.message)),
+    maybeIssueRepeatPurchaseCoupon(order, confirmedCount).catch((err) => console.error("[repeat-purchase-coupon] 처리 실패:", err.message)),
+  ]);
 }
 
 app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
@@ -875,7 +1008,22 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   );
 
   if (saveError) {
+    /* 여기까지 오는 동안 재고는 이미 차감된 상태다 — 저장만 실패하면 주문 기록 없이 재고만
+       영구히 줄어드는 사고가 난다. 카드결제 경로(finalizeCardOrder)는 이 경우 재고를 복원
+       하는데 무통장입금 경로만 그 처리가 빠져 있던 것을 2026-09-01 코드 감사에서 발견해
+       맞췄다(카드결제와 달리 아직 돈을 받은 상태가 아니라 결제 취소·환불은 필요 없음). */
     console.error("[order] 주문 저장 실패:", saveError.message);
+    if (inventoryItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+      if (restoreError) {
+        console.error("[order] ⚠️ 주문 저장 실패 후 재고 복원도 실패 — 수동 확인 필요:", orderNumber, restoreError.message);
+      } else {
+        logInventoryChange(
+          inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_failed", ref: orderNumber }))
+        );
+      }
+    }
+    logSystemError("bank_order_finalize_failed", { orderNo: orderNumber, error: saveError.message });
     return res.status(500).json({ error: "주문 저장에 실패했습니다." });
   }
 
@@ -886,6 +1034,9 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     console.error("[mailer] 주문 접수 확인 메일 발송 실패:", err.message);
   });
   kakao.sendAlimtalk("ORDER_RECEIVED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
+  sendPushToAdmins({ title: "새 주문 접수", body: `${saved.order_no} · 무통장입금 대기`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
 
   res.json({
     no: saved.order_no,
@@ -984,10 +1135,6 @@ app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
   if (upsertError) console.error("[login-lock] 저장 실패:", upsertError.message);
   res.json({ ok: true });
 });
-
-function normalizeTel(s) {
-  return String(s || "").replace(/\D/g, "");
-}
 
 /* ---------- 비회원 주문 조회 (주문번호 + 연락처) ---------- */
 app.post("/api/orders/lookup", writeLimiter, async (req, res) => {
@@ -1152,112 +1299,10 @@ app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   });
 });
 
-/* ---------- 관리자 대시보드 ----------
-   orders 테이블만으로 계산 가능해서 새 테이블 없이 집계만 한다. 취소된 주문은 매출에서 뺀다.
-   상품별 판매량은 orders.items(주문 시점 스냅샷, productId 없이 name만 있음)를 이름으로 묶어 집계한다 —
-   상품이 삭제·개명돼도 과거 주문 내역 자체는 그대로 남아있기 때문. */
-/* GET /api/admin/dashboard(화면)와 GET /api/admin/dashboard/export(내보내기)가 집계 로직을 공유한다. */
-async function computeDashboardStats() {
-  let { data, error } = await supabaseAdmin
-    .from("orders")
-    .select("items, total, status, created_at, device")
-    .order("created_at", { ascending: false })
-    .limit(2000);
-
-  /* 42703 = device 컬럼이 아직 없음(022_order_device.sql 미실행) — SELECT는 INSERT와
-     달리 존재하지 않는 컬럼을 이름으로 지정하면 이 에러 코드로 실패한다(둘이 에러 코드가
-     다름을 직접 테스트해서 확인함). 기기별 집계만 못 하게 되는 거라 대시보드 전체가 죽으면
-     안 되므로 device 없이 재조회한다. */
-  if (error && error.code === "42703") {
-    console.warn("[dashboard] orders.device 컬럼 없음(마이그레이션 022 미실행) — device 없이 재조회");
-    ({ data, error } = await supabaseAdmin
-      .from("orders")
-      .select("items, total, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(2000));
-  }
-
-  if (error) return { error };
-
-  /* "누적 주문"은 위 2000건 캡이 걸린 data.length를 그대로 쓰면 실제 누적이 2000건을
-     넘는 순간부터 조용히 2000에 고정돼 버린다(효율화 감사에서 발견) — head:true로 행 데이터는
-     받지 않고 정확한 전체 개수만 별도로 센다(가벼운 카운트 쿼리라 매번 불러도 부담 없음). */
-  const { count: totalOrdersCount } = await supabaseAdmin.from("orders").select("id", { count: "exact", head: true });
-
-  /* 반품 사유 통계 — return_requests.reason은 이미 쌓이고 있어서(위 "지금 막혀 있는 것" 참고
-     새 테이블 없이 집계만 추가) "왜 반품이 많은지"를 한눈에 보여준다. */
-  const { data: returnRows } = await supabaseAdmin.from("return_requests").select("reason");
-  const reasonCounts = new Map();
-  for (const r of returnRows || []) {
-    reasonCounts.set(r.reason, (reasonCounts.get(r.reason) || 0) + 1);
-  }
-  const returnReasons = [...reasonCounts.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-
-  const isCancelled = (o) => o.status === "취소";
-  const now = new Date();
-  /* 서버는 UTC로 도는데(Render), 관리자는 한국 시간 기준으로 "오늘"을 생각한다 — 자정~오전
-     9시(KST) 사이에 raw UTC 날짜로 자르면 그 시간대 주문이 "어제" 매출로 잘못 잡히는 버그가
-     있었다(kst.js 참고). kstDateKey/kstMonthKey로 통일해 해결. */
-  const todayKey = kstDateKey(now);
-  const monthKey = kstMonthKey(now);
-
-  let todayRevenue = 0;
-  let monthRevenue = 0;
-  let pendingCount = 0;
-  const revenueByDay = new Map();
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 86400000);
-    revenueByDay.set(kstDateKey(d), 0);
-  }
-
-  const qtyByName = new Map();
-  /* GA4는 "방문자 수"만 알려주고 실제 구매 여부는 모른다 — 우리 DB의 실제 결제 완료 기록에
-     저장해둔 기기 종류(device, 022_order_device.sql)로 "기기별 실제 매출·주문 건수"를
-     집계한다. 마이그레이션 미실행이거나 그 이전에 만들어진 주문은 device가 없으므로
-     "unknown"으로 묶는다. */
-  const salesByDevice = new Map();
-  for (const o of data) {
-    if (o.status === "입금대기") pendingCount++;
-    if (!isCancelled(o)) {
-      const dayKey = kstDateKey(o.created_at);
-      if (dayKey === todayKey) todayRevenue += o.total;
-      if (kstMonthKey(o.created_at) === monthKey) monthRevenue += o.total;
-      if (revenueByDay.has(dayKey)) revenueByDay.set(dayKey, revenueByDay.get(dayKey) + o.total);
-
-      for (const item of o.items || []) {
-        qtyByName.set(item.name, (qtyByName.get(item.name) || 0) + (item.qty || 0));
-      }
-
-      const deviceKey = o.device || "unknown";
-      const prev = salesByDevice.get(deviceKey) || { orders: 0, revenue: 0 };
-      salesByDevice.set(deviceKey, { orders: prev.orders + 1, revenue: prev.revenue + o.total });
-    }
-  }
-
-  const bestsellers = [...qtyByName.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, qty]) => ({ name, qty }));
-
-  return {
-    todayRevenue,
-    monthRevenue,
-    totalOrders: totalOrdersCount ?? data.length,
-    pendingCount,
-    dailyRevenue: [...revenueByDay.entries()].map(([date, total]) => ({ date, total })),
-    bestsellers,
-    salesByDevice: [...salesByDevice.entries()]
-      .map(([device, v]) => ({ device, orders: v.orders, revenue: v.revenue }))
-      .sort((a, b) => b.revenue - a.revenue),
-    returnReasons,
-  };
-}
-
-app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
-  const stats = await computeDashboardStats();
-  if (stats.error) return res.status(500).json({ error: "집계에 실패했습니다." });
-  res.json(stats);
-});
+/* 관리자 대시보드(GET /api/admin/dashboard·/dashboard/export, GA4 방문자 통계 /api/admin/analytics) —
+   돈이 오가는 라우트가 아니라 읽기 전용 집계라 routes/dashboard.js로 분리했다(2026-09-01,
+   라우트 분리 다음 라운드). computeDashboardStats도 그 파일로 함께 옮겼다. */
+app.use(dashboardRoutes);
 
 /* ---------- 알림센터 ----------
    "확인이 필요한 것들"을 한눈에 모아 보여주는 용도 — 별도 읽음/안읽음 상태를 DB에 저장하지
@@ -1290,6 +1335,7 @@ const SYSTEM_ERROR_LABEL = {
   card_cancel_failed: "카드결제 취소 실패(이중실패)",
   refund_failed: "환불 실패",
   order_finalize_failed: "카드결제 후 주문 확정 실패",
+  bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
 };
 
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
@@ -1314,143 +1360,9 @@ app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) 
   res.json({ ok: true });
 });
 
-/* ---------- 관리자 계정 관리 ----------
-   예전엔 "고객 페이지에서 회원가입 → Supabase SQL Editor에서 role을 수동으로 admin으로
-   승격"해야 했다(README 참고). Supabase Admin API의 inviteUserByEmail로 이 과정을 Works
-   안에서 바로 처리한다 — 초대 메일의 링크로 본인이 직접 비밀번호를 정하므로, 관리자가 임시
-   비밀번호를 만들어 전달할 필요가 없다(account.html이 이미 갖고 있는 "비밀번호 재설정" 화면을
-   그대로 재사용, 아래 참고). */
-app.get("/api/admin/admins", requireAdmin, async (req, res) => {
-  const { data: profiles, error } = await supabaseAdmin
-    .from("profiles")
-    .select("id, name, created_at")
-    .eq("role", "admin")
-    .order("created_at", { ascending: true });
-  if (error) return res.status(500).json({ error: "관리자 목록을 불러오지 못했습니다." });
-
-  /* 관리자 한 명당 getUserById()를 따로 부르면(N+1) 관리자가 늘어날수록 호출 수가 그만큼
-     늘어난다 — Admin API는 ID로 콕 집어 배치 조회하는 기능이 없어서, 대신 listUsers()
-     한 번으로 이메일까지 전부 가져와 매칭한다(가입자 총 수가 이 perPage를 넘지 않는 한
-     항상 1번의 호출로 끝남 — 이 매장 규모에서는 충분하지만, 가입자가 그 이상으로 늘어나면
-     프로필에 이메일을 비정규화해 저장하는 방식으로 바꿔야 함). */
-  const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  const emailById = new Map((userList?.users || []).map((u) => [u.id, u.email || ""]));
-  const items = profiles.map((p) => ({ id: p.id, name: p.name || "", email: emailById.get(p.id) || "", createdAt: p.created_at }));
-  res.json({ items });
-});
-
-app.post("/api/admin/admins", requireAdmin, async (req, res) => {
-  const email = String((req.body || {}).email || "").trim().toLowerCase();
-  const name = String((req.body || {}).name || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: "올바른 이메일을 입력해 주세요." });
-  }
-
-  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    data: name ? { name } : undefined,
-    redirectTo: "https://reiten.kr/account.html",
-  });
-  if (error) return res.status(400).json({ error: error.message || "초대 이메일 발송에 실패했습니다." });
-
-  const { error: roleError } = await supabaseAdmin
-    .from("profiles")
-    .update({ role: "admin", ...(name ? { name } : {}) })
-    .eq("id", data.user.id);
-  if (roleError) {
-    return res.status(500).json({ error: "계정은 만들어졌지만 관리자 권한 부여에 실패했습니다 — Supabase에서 수동으로 처리해 주세요." });
-  }
-
-  logAdminAction(req, "admin.invite", "admin", data.user.id, { email });
-  res.json({ ok: true });
-});
-
-/* 관리자 권한만 해제(계정 자체는 삭제하지 않음 — 일반 고객 계정으로 남는다). 본인 권한은
-   실수로 스스로를 잠그는 사고를 막기 위해 여기서 해제할 수 없게 막는다. */
-app.delete("/api/admin/admins/:id", requireAdmin, async (req, res) => {
-  if (req.user.id === req.params.id) {
-    return res.status(400).json({ error: "본인 계정은 여기서 해제할 수 없습니다." });
-  }
-  const { error } = await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "권한 해제에 실패했습니다." });
-  logAdminAction(req, "admin.revoke", "admin", req.params.id);
-  res.json({ ok: true });
-});
-
-/* GA4 방문자 통계(선택) — 설정 안 돼 있으면 lib/analytics.js가 null을 반환하고, 조회 자체가
-   실패해도(권한 미부여 등) 대시보드 전체를 막지 않도록 500 대신 stats:null로 내려준다. */
-/* Works 대시보드의 30일/3개월/6개월/누적 기간 선택 — "누적"은 GA4가 실제로 무한정 데이터를
-   보관하지 않으므로(속성 설정에 따라 보통 최대 14~18개월) 완전한 전체 기간은 아니고 그 안에서
-   가장 긴 범위(540일)로 대체한다. 허용된 값 밖이면 기본 30일로 조용히 폴백. */
-const VISITOR_STATS_ALLOWED_DAYS = [30, 90, 180, 540];
-app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
-  const days = VISITOR_STATS_ALLOWED_DAYS.includes(Number(req.query.days)) ? Number(req.query.days) : 30;
-  try {
-    const stats = await getVisitorStats(days);
-    res.json({ stats });
-  } catch (err) {
-    console.error("[analytics] 조회 실패:", err.message);
-    res.json({ stats: null });
-  }
-});
-
-/* 대시보드 내보내기 — 화면에 없는 표 형태 데이터라 CSV는 요약/일별 매출/베스트셀러 세 구간을
-   빈 줄로 이어 붙이고, 엑셀은 시트 세 개로 나눈다. ?format=csv|xlsx */
-app.get("/api/admin/dashboard/export", requireAdmin, async (req, res) => {
-  const format = String(req.query.format || "csv").toLowerCase();
-  if (!["csv", "xlsx"].includes(format)) {
-    return res.status(400).json({ error: "format은 csv, xlsx 중 하나여야 합니다." });
-  }
-
-  const stats = await computeDashboardStats();
-  if (stats.error) return res.status(500).json({ error: "집계에 실패했습니다." });
-
-  const summaryColumns = [
-    { key: "label", label: "항목" },
-    { key: "value", label: "값" },
-  ];
-  const summaryRows = [
-    { label: "오늘 매출", value: stats.todayRevenue },
-    { label: "이번 달 매출", value: stats.monthRevenue },
-    { label: "전체 주문", value: stats.totalOrders },
-    { label: "입금대기", value: stats.pendingCount },
-  ];
-  const dailyColumns = [
-    { key: "date", label: "날짜" },
-    { key: "total", label: "매출" },
-  ];
-  const bestsellerColumns = [
-    { key: "name", label: "상품명" },
-    { key: "qty", label: "판매수량" },
-  ];
-
-  const filename = `reiten-dashboard-${new Date().toISOString().slice(0, 10)}`;
-  try {
-    if (format === "csv") {
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
-      res.send(
-        toCsvGeneric([
-          { title: "요약", columns: summaryColumns, rows: summaryRows },
-          { title: "최근 14일 매출", columns: dailyColumns, rows: stats.dailyRevenue },
-          { title: "베스트셀러 TOP5", columns: bestsellerColumns, rows: stats.bestsellers },
-        ])
-      );
-    } else {
-      const buf = await toXlsxBufferGeneric([
-        { name: "요약", columns: summaryColumns, rows: summaryRows },
-        { name: "일별 매출", columns: dailyColumns, rows: stats.dailyRevenue },
-        { name: "베스트셀러", columns: bestsellerColumns, rows: stats.bestsellers },
-      ]);
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
-      res.send(Buffer.from(buf));
-    }
-    logAdminAction(req, "dashboard.export", "dashboard", "export", { format });
-  } catch (e) {
-    console.error("[admin/dashboard/export] 생성 실패:", e.message);
-    res.status(500).json({ error: "내보내기 파일 생성에 실패했습니다." });
-  }
-});
+/* 관리자 계정 관리(GET/POST /api/admin/admins, DELETE /api/admin/admins/:id) — 돈·재고를
+   건드리지 않는 순수 CRUD라 routes/admins.js로 분리했다(2026-09-01, 라우트 분리 다음 라운드). */
+app.use(adminsRoutes);
 
 /* ---------- 관리자 ---------- */
 /* 필터: q(주문번호·주문자명·연락처 중 아무 데나 부분 일치) · status(정확히 일치) ·
@@ -1552,7 +1464,7 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
       console.error("[mailer] 입금 확인 메일 발송 실패:", err.message);
     });
     kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
-    maybeIssueFirstPurchaseCoupon(saved).catch((err) => console.error("[first-purchase-coupon] 처리 실패:", err.message));
+    issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
   }
   if (!prev?.tracking_no && saved.tracking_no) {
     sendCustomerShipped(saved).catch((err) => {
@@ -1563,6 +1475,86 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
       .catch(() => {});
   }
 }
+
+const ORDER_BULK_MAX = 200;
+
+/* 여러 주문의 상태·배송정보를 한 번에 저장한다(운송장번호 CSV 일괄 입력, 입금확인 일괄 처리
+   용도). 건별 PATCH와 달리 "취소"는 여기서 지원하지 않는다 — 취소는 재고 복원·카드 환불이
+   자동으로 나가는 민감한 동작이라, 실수로 여러 건을 한꺼번에 취소·환불해버리는 사고를
+   구조적으로 막기 위해 일부러 뺐다(취소는 계속 건별로만 가능). 이미 취소된 주문을 되돌리는
+   것도 같은 이유로 여기선 막는다. 항목 하나가 실패해도 나머지는 계속 처리하고, 결과를
+   항목별로 돌려준다(CSV에 오타가 섞여 있어도 나머지는 정상 처리되게).
+   ⚠️ 반드시 아래 `/:no` 라우트보다 먼저 등록해야 한다 — Express는 `:no`가 슬래시 없는 문자열이면
+   "bulk"도 그대로 흡수해버려서(2026-09-01 코드 감사에서 발견, 상품 일괄 처리와 같은 원인의
+   버그), 순서가 뒤바뀌면 이 라우트가 죽은 코드가 된다. */
+app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
+  const items = Array.isArray(req.body?.orders) ? req.body.orders : [];
+  if (!items.length) return res.status(400).json({ error: "orders가 필요합니다." });
+  if (items.length > ORDER_BULK_MAX) {
+    return res.status(400).json({ error: `한 번에 최대 ${ORDER_BULK_MAX}건까지 처리할 수 있습니다.` });
+  }
+
+  const results = [];
+  for (const item of items) {
+    const orderNo = String(item?.orderNo || "").trim();
+    if (!orderNo) {
+      results.push({ orderNo: null, ok: false, error: "orderNo가 필요합니다." });
+      continue;
+    }
+
+    const patch = {};
+    if (item.status !== undefined) {
+      const statusStr = String(item.status).trim();
+      if (!statusStr) {
+        results.push({ orderNo, ok: false, error: "status가 비어 있습니다." });
+        continue;
+      }
+      if (statusStr === "취소") {
+        results.push({ orderNo, ok: false, error: "일괄 처리에서는 취소를 지원하지 않습니다 — 개별로 처리해 주세요." });
+        continue;
+      }
+      patch.status = statusStr;
+    }
+    if (item.courier !== undefined) {
+      const courierStr = String(item.courier || "").trim();
+      if (courierStr && !COURIERS.some((c) => c.key === courierStr)) {
+        results.push({ orderNo, ok: false, error: "존재하지 않는 택배사입니다." });
+        continue;
+      }
+      patch.courier = courierStr || null;
+    }
+    if (item.trackingNo !== undefined) {
+      patch.tracking_no = String(item.trackingNo || "").trim().slice(0, 60) || null;
+    }
+    if (!Object.keys(patch).length) {
+      results.push({ orderNo, ok: false, error: "변경할 값이 없습니다." });
+      continue;
+    }
+
+    const { data: prev } = await supabaseAdmin.from("orders").select("status, tracking_no").eq("order_no", orderNo).maybeSingle();
+    if (!prev) {
+      results.push({ orderNo, ok: false, error: "존재하지 않는 주문입니다." });
+      continue;
+    }
+    if (prev.status === "취소") {
+      results.push({ orderNo, ok: false, error: "이미 취소된 주문은 일괄 처리로 되돌릴 수 없습니다 — 개별로 처리해 주세요." });
+      continue;
+    }
+
+    const { data: saved, error } = await supabaseAdmin.from("orders").update(patch).eq("order_no", orderNo).select().single();
+    if (error) {
+      results.push({ orderNo, ok: false, error: "저장에 실패했습니다." });
+      continue;
+    }
+
+    await notifyOrderStatusSideEffects(prev, saved, patch);
+    results.push({ orderNo, ok: true });
+  }
+
+  const successCount = results.filter((r) => r.ok).length;
+  logAdminAction(req, "order.bulk_update", "order", `${successCount}/${items.length}건`, { results });
+  res.json({ ok: true, results });
+});
 
 /* status만 바꾸면 상태만, courier/trackingNo를 함께 보내면 배송정보도 같이 저장한다.
    status가 "입금확인"으로 바뀌는 순간에만 고객에게 입금 확인 메일을 보낸다(접수 메일은 /api/order에서 이미 발송됨).
@@ -1593,20 +1585,30 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   }
 
   /* 이번 변경으로 운송장번호가 "처음" 채워지는지, 취소 상태가 "처음" 되는지 판단하려면
-     update 직전의 이전 상태가 필요하다. */
-  const { data: prev } = await supabaseAdmin
+     update 직전의 이전 상태가 필요하다. 존재하지 않는 주문번호(오타 등)를 여기서 걸러내지
+     않으면 아래 update()가 0건 매칭으로 실패해 "저장에 실패했습니다"(500)라는 엉뚱한 에러가
+     나간다 — 반품 라우트(PATCH /api/admin/returns/:id)와 같은 원칙으로 404를 먼저 확인한다
+     (2026-09-01 코드 감사에서 발견). */
+  const { data: prev, error: prevError } = await supabaseAdmin
     .from("orders")
     .select("status, tracking_no")
     .eq("order_no", req.params.no)
     .single();
+  if (prevError || !prev) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
 
   const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
-  const isNewCancel = patch.status === "취소" && prev?.status !== "취소";
+  const isNewCancel = patch.status === "취소" && prev.status !== "취소";
   /* 반대 방향(취소 → 다른 상태로 되돌림)도 대칭으로 처리해야 한다 — 안 하면 취소 시
      복원됐던 재고가 그대로 부풀려진 채 남는다(관리자가 실수로 취소했다가 바로 되돌리는
      경우 등). */
-  const isUncancel = prev?.status === "취소" && patch.status !== undefined && patch.status !== "취소";
-  if (isNewCancel && cancelReasonStr) patch.cancel_reason = cancelReasonStr;
+  const isUncancel = prev.status === "취소" && patch.status !== undefined && patch.status !== "취소";
+  /* 취소 사유는 취소되는 그 순간 항상 명시적으로 반영하고(안 적었으면 null), 되돌릴 때는
+     지운다 — 안 그러면 "취소(사유 있음) → 되돌리기 → 사유 없이 재취소"에서 첫 번째 취소
+     사유가 stale로 그대로 남는 버그가 생긴다(2026-09-01 코드 감사에서 발견). 예전엔
+     `isNewCancel && cancelReasonStr`일 때만 값을 넣어서, 두 번째 취소에서 사유를 안 적으면
+     patch에 cancel_reason 자체가 안 들어가 DB에 예전 값이 그대로 남아 있었다. */
+  if (isNewCancel) patch.cancel_reason = cancelReasonStr || null;
+  if (isUncancel) patch.cancel_reason = null;
 
   const { data: saved, error } = await supabaseAdmin
     .from("orders")
@@ -1685,83 +1687,6 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   logAdminAction(req, "order.update", "order", req.params.no, patch);
   res.json({ ok: true, cancel: cancelResult, uncancel: uncancelResult });
-});
-
-const ORDER_BULK_MAX = 200;
-
-/* 여러 주문의 상태·배송정보를 한 번에 저장한다(운송장번호 CSV 일괄 입력, 입금확인 일괄 처리
-   용도). 건별 PATCH와 달리 "취소"는 여기서 지원하지 않는다 — 취소는 재고 복원·카드 환불이
-   자동으로 나가는 민감한 동작이라, 실수로 여러 건을 한꺼번에 취소·환불해버리는 사고를
-   구조적으로 막기 위해 일부러 뺐다(취소는 계속 건별로만 가능). 이미 취소된 주문을 되돌리는
-   것도 같은 이유로 여기선 막는다. 항목 하나가 실패해도 나머지는 계속 처리하고, 결과를
-   항목별로 돌려준다(CSV에 오타가 섞여 있어도 나머지는 정상 처리되게). */
-app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
-  const items = Array.isArray(req.body?.orders) ? req.body.orders : [];
-  if (!items.length) return res.status(400).json({ error: "orders가 필요합니다." });
-  if (items.length > ORDER_BULK_MAX) {
-    return res.status(400).json({ error: `한 번에 최대 ${ORDER_BULK_MAX}건까지 처리할 수 있습니다.` });
-  }
-
-  const results = [];
-  for (const item of items) {
-    const orderNo = String(item?.orderNo || "").trim();
-    if (!orderNo) {
-      results.push({ orderNo: null, ok: false, error: "orderNo가 필요합니다." });
-      continue;
-    }
-
-    const patch = {};
-    if (item.status !== undefined) {
-      const statusStr = String(item.status).trim();
-      if (!statusStr) {
-        results.push({ orderNo, ok: false, error: "status가 비어 있습니다." });
-        continue;
-      }
-      if (statusStr === "취소") {
-        results.push({ orderNo, ok: false, error: "일괄 처리에서는 취소를 지원하지 않습니다 — 개별로 처리해 주세요." });
-        continue;
-      }
-      patch.status = statusStr;
-    }
-    if (item.courier !== undefined) {
-      const courierStr = String(item.courier || "").trim();
-      if (courierStr && !COURIERS.some((c) => c.key === courierStr)) {
-        results.push({ orderNo, ok: false, error: "존재하지 않는 택배사입니다." });
-        continue;
-      }
-      patch.courier = courierStr || null;
-    }
-    if (item.trackingNo !== undefined) {
-      patch.tracking_no = String(item.trackingNo || "").trim().slice(0, 60) || null;
-    }
-    if (!Object.keys(patch).length) {
-      results.push({ orderNo, ok: false, error: "변경할 값이 없습니다." });
-      continue;
-    }
-
-    const { data: prev } = await supabaseAdmin.from("orders").select("status, tracking_no").eq("order_no", orderNo).maybeSingle();
-    if (!prev) {
-      results.push({ orderNo, ok: false, error: "존재하지 않는 주문입니다." });
-      continue;
-    }
-    if (prev.status === "취소") {
-      results.push({ orderNo, ok: false, error: "이미 취소된 주문은 일괄 처리로 되돌릴 수 없습니다 — 개별로 처리해 주세요." });
-      continue;
-    }
-
-    const { data: saved, error } = await supabaseAdmin.from("orders").update(patch).eq("order_no", orderNo).select().single();
-    if (error) {
-      results.push({ orderNo, ok: false, error: "저장에 실패했습니다." });
-      continue;
-    }
-
-    await notifyOrderStatusSideEffects(prev, saved, patch);
-    results.push({ orderNo, ok: true });
-  }
-
-  const successCount = results.filter((r) => r.ok).length;
-  logAdminAction(req, "order.bulk_update", "order", `${successCount}/${items.length}건`, { results });
-  res.json({ ok: true, results });
 });
 
 /* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
@@ -1908,6 +1833,49 @@ app.get("/api/admin/inventory", requireAdmin, async (req, res) => {
 });
 
 
+/* 품절 알림 신청(routes/restock.js에서 접수)한 고객에게 재입고를 알린다 — 재고 수량이
+   실제로 바뀌는 지점이 여기(관리자 재고 탭 저장)뿐이라 알림 발송도 여기서 처리한다.
+   restockedItems: [{productId, color, size, qty}] (이미 0→양수 전환된 것만 걸러진 상태로 들어옴). */
+async function notifyRestockSubscribers(restockedItems) {
+  const orFilter = restockedItems
+    .map((it) => `and(product_id.eq.${it.productId},color.eq.${it.color},size.eq.${it.size})`)
+    .join(",");
+  const { data: subs, error } = await supabaseAdmin
+    .from("restock_subscriptions")
+    .select("id, product_id, color, size, email")
+    .is("notified_at", null)
+    .or(orFilter);
+  if (error) {
+    if (isMissingSchemaError(error)) return; // 025 마이그레이션 미실행 — 조용히 건너뜀
+    console.error("[restock] 신청 목록 조회 실패:", error.message);
+    return;
+  }
+  if (!subs.length) return;
+
+  const productIds = [...new Set(subs.map((s) => s.product_id))];
+  const { data: products } = await supabaseAdmin.from("products").select("id, name_ko").in("id", productIds);
+  const nameById = new Map((products || []).map((p) => [p.id, p.name_ko]));
+
+  const notifiedIds = [];
+  for (const sub of subs) {
+    try {
+      await sendCustomerRestockNotice({
+        email: sub.email,
+        productId: sub.product_id,
+        productName: nameById.get(sub.product_id) || sub.product_id,
+        color: sub.color,
+        size: sub.size,
+      });
+      notifiedIds.push(sub.id);
+    } catch (err) {
+      console.error("[mailer] 품절 알림 메일 발송 실패:", err.message);
+    }
+  }
+  if (notifiedIds.length) {
+    await supabaseAdmin.from("restock_subscriptions").update({ notified_at: new Date().toISOString() }).in("id", notifiedIds);
+  }
+}
+
 /* 재고 탭에서 칸마다 바로바로 저장하던 방식은 몇 칸만 고쳐도 토스트가 계속 뜨고 활동 로그도
    항목 수만큼 따로 쌓여 지저분했다 — Works가 "고치고 나서 저장 버튼 한 번"으로 통일되면서
    이 엔드포인트로 여러 항목을 한 번에 받아 한 번의 활동 로그로 남긴다(위 단일 항목용
@@ -1955,6 +1923,12 @@ app.patch("/api/admin/inventory/bulk", requireAdmin, async (req, res) => {
     }))
     .filter((r) => r.delta !== 0);
   if (logRows.length) logInventoryChange(logRows);
+
+  /* 품절 알림 신청(025_restock_subscriptions.sql) — 이 조합이 방금 0 이하 → 양수로 바뀐
+     경우에만 그 조합을 기다리던 신청자들에게 메일을 보낸다. 응답을 늦추면 안 되니 백그라운드로
+     돌리고 실패해도 재고 저장 자체는 이미 끝난 뒤라 그대로 둔다. */
+  const restocked = normalized.filter((it) => it.qty > 0 && (prevQty.get(`${it.productId}:${it.color}:${it.size}`) || 0) <= 0);
+  if (restocked.length) notifyRestockSubscribers(restocked).catch((err) => console.error("[restock] 알림 처리 실패:", err.message));
 
   logAdminAction(req, "inventory.bulk_update", "inventory", `${normalized.length}건`, { count: normalized.length, productIds });
   res.json({ ok: true, count: normalized.length });
@@ -2159,7 +2133,7 @@ app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
   const products = await getActiveProducts();
   const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
   if (items.some((it) => it === null)) {
-    return res.status(400).json({ error: "존재하지 않는 상품이 포함되어 있습니다." });
+    return res.status(400).json({ error: "존재하지 않는 상품 또는 잘못된 수량이 포함되어 있습니다." });
   }
   const subtotal = items.reduce((s, it) => s + it.sum, 0);
 
@@ -2171,169 +2145,10 @@ app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
   }
 });
 
-/* ---------- 상품 관리 (관리자만) ----------
-   목록(GET)은 active 여부와 무관하게 전부 보여주고, 생성·수정·삭제는 관리자 인증을 거친다.
-   공개 목록(/api/products)은 active=true인 것만 노출한다. */
-app.get("/api/admin/products", requireAdmin, async (req, res) => {
-  const { page, pageSize, from, to } = paginationParams(req.query, { defaultSize: 50 });
-  const { data, error, count } = await supabaseAdmin
-    .from("products")
-    .select("*", { count: "exact" })
-    .order("sort_order", { ascending: true })
-    .range(from, to);
-
-  if (error) return res.status(500).json({ error: "상품 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map(toProductDto), page, pageSize, total: count ?? data.length });
-});
-
-app.post("/api/admin/products", requireAdmin, async (req, res) => {
-  const b = req.body || {};
-  const id = String(b.id || "").trim();
-  if (!/^[a-z0-9-]{2,60}$/.test(id)) {
-    return res.status(400).json({ error: "상품 ID는 영문 소문자·숫자·하이픈만 2~60자로 입력해 주세요." });
-  }
-
-  const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
-  if (patchError) return res.status(400).json({ error: patchError });
-
-  const { data, error } = await supabaseAdmin
-    .from("products")
-    .insert({ id, ...patch })
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === "23505") return res.status(409).json({ error: "이미 존재하는 상품 ID입니다." });
-    console.error("[admin/products] 생성 실패:", error.message);
-    return res.status(500).json({ error: "상품 생성에 실패했습니다." });
-  }
-  logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
-  res.json(toProductDto(data));
-});
-
-app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
-  const { patch, error: patchError } = productPatchFromBody(req.body || {}, { forCreate: false, validColors: await getValidColorMap() });
-  if (patchError) return res.status(400).json({ error: patchError });
-  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
-  patch.updated_at = new Date().toISOString();
-
-  const { data, error } = await supabaseAdmin
-    .from("products")
-    .update(patch)
-    .eq("id", req.params.id)
-    .select()
-    .maybeSingle();
-
-  if (error) {
-    console.error("[admin/products] 수정 실패:", error.message);
-    return res.status(500).json({ error: "상품 수정에 실패했습니다." });
-  }
-  if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
-  logAdminAction(req, "product.update", "product", req.params.id, patch);
-  res.json(toProductDto(data));
-});
-
-app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("products").delete().eq("id", req.params.id);
-  if (error) {
-    console.error("[admin/products] 삭제 실패:", error.message);
-    return res.status(500).json({ error: "상품 삭제에 실패했습니다." });
-  }
-  // 삭제된 상품에 딸린 재고 행도 함께 정리한다(없어도 동작에는 지장 없지만 관리자 재고 탭이 지저분해짐).
-  await supabaseAdmin.from("inventory").delete().eq("product_id", req.params.id);
-  logAdminAction(req, "product.delete", "product", req.params.id);
-  res.json({ ok: true });
-});
-
-/* ---------- 상품 일괄 처리 ----------
-   공개/비공개·컬러 추가·삭제처럼 여러 상품을 한 번에 매만지는 작업. 상품 하나씩 API를
-   반복 호출해도 되지만(클라이언트에서 루프), 그러면 활동 로그에 상품 수만큼 항목이
-   따로따로 쌓여 지저분해진다(재고 탭 일괄저장 때와 같은 이유) — 서버가 한 번에 처리하고
-   활동 로그도 한 줄만 남긴다. */
-function parseBulkIds(body) {
-  const ids = Array.isArray(body && body.ids) ? body.ids.filter((id) => typeof id === "string" && id) : [];
-  return [...new Set(ids)];
-}
-
-app.patch("/api/admin/products/bulk-active", requireAdmin, async (req, res) => {
-  const ids = parseBulkIds(req.body);
-  const active = !!(req.body && req.body.active);
-  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
-
-  const { error } = await supabaseAdmin.from("products").update({ active, updated_at: new Date().toISOString() }).in("id", ids);
-  if (error) {
-    console.error("[admin/products] 일괄 공개/비공개 실패:", error.message);
-    return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
-  }
-  logAdminAction(req, "product.bulk_active", "product", `${ids.length}건`, { ids, active });
-  res.json({ ok: true, count: ids.length });
-});
-
-app.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) => {
-  const ids = parseBulkIds(req.body);
-  const color = String((req.body && req.body.color) || "").trim();
-  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
-  const validColors = await getValidColorMap();
-  if (!color || !validColors[color]) return res.status(400).json({ error: "존재하지 않는 컬러입니다." });
-
-  const { data: rows, error: fetchError } = await supabaseAdmin.from("products").select("id, colors").in("id", ids);
-  if (fetchError) {
-    console.error("[admin/products] 일괄 컬러 추가 조회 실패:", fetchError.message);
-    return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
-  }
-
-  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 upsert.
-  const updates = rows
-    .filter((r) => !(r.colors || []).includes(color))
-    .map((r) => ({ id: r.id, colors: [...(r.colors || []), color] }));
-  if (updates.length) {
-    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
-    if (updateError) {
-      console.error("[admin/products] 일괄 컬러 추가 실패:", updateError.message);
-      return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
-    }
-  }
-  logAdminAction(req, "product.bulk_color", "product", `${ids.length}건`, { ids, color, updated: updates.length });
-  res.json({ ok: true, count: updates.length });
-});
-
-app.delete("/api/admin/products/bulk", requireAdmin, async (req, res) => {
-  const ids = parseBulkIds(req.body);
-  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
-
-  const { error } = await supabaseAdmin.from("products").delete().in("id", ids);
-  if (error) {
-    console.error("[admin/products] 일괄 삭제 실패:", error.message);
-    return res.status(500).json({ error: "일괄 삭제에 실패했습니다." });
-  }
-  await supabaseAdmin.from("inventory").delete().in("product_id", ids);
-  logAdminAction(req, "product.bulk_delete", "product", `${ids.length}건`, { ids });
-  res.json({ ok: true, count: ids.length });
-});
-
-const productUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
-}).single("photo");
-
-app.post("/api/admin/products/photo", requireAdmin, (req, res) => {
-  productUpload(req, res, async (uploadErr) => {
-    if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: "사진 파일이 없습니다." });
-    }
-    try {
-      const url = await uploadProductPhoto(req.file.buffer);
-      res.json({ url });
-    } catch (e) {
-      console.error("[admin/products] 사진 업로드 실패:", e.message);
-      res.status(500).json({ error: "사진 업로드에 실패했습니다." });
-    }
-  });
-});
+/* 상품 관리자 CRUD(GET/POST/PATCH/DELETE·일괄 처리·사진 업로드) — 결제·재고와 얽히지 않는
+   부분만 routes/products.js로 분리했다(공개 목록 GET /api/products는 결제 가격 검증이 쓰는
+   캐시를 공유해 여기 그대로 둔다 — 2026-09-01, 라우트 분리 다음 라운드). */
+app.use(productsRoutes);
 
 
 /* 색상 팔레트(colors) · 룩북(lookbook) · 정보 탭(settings) 라우트는 routes/*.js로 분리됐다
@@ -2342,204 +2157,17 @@ app.use(colorsRoutes);
 app.use(lookbookRoutes);
 app.use(settingsRoutes);
 
-/* ---------- 상품 리뷰 ---------- */
-const reviewUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
-}).single("photo");
+/* 상품 리뷰(공개 GET/POST·공감·관리자 GET/PATCH/bulk-approve/DELETE) — 돈이 걸려 있지 않은
+   도메인이라 통째로 routes/reviews.js로 분리했다(2026-09-01, 라우트 분리 다음 라운드). */
+app.use(reviewsRoutes);
 
-function toReviewDto(r) {
-  return {
-    id: r.id,
-    productId: r.product_id,
-    name: r.name,
-    rating: r.rating,
-    comment: r.comment,
-    photoUrl: r.photo_url,
-    instagramHandle: r.instagram_handle,
-    helpfulCount: r.helpful_count || 0,
-    approved: r.approved !== false,
-    at: r.created_at,
-  };
-}
+/* 품절 알림 신청 접수(POST /api/restock-subscriptions) — 실제 알림 발송은 아래
+   PATCH /api/admin/inventory/bulk 안에서 처리한다(재고 수량 변화를 아는 곳이 거기뿐이라). */
+app.use(restockRoutes);
 
-/* 승인된(approved=true) 리뷰만 공개 노출한다. 새로 등록된 리뷰는 관리자가 승인하기 전까지
-   /api/admin/reviews에서만 보인다(스팸·부적절한 사진 방지, 005_reviews_approval.sql 참고). */
-app.get("/api/reviews", async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from("reviews")
-    .select("*")
-    .eq("approved", true)
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(500).json({ error: "리뷰를 불러오지 못했습니다." });
-  res.json(data.map(toReviewDto));
-});
-
-app.post("/api/reviews", writeLimiter, (req, res) => {
-  reviewUpload(req, res, async (uploadErr) => {
-    if (uploadErr) {
-      return res.status(400).json({ error: "사진 업로드에 실패했습니다(15MB 이하 이미지만 가능)." });
-    }
-
-    const { productId, name, rating, comment, instagram, orderNo: reqOrderNo, tel } = req.body || {};
-
-    const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
-    if (!validProduct) {
-      return res.status(400).json({ error: "존재하지 않는 상품입니다." });
-    }
-
-    /* 실구매 인증 — 021_reviews_order_verification.sql. 주문번호+연락처는 이미 order-lookup/
-       반품신청에서 쓰는 것과 같은 조합(비회원도 자기 주문을 증명할 수 있는 유일한 방법이라
-       로그인 여부와 무관하게 통일). "general"(상품 무관 후기)은 어떤 주문이든 있으면 되고,
-       특정 상품 리뷰는 그 주문 items 안에 실제 그 productId가 있어야 한다. */
-    const orderNoStr = String(reqOrderNo || "").trim();
-    const telDigits = normalizeTel(tel);
-    if (!orderNoStr || !telDigits) {
-      return res.status(400).json({ error: "리뷰를 작성하려면 구매하신 주문번호와 연락처를 입력해 주세요." });
-    }
-    const { data: order, error: orderLookupError } = await supabaseAdmin
-      .from("orders")
-      .select("order_no, customer, items, status")
-      .eq("order_no", orderNoStr)
-      .maybeSingle();
-    if (orderLookupError) {
-      console.error("[reviews] 주문 조회 실패:", orderLookupError.message);
-      return res.status(500).json({ error: "주문 확인 중 오류가 발생했습니다." });
-    }
-    if (!order || normalizeTel(order.customer.tel) !== telDigits) {
-      return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
-    }
-    if (order.status === "입금대기" || order.status === "취소") {
-      return res.status(400).json({ error: "결제가 완료된 주문만 리뷰를 작성할 수 있습니다." });
-    }
-    if (productId !== "general" && !(order.items || []).some((it) => it.productId === productId)) {
-      return res.status(400).json({ error: "이 주문 내역에서 해당 상품을 찾을 수 없습니다." });
-    }
-
-    const ratingNum = Math.round(Number(rating));
-    if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
-      return res.status(400).json({ error: "별점은 1~5 사이여야 합니다." });
-    }
-
-    const nameStr = String(name || "").trim().slice(0, 40);
-    const commentStr = String(comment || "").trim().slice(0, 1000);
-    if (!nameStr || !commentStr) {
-      return res.status(400).json({ error: "이름과 리뷰 내용을 입력해 주세요." });
-    }
-
-    // 인스타그램 아이디는 @ 없이 영문·숫자·마침표·밑줄만 허용
-    const instaStr = String(instagram || "").trim().replace(/^@/, "");
-    const instaValid = !instaStr || /^[a-zA-Z0-9._]{1,30}$/.test(instaStr);
-    if (!instaValid) {
-      return res.status(400).json({ error: "인스타그램 아이디 형식을 확인해 주세요." });
-    }
-
-    let photoUrl = null;
-    if (req.file) {
-      try {
-        photoUrl = await uploadReviewPhoto(req.file.buffer);
-      } catch (e) {
-        console.error("[reviews] 사진 업로드 실패:", e.message);
-        return res.status(500).json({ error: "사진 업로드에 실패했습니다." });
-      }
-    }
-
-    const reviewRow = {
-      product_id: productId,
-      order_no: orderNoStr,
-      name: nameStr,
-      rating: ratingNum,
-      comment: commentStr,
-      photo_url: photoUrl,
-      instagram_handle: instaStr || null,
-      approved: false,
-    };
-    let { data, error } = await supabaseAdmin.from("reviews").insert(reviewRow).select().single();
-
-    /* PGRST204 = PostgREST 스키마 캐시에 order_no 컬럼이 없음(021_reviews_order_verification.sql
-       미실행) — 위 구매인증 검증 자체는 이미 통과했으니(주문 존재·연락처 일치·상품 일치 확인
-       끝) 리뷰 작성 자체를 막을 이유는 없다. order_no 없이 다시 저장해 마이그레이션 전에도
-       리뷰 기능이 완전히 멈추지 않게 한다(다른 선택 기능과 같은 "미실행 시 조용히 저하" 원칙 —
-       다만 이 경우는 중복 리뷰 차단·구매인증 배지만 못 켜지고, 실구매 검증 자체는 그대로 됨). */
-    if (error && error.code === "PGRST204") {
-      console.warn("[reviews] reviews.order_no 컬럼 없음(마이그레이션 021 미실행) — order_no 없이 저장");
-      const { order_no, ...fallbackRow } = reviewRow;
-      ({ data, error } = await supabaseAdmin.from("reviews").insert(fallbackRow).select().single());
-    }
-
-    if (error) {
-      // 23505 = reviews_order_product_uidx 위반 — 같은 주문으로 같은 상품에 이미 리뷰를 남긴 경우.
-      if (error.code === "23505") {
-        return res.status(409).json({ error: "이미 이 주문으로 작성한 리뷰가 있습니다." });
-      }
-      console.error("[reviews] 저장 실패:", error.message);
-      return res.status(500).json({ error: "리뷰 저장에 실패했습니다." });
-    }
-
-    res.json(toReviewDto(data));
-  });
-});
-
-app.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
-  const { data, error } = await supabaseAdmin.rpc("increment_helpful", { p_id: req.params.id });
-  if (error) {
-    console.error("[reviews] 공감 처리 실패:", error.message);
-    return res.status(500).json({ error: "처리에 실패했습니다." });
-  }
-  res.json({ helpfulCount: data });
-});
-
-/* ---------- 리뷰 승인 (관리자만) ----------
-   승인 대기(approved=false)인 리뷰가 먼저 오도록 정렬해 관리자가 검수할 목록을 바로 볼 수 있게 한다. */
-/* 리뷰 목록 필터 — q는 작성자명·내용·상품ID 부분 일치, status는 approved/pending(게시중/승인 대기). */
-function applyReviewFilters(query, reqQuery) {
-  const { q, status, dateFrom, dateTo } = reqQuery;
-  if (q) {
-    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
-    if (v) query = query.or(`name.ilike.%${v}%,comment.ilike.%${v}%,product_id.ilike.%${v}%`);
-  }
-  if (status === "approved") query = query.eq("approved", true);
-  else if (status === "pending") query = query.eq("approved", false);
-  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
-  return query;
-}
-
-app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
-  const { page, pageSize, from, to } = paginationParams(req.query);
-  let query = supabaseAdmin
-    .from("reviews")
-    .select("*", { count: "exact" })
-    .order("approved", { ascending: true })
-    .order("created_at", { ascending: false });
-  query = applyReviewFilters(query, req.query);
-  const { data, error, count } = await query.range(from, to);
-
-  if (error) return res.status(500).json({ error: "리뷰 목록을 불러오지 못했습니다." });
-  /* orderNo는 공개 API(toReviewDto)에는 없다 — 다른 고객의 주문번호가 공개 리뷰 목록에
-     노출되면 안 되므로, 관리자 전용 응답에서만 따로 붙인다(실구매 인증 여부를 admin이
-     한눈에 볼 수 있도록 — 021_reviews_order_verification.sql 이전 리뷰는 null). */
-  res.json({ items: data.map((r) => ({ ...toReviewDto(r), orderNo: r.order_no || null })), page, pageSize, total: count ?? data.length });
-});
-
-app.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
-  const { approved } = req.body || {};
-  if (typeof approved !== "boolean") {
-    return res.status(400).json({ error: "approved(true/false)가 필요합니다." });
-  }
-  const { error } = await supabaseAdmin.from("reviews").update({ approved }).eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "승인 처리에 실패했습니다." });
-  logAdminAction(req, "review.update", "review", req.params.id, { approved });
-  res.json({ ok: true });
-});
-
-app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("reviews").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "삭제에 실패했습니다." });
-  logAdminAction(req, "review.delete", "review", req.params.id);
-  res.json({ ok: true });
-});
+/* Works 브라우저 푸시 알림 구독 관리(GET public-key, POST/DELETE subscribe) — 실제 발송은
+   새 주문 접수 시점(위 finalizeCardOrder·POST /api/order)에서 sendPushToAdmins()로 처리한다. */
+app.use(pushRoutes);
 
 /* 상품 Q&A + CS 빠른 답변 템플릿 라우트도 routes/qna.js로 분리됐다(2026-09-01) — 돈·재고를
    건드리지 않는 순수 CRUD라 여기서는 마운트만 한다. */
@@ -2802,6 +2430,72 @@ async function sendMonthlySettlement() {
 cron.schedule("0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
 });
+
+/* ---------- 라우트 등록 순서 검사 (재발 방지) ----------
+   2026-09-01 코드 감사에서 발견된 버그 — Express는 라우트를 등록 순서대로 매칭하는데,
+   `PATCH /api/admin/products/:id`처럼 파라미터가 있는 라우트가 `PATCH .../bulk-active`
+   같은 리터럴 경로보다 먼저 등록되면 ":id"가 그 문자열 자체를 파라미터 값으로 오인해
+   가로채 버린다. 이번에 세 곳(상품·주문·리뷰 일괄 처리)을 사람이 직접 찾아 고쳤지만,
+   "주석으로 기억하기"에만 의존하면 다음에 새 라우트를 추가하는 세션이 또 똑같이 실수할 수
+   있다 — 그래서 서버가 뜰 때마다 실제 등록된 모든 라우트(중첩된 라우터 포함)를 검사해서,
+   이런 충돌이 하나라도 있으면 기동 자체를 막는다. 로컬에서 `npm start`만 해도 바로 드러나고,
+   Render 배포도 크래시로 실패하니 "배포된 채로 몇 주간 조용히 죽어있던" 사고가 구조적으로
+   불가능해진다. */
+function assertNoRouteShadowing(expressApp) {
+  const entries = [];
+  let order = 0;
+
+  function walk(stack) {
+    for (const layer of stack) {
+      if (layer.route) {
+        const routePath = layer.route.path;
+        const methods = Object.keys(layer.route.methods).filter((m) => layer.route.methods[m]);
+        const segments = String(routePath).split("/").filter(Boolean);
+        for (const method of methods) entries.push({ method, segments, order: order++, path: routePath });
+      } else if (layer.name === "router" && layer.handle && layer.handle.stack) {
+        walk(layer.handle.stack);
+      }
+    }
+  }
+  walk(expressApp._router.stack);
+
+  // earlier(파라미터 포함)가 later(전부 리터럴)와 세그먼트 개수가 같고, 파라미터 자리를 뺀
+  // 나머지 리터럴 세그먼트가 전부 일치하면 later를 완전히 가릴 수 있다는 뜻이다.
+  function paramShadowsLiteral(paramSegments, literalSegments) {
+    if (paramSegments.length !== literalSegments.length) return false;
+    for (let i = 0; i < paramSegments.length; i++) {
+      const p = paramSegments[i];
+      if (p.startsWith(":")) continue;
+      if (p !== literalSegments[i]) return false;
+    }
+    return true;
+  }
+
+  const byMethod = new Map();
+  for (const e of entries) {
+    if (!byMethod.has(e.method)) byMethod.set(e.method, []);
+    byMethod.get(e.method).push(e);
+  }
+
+  const problems = [];
+  for (const list of byMethod.values()) {
+    for (const earlier of list) {
+      if (!earlier.segments.some((s) => s.startsWith(":"))) continue; // 파라미터가 없으면 아무것도 못 가림
+      for (const later of list) {
+        if (later.order <= earlier.order) continue;
+        const laterIsLiteral = later.segments.every((s) => !s.startsWith(":"));
+        if (laterIsLiteral && paramShadowsLiteral(earlier.segments, later.segments)) {
+          problems.push(`${earlier.method.toUpperCase()} ${earlier.path} (먼저 등록됨)이 ${later.method.toUpperCase()} ${later.path} (나중에 등록됨)를 가립니다`);
+        }
+      }
+    }
+  }
+
+  if (problems.length) {
+    throw new Error("라우트 등록 순서 충돌 발견 — 리터럴 경로는 반드시 :param 라우트보다 먼저 등록해야 합니다:\n" + problems.join("\n"));
+  }
+}
+assertNoRouteShadowing(app);
 
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);

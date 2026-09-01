@@ -98,6 +98,10 @@
     );
   }
 
+  /* downloadExportFile은 orders.js가 선언한 공용 헬퍼(인증 헤더가 필요해 <a href>로 바로
+     못 걸고 fetch → blob → 임시 링크 클릭 방식을 씀 — 주문·재고·대시보드 내보내기와 동일 패턴). */
+  el("backup-export").addEventListener("click", () => downloadExportFile("/api/admin/backup/export", "reiten-backup", "json"));
+
   el("admin-invite-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = el("ai-submit");
@@ -197,6 +201,7 @@
   const AUDIT_ACTION_LABELS = {
     "order.update": "주문 정보 변경",
     "order.export": "주문 목록 내보내기",
+    "order.bulk_update": "주문 일괄 처리",
     "return.update": "반품 상태 변경",
     "return.restock": "반품 재고 복원",
     "return.refund": "반품 환불",
@@ -204,6 +209,7 @@
     "inventory.bulk_update": "재고 일괄 저장",
     "inventory.export": "재고 목록 내보내기",
     "dashboard.export": "대시보드 내보내기",
+    "backup.export": "전체 데이터 백업 내보내기",
     "coupon.create": "쿠폰 생성",
     "coupon.update": "쿠폰 수정",
     "coupon.delete": "쿠폰 삭제",
@@ -220,6 +226,7 @@
     "setting.update": "정보 수정",
     "setting.delete": "정보 삭제",
     "review.update": "리뷰 승인/숨김",
+    "review.bulk_approve": "리뷰 일괄 승인/숨김",
     "review.delete": "리뷰 삭제",
     "qna.answer": "문의 답변 등록",
   };

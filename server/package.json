@@ -22,7 +22,8 @@
     "multer": "^2.2.0",
     "node-cron": "^3.0.3",
     "pdfkit": "^0.19.1",
-    "resend": "^4.8.0"
+    "resend": "^4.8.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "supertest": "^7.2.2"

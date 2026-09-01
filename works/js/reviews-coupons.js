@@ -1,13 +1,17 @@
   /* ---------- 리뷰 승인 ---------- */
   const reviewsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
 
+  /* 리뷰는 돈이 걸려 있지 않아 반품·주문보다 훨씬 안전하게 일괄 처리할 수 있다 — 상품 탭과
+     같은 체크박스 다중 선택 + 상단 바 패턴(products.js 참고). */
+  const selectedReviewIds = new Set();
+
   function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
 
   function reviewCardHTML(r) {
     return `
       <div class="panel" data-id="${esc(r.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
-          <b>${esc(r.name)}</b>
+          <label class="checkbox" style="gap:6px"><input type="checkbox" class="review-select" data-id="${esc(r.id)}" ${selectedReviewIds.has(r.id) ? "checked" : ""}><b>${esc(r.name)}</b></label>
           <span class="small tnum">${fmtDate(r.at)}</span>
         </div>
         <div style="margin-top:6px;letter-spacing:.05em">${stars(r.rating)}</div>
@@ -26,12 +30,28 @@
       </div>`;
   }
 
+  function updateReviewsBulkBar() {
+    const n = selectedReviewIds.size;
+    el("reviews-bulk-actions").hidden = n === 0;
+    el("reviews-selected-count").textContent = n ? t("{n}개 선택됨", { n }) : "";
+    const loadedIds = reviewsState.items.map((r) => r.id);
+    el("reviews-select-all").checked = loadedIds.length > 0 && loadedIds.every((id) => selectedReviewIds.has(id));
+  }
+
   function renderAdminReviews() {
     el("reviews-summary").textContent = t("총 {n}건", { n: reviewsState.total });
     const hasMore = reviewsState.items.length < reviewsState.total;
     el("admin-reviews-list").innerHTML = reviewsState.items.length
       ? reviewsState.items.map(reviewCardHTML).join("") + loadMoreHTML(hasMore, "admin-reviews-more")
       : `<p class="small">${esc(t("조건에 맞는 리뷰가 없습니다"))}</p>`;
+
+    el("admin-reviews-list").querySelectorAll(".review-select").forEach((cb) =>
+      cb.addEventListener("change", () => {
+        if (cb.checked) selectedReviewIds.add(cb.dataset.id);
+        else selectedReviewIds.delete(cb.dataset.id);
+        updateReviewsBulkBar();
+      })
+    );
 
     el("admin-reviews-list").querySelectorAll(".admin-review-toggle").forEach((btn) =>
       btn.addEventListener("click", async () => {
@@ -57,13 +77,33 @@
         await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
         reviewsState.items = reviewsState.items.filter((x) => x.id !== id);
         reviewsState.total = Math.max(0, reviewsState.total - 1);
+        selectedReviewIds.delete(id);
         toast(t("리뷰를 삭제했습니다"));
         renderAdminReviews();
       })
     );
 
     el("admin-reviews-more")?.addEventListener("click", () => paintAdminReviews(true));
+    updateReviewsBulkBar();
   }
+
+  el("reviews-select-all").addEventListener("change", () => {
+    if (el("reviews-select-all").checked) reviewsState.items.forEach((r) => selectedReviewIds.add(r.id));
+    else reviewsState.items.forEach((r) => selectedReviewIds.delete(r.id));
+    renderAdminReviews();
+  });
+
+  async function runReviewsBulkApprove(approved) {
+    const ids = [...selectedReviewIds];
+    if (!ids.length) return;
+    const r = await adminFetch("/api/admin/reviews/bulk-approve", { method: "PATCH", body: JSON.stringify({ ids, approved }) });
+    if (!r) return; // adminFetch가 이미 실패 사유를 토스트로 띄움
+    selectedReviewIds.clear();
+    toast(approved ? t("{n}개 리뷰를 승인했습니다", { n: r.count }) : t("{n}개 리뷰를 숨겼습니다", { n: r.count }));
+    paintAdminReviews();
+  }
+  el("reviews-bulk-approve").addEventListener("click", () => runReviewsBulkApprove(true));
+  el("reviews-bulk-hide").addEventListener("click", () => runReviewsBulkApprove(false));
 
   function reviewsQueryParams() {
     const params = new URLSearchParams({ page: reviewsState.page, pageSize: reviewsState.pageSize });
