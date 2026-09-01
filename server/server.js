@@ -1370,15 +1370,17 @@ app.use(adminsRoutes);
 app.use(membersRoutes);
 
 /* ---------- 관리자 ---------- */
-/* 필터: q(주문번호·주문자명·연락처 중 아무 데나 부분 일치) · status(정확히 일치) ·
+/* 필터: q(주문번호·주문자명·연락처·이메일 중 아무 데나 부분 일치) · status(정확히 일치) ·
    dateFrom/dateTo(그 날짜의 KST 00:00~23:59:59, YYYY-MM-DD). q는 PostgREST의 or 필터로
-   세 컬럼(주소값은 jsonb라 ->> 로 텍스트 추출)을 한 번에 검색한다.
+   네 컬럼(주소값은 jsonb라 ->> 로 텍스트 추출)을 한 번에 검색한다. 이메일 검색은 2026-09-01에
+   추가 — "회원 계정 관리" 탭에서 특정 회원의 주문 내역으로 바로 넘어올 수 있게 하려면 이메일로도
+   찾아져야 했다(works/js/members.js의 "주문 보기" 참고).
    목록(GET /api/admin/orders)과 내보내기(GET /api/admin/orders/export)가 이 로직을 공유한다. */
 function applyOrderFilters(query, reqQuery) {
   const { q, status, dateFrom, dateTo } = reqQuery;
   if (q) {
     const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
-    if (v) query = query.or(`order_no.ilike.%${v}%,customer->>name.ilike.%${v}%,customer->>tel.ilike.%${v}%`);
+    if (v) query = query.or(`order_no.ilike.%${v}%,customer->>name.ilike.%${v}%,customer->>tel.ilike.%${v}%,customer->>email.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
   query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);

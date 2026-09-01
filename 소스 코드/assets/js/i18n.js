@@ -654,7 +654,21 @@ const I18N = {
   "아직 주문 내역이 없습니다.": { en: "No orders yet.", ja: "まだ注文履歴がありません。", de: "Noch keine Bestellungen." },
   "{name}님, 안녕하세요.": { en: "Hello, {name}", ja: "こんにちは、{name}さん", de: "Hallo, {name}" },
   "이메일 또는 비밀번호가 올바르지 않습니다.": { en: "Incorrect email or password.", ja: "メールアドレスまたはパスワードが正しくありません。", de: "E-Mail oder Passwort ist falsch." },
-  "가입이 완료되었습니다. 로그인해 주세요.": { en: "Sign-up complete. Please log in.", ja: "登録が完了しました。ログインしてください。", de: "Registrierung abgeschlossen. Bitte melden Sie sich an." },
+  "가입 신청이 완료되었습니다. {email}로 보내드린 인증 메일의 링크를 눌러야 로그인할 수 있어요(스팸함도 확인해 주세요).": {
+    en: "Sign-up received. Please click the confirmation link we sent to {email} before logging in (check your spam folder too).",
+    ja: "登録を受け付けました。{email}宛にお送りした確認メールのリンクをクリックしてからログインしてください（迷惑メールフォルダもご確認ください）。",
+    de: "Registrierung eingegangen. Bitte klicken Sie auf den Bestätigungslink, den wir an {email} gesendet haben, bevor Sie sich anmelden (auch den Spam-Ordner prüfen).",
+  },
+  "이메일 인증이 완료됐습니다! 자동으로 로그인되었습니다.": {
+    en: "Email confirmed! You're now logged in.",
+    ja: "メール認証が完了しました！自動的にログインされました。",
+    de: "E-Mail bestätigt! Sie sind jetzt angemeldet.",
+  },
+  "이메일 인증이 완료됐습니다. 로그인해 주세요.": {
+    en: "Email confirmed. Please log in.",
+    ja: "メール認証が完了しました。ログインしてください。",
+    de: "E-Mail bestätigt. Bitte melden Sie sich an.",
+  },
   "이미 가입된 이메일입니다.": { en: "This email is already registered.", ja: "すでに登録されているメールアドレスです。", de: "Diese E-Mail-Adresse ist bereits registriert." },
   "비밀번호는 6자 이상이어야 합니다.": { en: "Password must be at least 6 characters.", ja: "パスワードは6文字以上で入力してください。", de: "Das Passwort muss mindestens 6 Zeichen lang sein." },
   "이메일 형식이 올바르지 않습니다.": { en: "Please enter a valid email address.", ja: "メールアドレスの形式が正しくありません。", de: "Bitte geben Sie eine gültige E-Mail-Adresse ein." },
@@ -1096,8 +1110,8 @@ const I18N = {
 
   /* ---------- 회원 계정 관리 (Works 전용) ---------- */
   "회원 계정 관리": { de: "Mitgliedskonten verwalten" },
-  "가입한 고객 회원 계정을 조회하고, 문제가 있는 계정을 차단하거나 삭제할 수 있습니다.": {
-    de: "Zeigt registrierte Kundenkonten an und ermöglicht es, problematische Konten zu sperren oder zu löschen.",
+  "가입한 고객 회원 계정을 조회·검색하고, 주문 내역 확인, 인증 메일 재발송, 관리자 승격, 차단·삭제까지 여기서 처리할 수 있습니다.": {
+    de: "Registrierte Kundenkonten durchsuchen und verwalten — Bestellungen einsehen, Bestätigungs-E-Mails erneut senden, zum Admin befördern, sperren oder löschen.",
   },
   "이메일·이름 검색": { de: "Nach E-Mail oder Name suchen" },
   "총 {n}명": { de: "{n} insgesamt" },
@@ -1119,6 +1133,20 @@ const I18N = {
     de: "Dieses Mitgliedskonto löschen? Das kann nicht rückgängig gemacht werden. Frühere Bestellungen und Anfragen bleiben ohne Kontobezug erhalten.",
   },
   "회원 계정을 삭제했습니다": { de: "Mitgliedskonto gelöscht" },
+  "CSV 내보내기": { de: "Als CSV exportieren" },
+  "주문 보기": { de: "Bestellungen ansehen" },
+  "인증 메일 재발송": { de: "Bestätigungs-E-Mail erneut senden" },
+  "수동으로 인증 처리": { de: "Manuell als bestätigt markieren" },
+  "관리자로 승격": { de: "Zum Admin befördern" },
+  "인증 메일을 다시 보냈습니다": { de: "Bestätigungs-E-Mail erneut gesendet" },
+  "본인 확인 없이 이 계정의 이메일을 인증됨으로 처리할까요? 인증 메일 발송이 계속 안 될 때만 쓰는 예외 처리입니다.": {
+    de: "Diese E-Mail ohne Identitätsprüfung als bestätigt markieren? Nur als Ausnahme verwenden, wenn der Versand der Bestätigungs-E-Mail wiederholt fehlschlägt.",
+  },
+  "이메일 인증 처리를 완료했습니다": { de: "E-Mail als bestätigt markiert" },
+  "{email} 님을 관리자로 승격할까요? 관리자는 전체 주문·환불·상품·회원 정보에 접근할 수 있게 됩니다.": {
+    de: "{email} zum Admin befördern? Admins erhalten Zugriff auf alle Bestellungen, Rückerstattungen, Produkte und Mitgliedsdaten.",
+  },
+  "관리자로 승격했습니다": { de: "Zum Admin befördert" },
 };
 
 /**

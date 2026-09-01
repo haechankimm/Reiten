@@ -136,3 +136,72 @@ test("DELETE /api/admin/members/:id — 주문·반품·문의는 남기고 회�
   const profile = await supabaseAdmin.from("profiles").select("*").eq("id", CUSTOMER.id).maybeSingle();
   assert.strictEqual(profile.data, null);
 });
+
+test("PATCH /api/admin/members/:id/promote — 관리자로 승격하면 목록에서 사라진다", async () => {
+  const app = buildApp();
+  const res = await request(app).patch(`/api/admin/members/${CUSTOMER.id}/promote`).set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 200);
+
+  const listed = await request(app).get("/api/admin/members").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(listed.body.total, 0);
+
+  const profile = await supabaseAdmin.from("profiles").select("role").eq("id", CUSTOMER.id).maybeSingle();
+  assert.strictEqual(profile.data.role, "admin");
+});
+
+test("PATCH /api/admin/members/:id/promote — 이미 관리자인 계정은 다시 승격 대상이 될 수 없다", async () => {
+  const res = await request(buildApp())
+    .patch(`/api/admin/members/${OTHER_ADMIN_PROFILE.id}/promote`)
+    .set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 400);
+});
+
+/* 인증 메일 재발송·수동 인증 처리는 미인증 계정에서만 의미가 있어, CUSTOMER와 별개로
+   email_confirmed_at이 없는 계정을 하나 더 시드해서 검증한다. */
+const UNCONFIRMED = { id: "cust-2", email: "unconfirmed@example.com" };
+
+function seedWithUnconfirmed() {
+  seedDefault({
+    profiles: [
+      { id: ADMIN.id, role: "admin", created_at: "2026-01-01T00:00:00.000Z" },
+      OTHER_ADMIN_PROFILE,
+      { id: CUSTOMER.id, name: "홍길동", role: "customer", created_at: "2026-02-01T00:00:00.000Z" },
+      { id: UNCONFIRMED.id, name: "미인증", role: "customer", created_at: "2026-02-02T00:00:00.000Z" },
+    ],
+    authUsers: [
+      { id: ADMIN.id, email: ADMIN.email, email_confirmed_at: "2026-01-01T00:00:00.000Z" },
+      { id: OTHER_ADMIN_PROFILE.id, email: "admin2@example.com", email_confirmed_at: "2026-01-01T00:00:00.000Z" },
+      { id: CUSTOMER.id, email: CUSTOMER.email, email_confirmed_at: "2026-02-01T00:00:00.000Z" },
+      { id: UNCONFIRMED.id, email: UNCONFIRMED.email, email_confirmed_at: null },
+    ],
+  });
+}
+
+test("POST /api/admin/members/:id/resend-confirmation — 미인증 계정에는 재발송되고, 이미 인증된 계정은 거부된다", async () => {
+  seedWithUnconfirmed();
+  const app = buildApp();
+
+  const ok = await request(app).post(`/api/admin/members/${UNCONFIRMED.id}/resend-confirmation`).set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(ok.status, 200);
+
+  const already = await request(app).post(`/api/admin/members/${CUSTOMER.id}/resend-confirmation`).set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(already.status, 400);
+});
+
+test("PATCH /api/admin/members/:id/verify-email — 수동 인증 처리하면 목록에 인증됨으로 반영된다", async () => {
+  seedWithUnconfirmed();
+  const app = buildApp();
+
+  const res = await request(app).patch(`/api/admin/members/${UNCONFIRMED.id}/verify-email`).set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 200);
+
+  const listed = await request(app).get("/api/admin/members?q=unconfirmed").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(listed.body.items[0].emailConfirmed, true);
+});
+
+test("GET /api/admin/members/export — CSV로 회원 목록을 내려받는다", async () => {
+  const res = await request(buildApp()).get("/api/admin/members/export").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers["content-type"], /text\/csv/);
+  assert.match(res.text, new RegExp(CUSTOMER.email));
+});

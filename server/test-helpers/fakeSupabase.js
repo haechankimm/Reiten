@@ -156,6 +156,13 @@ function createFakeSupabase(seed = {}) {
         if (!m) return { data: { user: null }, error: { message: "invalid token" } };
         return { data: { user: { id: m[1], email: m[2] } }, error: null };
       },
+      /* routes/members.js의 "인증 메일 재발송"이 쓰는 auth.resend() 흉내 — 실제 메일은
+         당연히 안 보내고, 대상 이메일이 authUsers에 있는지만 확인한다. */
+      async resend({ email } = {}) {
+        const exists = authUsers.some((u) => (u.email || "").toLowerCase() === String(email || "").toLowerCase());
+        if (!exists) return { data: null, error: { message: "user not found" } };
+        return { data: {}, error: null };
+      },
       /* routes/admins.js·routes/members.js가 쓰는 Admin API 최소 흉내. 실제 Supabase는
          auth.users를 지우면 profiles.id의 on delete cascade가 같이 지워주는데, 그 동작까지
          재현해야 "삭제 전 user_id를 null로 끊어두지 않으면 orders/qna가 문제된다"는 실제
@@ -165,11 +172,19 @@ function createFakeSupabase(seed = {}) {
           const from = (page - 1) * perPage;
           return { data: { users: authUsers.slice(from, from + perPage) }, error: null };
         },
+        async getUserById(id) {
+          const u = authUsers.find((x) => x.id === id);
+          if (!u) return { data: { user: null }, error: { message: "user not found" } };
+          return { data: { user: u }, error: null };
+        },
         async updateUserById(id, patch) {
           const u = authUsers.find((x) => x.id === id);
           if (!u) return { data: null, error: { message: "user not found" } };
           if ("ban_duration" in patch) {
             u.banned_until = patch.ban_duration === "none" ? null : new Date(Date.now() + 3e12).toISOString();
+          }
+          if ("email_confirm" in patch && patch.email_confirm) {
+            u.email_confirmed_at = new Date().toISOString();
           }
           return { data: { user: u }, error: null };
         },

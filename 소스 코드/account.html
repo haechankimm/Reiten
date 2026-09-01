@@ -41,6 +41,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         </span>
       </div>
 
+      <!-- 회원가입 직후("메일함에서 인증해주세요") / 인증 메일 링크를 눌러 돌아왔을 때("인증
+           완료") 둘 다 이 자리에서 알려준다 — 토스트는 몇 초 뒤 사라져 놓치기 쉽다는 피드백이라
+           읽고 넘길 때까지 화면에 남아있는 배너로 보여준다. -->
+      <div class="notice" id="auth-notice" hidden style="margin-bottom:24px"></div>
+
       <!-- ============ 비로그인: 로그인/회원가입 ============ -->
       <div id="auth-view" hidden>
         <div class="chips" id="auth-tabs">
@@ -341,6 +346,20 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       history.replaceState(null, "", location.pathname + location.search);
     }
 
+    /* 가입 확인 메일의 링크를 누르면 Supabase가 세션 토큰과 함께 이 페이지로 돌려보내는데
+       (#access_token=...&type=signup), supabase-js가 그 해시를 조용히 읽어 세션만 만들고
+       끝이라 사용자 입장에선 "내가 방금 인증한 게 맞는지, 그냥 버그로 여기 온 건지" 알 방법이
+       없다는 피드백(2026-09-01) — initialHash(해시가 지워지기 전 원본 스냅샷, 위 참고)로
+       감지해서 명시적으로 알려준다. */
+    const isSignupConfirm = /type=signup/.test(initialHash);
+    if (isSignupConfirm) {
+      el("auth-notice").textContent = profile
+        ? t("이메일 인증이 완료됐습니다! 자동으로 로그인되었습니다.")
+        : t("이메일 인증이 완료됐습니다. 로그인해 주세요.");
+      el("auth-notice").hidden = false;
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
     const savedEmail = localStorage.getItem("reiten_saved_email");
     if (savedEmail) {
       el("li-email").value = savedEmail;
@@ -479,7 +498,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         btn.disabled = false;
         return;
       }
-      toast(t("가입이 완료되었습니다. 로그인해 주세요."));
+      /* "가입이 완료되었습니다, 로그인해 주세요"는 이메일 인증이 먼저 필요하다는 걸 안 알려줘서,
+         처음 가입하는 사람이 곧장 로그인부터 시도했다가 "이메일 또는 비밀번호가 틀렸다"는 것처럼
+         보이는 email_not_confirmed 에러만 보게 되는 문제가 있었다(2026-09-01, 실제 신규 가입
+         재현으로 확인) — 지금 할 일이 "로그인"이 아니라 "메일함 확인"이라는 걸 명확히 안내한다. */
+      const signupEmail = el("su-email").value.trim();
+      el("auth-notice").textContent = t("가입 신청이 완료되었습니다. {email}로 보내드린 인증 메일의 링크를 눌러야 로그인할 수 있어요(스팸함도 확인해 주세요).", { email: signupEmail });
+      el("auth-notice").hidden = false;
+      el("signup-form").reset();
       el("auth-tabs").querySelector('[data-tab="login"]')?.click();
       btn.disabled = false;
     });
