@@ -659,6 +659,11 @@ const I18N = {
   "비밀번호는 6자 이상이어야 합니다.": { en: "Password must be at least 6 characters.", ja: "パスワードは6文字以上で入力してください。", de: "Das Passwort muss mindestens 6 Zeichen lang sein." },
   "이메일 형식이 올바르지 않습니다.": { en: "Please enter a valid email address.", ja: "メールアドレスの形式が正しくありません。", de: "Bitte geben Sie eine gültige E-Mail-Adresse ein." },
   "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.": { en: "Too many requests. Please try again shortly.", ja: "リクエストが多すぎます。しばらくしてからもう一度お試しください。", de: "Zu viele Anfragen. Bitte versuchen Sie es in Kürze erneut." },
+  "이메일 인증이 필요합니다. 가입하신 이메일함에서 인증 링크를 확인해 주세요.": {
+    en: "Please verify your email — check your inbox for the confirmation link.",
+    ja: "メール認証が必要です。登録したメールの認証リンクをご確認ください。",
+    de: "E-Mail-Bestätigung erforderlich — bitte prüfen Sie Ihr Postfach nach dem Bestätigungslink.",
+  },
 
   /* ---------- 비밀번호 재설정 ---------- */
   "비밀번호를 잊으셨나요?": { en: "Forgot your password?", ja: "パスワードをお忘れですか？", de: "Passwort vergessen?" },

@@ -215,6 +215,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (/rate limit|too many requests/i.test(msg) || error?.code === "over_email_send_rate_limit") {
       return t("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
     }
+    /* 로그인 실패 사유를 확인 안 하고 무조건 "이메일 또는 비밀번호가 올바르지 않습니다"로
+       띄우던 버그(2026-09-01 발견) — 이메일 인증을 아직 안 한 계정으로 로그인하면 Supabase가
+       완전히 다른 에러("Email not confirmed", code: email_not_confirmed)를 주는데 이것도
+       똑같이 "비밀번호가 틀렸다"고 나와서, 실제로는 가입 메일의 인증 링크를 눌러야 하는
+       사람이 계속 비밀번호만 의심하게 만들고 있었다. 실제 계정으로 재현해 에러 코드 확인함. */
+    if (error?.code === "email_not_confirmed" || /email not confirmed/i.test(msg)) {
+      return t("이메일 인증이 필요합니다. 가입하신 이메일함에서 인증 링크를 확인해 주세요.");
+    }
+    if (/invalid login credentials/i.test(msg)) return t("이메일 또는 비밀번호가 올바르지 않습니다.");
     return msg;
   }
 
@@ -370,7 +379,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         password: el("li-pw").value,
       });
       if (error) {
-        el("li-err").textContent = t("이메일 또는 비밀번호가 올바르지 않습니다.");
+        el("li-err").textContent = authErrorMessage(error);
         el("li-err").classList.add("on");
         btn.disabled = false;
         return;
