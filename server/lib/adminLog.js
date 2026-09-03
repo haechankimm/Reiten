@@ -59,4 +59,25 @@ function logSystemError(type, detail) {
     });
 }
 
-module.exports = { logAdminAction, logInventoryChange, logSystemError };
+/* ---------- 결제 트랜잭션 로그 ----------
+   지금까지는 포트원 검증 실패·금액 불일치·조회 에러가 전부 console.error로만 남고 어디에도
+   저장되지 않아서, 주문으로 안 이어진 결제 시도는 사실상 흔적이 없었다(030_payment_log.sql,
+   2026-09 "결제 트랜잭션 로그" 요청). 성공(paid)은 finalizeCardOrder가, 실패·불일치·에러는
+   웹훅과 /api/order 카드 분기 양쪽이 각자 이 함수로 남긴다. */
+function logPaymentAttempt({ paymentId, orderNo, status, amount, method, reason }) {
+  supabaseAdmin
+    .from("payment_log")
+    .insert({
+      payment_id: paymentId,
+      order_no: orderNo || null,
+      status,
+      amount: amount ?? null,
+      method: method || "card",
+      reason: reason || null,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[payment-log] 적재 실패:", error.message);
+    });
+}
+
+module.exports = { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt };

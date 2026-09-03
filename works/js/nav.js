@@ -7,7 +7,44 @@
       })
     );
   }
-  switchTabs("#sidebar .nav-item", { orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", members: "admin-members", settings: "admin-settings", dashboard: "admin-dashboard", auditlog: "admin-auditlog" });
+  switchTabs("#sidebar .nav-item", {
+    home: "admin-home",
+    orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
+    paymentlog: "admin-paymentlog",
+    products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
+    members: "admin-members", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
+    dashboard: "admin-dashboard",
+  });
+
+  /* ---------- 사이드바 카테고리 아코디언 ----------
+     figlo WORKS의 펼침/접힘 가능한 카테고리 그룹을 본떴다(2026-09) — 기본은 전부 펼침, 접은
+     상태는 관리자별 브라우저에 기억해둔다(로그인할 때마다 다시 펼 필요 없게). 배지가 있는
+     탭(주문·반품·재고·Q&A)은 전부 "업무" 그룹 안에 있고 그 그룹은 첫 방문 때 항상 펼쳐진
+     상태로 시작하므로, 접힌 그룹 안의 배지를 강제로 펼쳐 보여주는 로직은 따로 두지 않았다
+     (필요해지면 이 함수에 추가). */
+  const NAV_GROUP_STORAGE_KEY = "works_nav_group_state";
+  function initNavGroups() {
+    let state = {};
+    try { state = JSON.parse(localStorage.getItem(NAV_GROUP_STORAGE_KEY) || "{}"); } catch (e) {}
+
+    document.querySelectorAll(".nav-group").forEach((group) => {
+      const key = group.dataset.group;
+      const header = group.querySelector(".nav-group-header");
+      const body = group.querySelector(".nav-group-body");
+      const expanded = state[key] !== false; // 기본값: 펼침
+      body.hidden = !expanded;
+      header.setAttribute("aria-expanded", String(expanded));
+
+      header.addEventListener("click", () => {
+        const nextExpanded = body.hidden; // 지금 숨겨져 있으면 펼치는 동작
+        body.hidden = !nextExpanded;
+        header.setAttribute("aria-expanded", String(nextExpanded));
+        state[key] = nextExpanded;
+        try { localStorage.setItem(NAV_GROUP_STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      });
+    });
+  }
+  initNavGroups();
 
   /* ---------- 모바일 사이드바 서랍(drawer) 열기/닫기 ----------
      좁은 화면에서만 CSS로 실제 서랍처럼 보이고(위 @media 참고), 넓은 화면에서는

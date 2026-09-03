@@ -88,7 +88,30 @@
     background: var(--bg-surface); border-right: 1px solid var(--border);
     padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;
   }
-  .sidebar-heading { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); padding: 6px 10px 8px; }
+  /* ---------- 사이드바 카테고리 아코디언(2026-09) ----------
+     figlo WORKS를 참고해 평면 목록이던 사이드바를 펼침/접힘 가능한 카테고리 그룹으로 바꿨다.
+     그룹마다 --group-ink/--group-bg를 지정해 왼쪽 컬러 바 + 호버 배경으로 구분한다 — 새
+     색을 발명하지 않고 이미 있는 상태칩 토큰(주문 상태 표시용)을 재사용했다: 결제=confirmed
+     (틸), 상품·마케팅=shipping(보라), 회원·운영=pending(앰버), 분석=done(초록). */
+  .nav-group { display: flex; flex-direction: column; }
+  .nav-group[data-group="work"] .nav-group-header { --group-ink: var(--accent); --group-bg: var(--accent-soft); }
+  .nav-group[data-group="payments"] .nav-group-header { --group-ink: var(--status-confirmed-ink); --group-bg: var(--status-confirmed-bg); }
+  .nav-group[data-group="product"] .nav-group-header { --group-ink: var(--status-shipping-ink); --group-bg: var(--status-shipping-bg); }
+  .nav-group[data-group="ops"] .nav-group-header { --group-ink: var(--status-pending-ink); --group-bg: var(--status-pending-bg); }
+  .nav-group[data-group="analysis"] .nav-group-header { --group-ink: var(--status-done-ink); --group-bg: var(--status-done-bg); }
+  .nav-group-header {
+    appearance: none; border: none; background: transparent; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 10px;
+    padding: 6px 10px; border-left: 2px solid var(--group-ink, var(--border));
+    font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--group-ink, var(--text-muted));
+  }
+  .nav-group-header:hover { background: var(--group-bg, var(--bg-surface-2)); }
+  .nav-group-chevron { width: 12px; height: 12px; flex-shrink: 0; transition: transform .15s ease; opacity: .85; }
+  .nav-group-header[aria-expanded="false"] .nav-group-chevron { transform: rotate(-90deg); }
+  .nav-group-body { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+  .nav-group-body[hidden] { display: none; }
+  .nav-item--home { margin-bottom: 4px; }
   .nav-item {
     appearance: none; border: none; background: transparent; color: var(--text-secondary);
     display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer;

@@ -40,6 +40,20 @@ class FakeQuery {
     this.inFilters.push([col, values]);
     return this;
   }
+  /* routes/payments.js 등이 "검색어 하나로 여러 컬럼 중 아무 데나" 찾을 때 쓰는 .or() 대응 —
+     PostgREST 문자열 형식("col.ilike.%v%,col2.ilike.%v%")을 파싱한다. ilike만 지원(지금 이
+     형식으로 쓰는 라우트가 전부 ilike라서) — jsonb 경로(customer->>name 같은) 컬럼은
+     실제 Supabase에서만 검증되고 이 가짜 클라이언트에서는 안 걸러진다(해당 필드는 항상
+     undefined로 취급돼 매치 안 됨 — 필요해지면 여기서 확장). */
+  or(expr) {
+    this.orFilters = String(expr || "")
+      .split(",")
+      .map((part) => {
+        const [col, op, pattern] = part.split(".");
+        return { col, op, pattern };
+      });
+    return this;
+  }
   /* routes/colors.js가 jsonb 배열 컬럼에 특정 값이 들어있는지 확인할 때 쓰는 .contains() 대응
      ("cs" 연산자, value는 JSON 문자열) — 지금은 이 조합 하나만 지원한다. */
   filter(col, op, value) {
@@ -60,6 +74,15 @@ class FakeQuery {
     this.rangeTo = to;
     return this;
   }
+  /* routes/payments.js의 CSV 내보내기처럼 "최대 N건까지만" 쓰는 .limit() 대응 — 지금까지
+     이 메서드가 아예 없어서 부르는 즉시 TypeError가 났는데, async 라우트 핸들러 안에서 난
+     동기 예외라 처리되지 않은 프라미스 거부(unhandled rejection)로 조용히 남아 응답을 영영
+     안 보내고, 그걸 기다리는 supertest 요청이 그대로 멈춰버렸다(2026-09 실제로 겪고 발견 —
+     .in()/.upsert()/.or() 때와 같은 종류의 구멍). */
+  limit(n) {
+    this.limitN = n;
+    return this;
+  }
   single() {
     this.mode = "single";
     return this;
@@ -71,6 +94,14 @@ class FakeQuery {
   insert(rows) {
     this.op = "insert";
     this.insertRows = Array.isArray(rows) ? rows : [rows];
+    return this;
+  }
+  /* routes/products.js의 bulk-color·bulk-price가 "있으면 병합, 없으면 새로" 쓰는 .upsert()
+     대응 — onConflict 컬럼으로 기존 행을 찾아 Object.assign으로 병합하고, 없으면 새로 넣는다. */
+  upsert(rows, opts = {}) {
+    this.op = "upsert";
+    this.upsertRows = Array.isArray(rows) ? rows : [rows];
+    this.upsertConflictCol = (opts && opts.onConflict) || "id";
     return this;
   }
   update(patch) {
@@ -87,7 +118,13 @@ class FakeQuery {
       (r) =>
         this.filters.every(([col, val]) => r[col] === val) &&
         (this.inFilters || []).every(([col, values]) => values.includes(r[col])) &&
-        (this.jsonContainsFilters || []).every(([col, needle]) => needle.every((v) => (r[col] || []).includes(v)))
+        (this.jsonContainsFilters || []).every(([col, needle]) => needle.every((v) => (r[col] || []).includes(v))) &&
+        (!this.orFilters ||
+          this.orFilters.some(({ col, op, pattern }) => {
+            if (op !== "ilike" || !(col in r)) return false;
+            const needle = String(pattern || "").replace(/%/g, "").toLowerCase();
+            return String(r[col] ?? "").toLowerCase().includes(needle);
+          }))
     );
   }
   _execute() {
@@ -100,6 +137,20 @@ class FakeQuery {
       const matched = this._matched();
       matched.forEach((row) => Object.assign(row, this.updatePatch));
       return { rows: matched };
+    }
+    if (this.op === "upsert") {
+      const conflictCol = this.upsertConflictCol;
+      const rows = this.upsertRows.map((row) => {
+        const existing = this.store.find((r) => r[conflictCol] === row[conflictCol]);
+        if (existing) {
+          Object.assign(existing, row);
+          return existing;
+        }
+        const created = { id: genId(), created_at: new Date().toISOString(), ...row };
+        this.store.push(created);
+        return created;
+      });
+      return { rows };
     }
     if (this.op === "delete") {
       const matched = this._matched();
@@ -117,6 +168,7 @@ class FakeQuery {
     }
     const count = rows.length;
     if (this.rangeFrom != null) rows = rows.slice(this.rangeFrom, this.rangeTo + 1);
+    if (this.limitN != null) rows = rows.slice(0, this.limitN);
     return { rows, count };
   }
   then(resolve, reject) {

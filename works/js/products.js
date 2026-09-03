@@ -637,6 +637,23 @@
       return r;
     })
   );
+  /* 일괄 가격 수정(2026-09) — 세일 시즌에 여러 상품 가격을 한 번에 바꾸는 용도. mode는
+     서버(routes/products.js의 bulk-price)가 그대로 검증하므로 여기선 빈 값만 막는다. */
+  el("products-bulk-price-apply").addEventListener("click", () =>
+    runProductsBulkAction(async (ids) => {
+      const mode = el("products-bulk-price-mode").value;
+      const value = Number(el("products-bulk-price-value").value);
+      if (!Number.isFinite(value) || el("products-bulk-price-value").value.trim() === "") {
+        toast(t("적용할 값을 입력해 주세요."));
+        return null;
+      }
+      const modeLabel = mode === "percent" ? "%" : mode === "fixed" ? t("원 조정") : t("원으로 지정");
+      if (!confirm(t("선택한 {n}개 상품 가격을 {value}{mode} 적용할까요?", { n: ids.length, value, mode: modeLabel }))) return null;
+      const r = await adminFetch("/api/admin/products/bulk-price", { method: "PATCH", body: JSON.stringify({ ids, mode, value }) });
+      if (r) toast(t("{n}개 상품 가격을 수정했습니다", { n: r.count }));
+      return r;
+    })
+  );
   el("products-bulk-delete").addEventListener("click", () =>
     runProductsBulkAction(async (ids) => {
       if (!confirm(t("선택한 {n}개 상품을 정말 삭제하시겠습니까? 되돌릴 수 없습니다.", { n: ids.length }))) return null;

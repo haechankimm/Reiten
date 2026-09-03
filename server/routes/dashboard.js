@@ -61,6 +61,7 @@ async function computeDashboardStats() {
   const monthKey = kstMonthKey(now);
 
   let todayRevenue = 0;
+  let todayOrders = 0;
   let monthRevenue = 0;
   let pendingCount = 0;
   const revenueByDay = new Map();
@@ -79,7 +80,7 @@ async function computeDashboardStats() {
     if (o.status === "입금대기") pendingCount++;
     if (!isCancelled(o)) {
       const dayKey = kstDateKey(o.created_at);
-      if (dayKey === todayKey) todayRevenue += o.total;
+      if (dayKey === todayKey) { todayRevenue += o.total; todayOrders++; }
       if (kstMonthKey(o.created_at) === monthKey) monthRevenue += o.total;
       if (revenueByDay.has(dayKey)) revenueByDay.set(dayKey, revenueByDay.get(dayKey) + o.total);
 
@@ -119,6 +120,7 @@ async function computeDashboardStats() {
 
   return {
     todayRevenue,
+    todayOrders,
     monthRevenue,
     totalOrders: totalOrdersCount ?? data.length,
     pendingCount,

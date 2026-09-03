@@ -6,6 +6,7 @@
 const webpush = require("web-push");
 const { supabaseAdmin } = require("./supabase");
 const { isMissingSchemaError } = require("./pgErrors");
+const { logSystemError } = require("./adminLog");
 
 const configured = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 if (configured) {
@@ -34,7 +35,12 @@ async function sendPushToAdmins(payload) {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, body);
       } catch (err) {
         if (err.statusCode === 404 || err.statusCode === 410) staleEndpoints.push(sub.endpoint);
-        else console.error("[push] 알림 발송 실패:", err.message);
+        else {
+          console.error("[push] 알림 발송 실패:", err.message);
+          // 만료된 구독(위 분기) 정리는 자동으로 되지만, 그 외 진짜 실패는 지금까지 콘솔에서만
+          // 사라졌다 — "발송 실패 아웃박스" 탭에서도 보이도록 다른 알림 채널과 같은 로그를 남긴다.
+          logSystemError("notification_failed", { channel: "push", kind: payload.tab || "admin_push", error: err.message });
+        }
       }
     })
   );

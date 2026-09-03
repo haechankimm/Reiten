@@ -40,7 +40,7 @@ const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmt
 const portone = require("./lib/portone");
 const { kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
-const { logAdminAction, logInventoryChange, logSystemError } = require("./lib/adminLog");
+const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt } = require("./lib/adminLog");
 const { writeLimiter } = require("./lib/rateLimiters");
 const {
   FIRST_PURCHASE_COUPON_CODE_PREFIX,
@@ -67,6 +67,9 @@ const productsRoutes = require("./routes/products");
 const reviewsRoutes = require("./routes/reviews");
 const restockRoutes = require("./routes/restock");
 const pushRoutes = require("./routes/push");
+const paymentsRoutes = require("./routes/payments");
+const noticesRoutes = require("./routes/notices");
+const outboxRoutes = require("./routes/outbox");
 const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -193,10 +196,12 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     verified = await portone.getVerifiedPayment(paymentId);
   } catch (e) {
     console.error("[payments/webhook] 결제 조회 실패:", e.message);
+    logPaymentAttempt({ paymentId, status: "error", amount: pending.total, reason: e.message });
     return res.status(500).end(); // 포트원이 재시도하도록 5xx로 응답
   }
   if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
     console.error("[payments/webhook] 금액/상태 불일치:", paymentId);
+    logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
     return res.status(200).end(); // 재시도해도 결과가 같으므로 200으로 끝내 재전송을 막는다
   }
 
@@ -703,6 +708,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   }
 
   await supabaseAdmin.from("pending_payments").delete().eq("payment_id", paymentId);
+  logPaymentAttempt({ paymentId, orderNo: saved.order_no, status: "paid", amount: saved.total });
 
   sendAdminCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 관리자 알림 메일 발송 실패:", err.message));
   sendCustomerCardPaid(saved).catch((err) => console.error("[mailer] 카드결제 완료 메일 발송 실패:", err.message));
@@ -923,6 +929,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       verified = await portone.getVerifiedPayment(paymentId);
     } catch (e) {
       console.error("[order] 결제 조회 실패:", e.message);
+      logPaymentAttempt({ paymentId, status: "error", amount: pending.total, reason: e.message });
       return res.status(502).json({ error: "결제 확인 중 오류가 발생했습니다." });
     }
     if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
@@ -930,6 +937,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         "[order] 결제 검증 실패:", paymentId,
         "status=", verified.status, "amount=", verified.amount && verified.amount.total, "expected=", pending.total
       );
+      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
       return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
     }
 
@@ -1337,6 +1345,7 @@ const SYSTEM_ERROR_LABEL = {
   refund_failed: "환불 실패",
   order_finalize_failed: "카드결제 후 주문 확정 실패",
   bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
+  notification_failed: "알림 발송 실패",
 };
 
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
@@ -2179,6 +2188,13 @@ app.use(pushRoutes);
 /* 상품 Q&A + CS 빠른 답변 템플릿 라우트도 routes/qna.js로 분리됐다(2026-09-01) — 돈·재고를
    건드리지 않는 순수 CRUD라 여기서는 마운트만 한다. */
 app.use(qnaRoutes);
+
+/* 결제 트랜잭션 로그(조회 전용)·공지 게시판·알림 발송 실패 아웃박스(조회 전용) — 셋 다
+   2026-09 신규 기능, 돈이 실제로 오가는 처리는 전혀 없어(트랜잭션 로그·아웃박스는 읽기 전용,
+   공지는 순수 텍스트 CRUD) 처음부터 routes/*.js로 분리했다. */
+app.use(paymentsRoutes);
+app.use(noticesRoutes);
+app.use(outboxRoutes);
 
 
 /* ---------- 미입금 주문 자동취소 ----------

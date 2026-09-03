@@ -104,6 +104,52 @@ router.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) =>
   res.json({ ok: true, count: updates.length });
 });
 
+/* 일괄 가격 수정(2026-09) — 세일 시즌에 여러 상품 가격을 한 번에 바꾸는 용도. 세 모드:
+   percent(현재가 대비 ±%, 반올림) · fixed(현재가에 고정액 더하기/빼기) · set(선택한 전부를
+   같은 값으로). set은 상품마다 값이 똑같아 한 번의 UPDATE로 끝나지만, percent·fixed는
+   상품마다 "현재가"가 달라 결과가 다르므로 bulk-color처럼 먼저 조회한 뒤 upsert한다.
+   음수·0원이 되는 걸 막기 위해 최종값을 1원 이상으로 clamp한다. */
+router.patch("/api/admin/products/bulk-price", requireAdmin, async (req, res) => {
+  const ids = parseBulkIds(req.body);
+  const mode = String((req.body && req.body.mode) || "");
+  const value = Number(req.body && req.body.value);
+  if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
+  if (!["percent", "fixed", "set"].includes(mode)) return res.status(400).json({ error: "mode는 percent·fixed·set 중 하나여야 합니다." });
+  if (!Number.isFinite(value)) return res.status(400).json({ error: "값을 입력해 주세요." });
+
+  if (mode === "set") {
+    const price = Math.floor(value);
+    if (price <= 0) return res.status(400).json({ error: "가격은 0보다 커야 합니다." });
+    const { error } = await supabaseAdmin.from("products").update({ price, updated_at: new Date().toISOString() }).in("id", ids);
+    if (error) {
+      console.error("[admin/products] 일괄 가격 수정(set) 실패:", error.message);
+      return res.status(500).json({ error: "일괄 가격 수정에 실패했습니다." });
+    }
+    logAdminAction(req, "product.bulk_price", "product", `${ids.length}건`, { ids, mode, value, price });
+    return res.json({ ok: true, count: ids.length });
+  }
+
+  const { data: rows, error: fetchError } = await supabaseAdmin.from("products").select("id, price").in("id", ids);
+  if (fetchError) {
+    console.error("[admin/products] 일괄 가격 수정 조회 실패:", fetchError.message);
+    return res.status(500).json({ error: "일괄 가격 수정에 실패했습니다." });
+  }
+
+  const updates = rows.map((r) => {
+    const next = mode === "percent" ? Math.round(r.price * (1 + value / 100)) : r.price + Math.floor(value);
+    return { id: r.id, price: Math.max(1, next), updated_at: new Date().toISOString() };
+  });
+  if (updates.length) {
+    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    if (updateError) {
+      console.error("[admin/products] 일괄 가격 수정 실패:", updateError.message);
+      return res.status(500).json({ error: "일괄 가격 수정에 실패했습니다." });
+    }
+  }
+  logAdminAction(req, "product.bulk_price", "product", `${ids.length}건`, { ids, mode, value });
+  res.json({ ok: true, count: updates.length });
+});
+
 router.delete("/api/admin/products/bulk", requireAdmin, async (req, res) => {
   const ids = parseBulkIds(req.body);
   if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });

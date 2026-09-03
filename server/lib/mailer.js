@@ -1,7 +1,23 @@
 const { Resend } = require("resend");
 const { SITE, COURIERS } = require("../../소스 코드/assets/js/data.js");
+const { logSystemError } = require("./adminLog");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+/* Resend SDK는 실패해도 예외를 안 던지고 {data, error}만 돌려주는데, 지금까지 이 파일의 모든
+   발송 함수가 그 반환값을 확인하지 않아 실패해도 완전히 무음이었다(2026-09 "알림 발송 실패
+   아웃박스" 작업 중 발견 — 회원가입 확인 메일이 반복해서 실패했던 사고도 결국 이걸 아무도
+   못 봐서 오래 못 알아챈 것과 같은 종류의 문제). 이제 모든 발송을 이 래퍼로 통일해서, 실패하면
+   반드시 system_error_log에 남긴다(Works "발송 실패 아웃박스" 탭이 type='notification_failed'로
+   이걸 읽는다). kind는 어떤 종류의 메일인지 구분하는 짧은 식별자 — 함수당 하나씩 고정. 호출부의
+   `!resend` 가드가 이미 위에서 걸러줘서 이 시점엔 resend가 항상 있다고 가정해도 된다. */
+async function sendTracked(kind, payload) {
+  const { error } = await resend.emails.send(payload);
+  if (error) {
+    console.error(`[mailer] 발송 실패(${kind}):`, error.message || error);
+    logSystemError("notification_failed", { channel: "email", kind, to: payload.to, error: error.message || String(error) });
+  }
+}
 
 function won(n) {
   return Number(n || 0).toLocaleString("ko-KR") + "원";
@@ -28,7 +44,7 @@ async function sendOrderNotification(order) {
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("order_notification", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] 새 주문 접수 — ${order.order_no}`,
@@ -49,7 +65,7 @@ async function sendOrderNotification(order) {
 async function sendCustomerOrderReceived(order) {
   if (!resend || !order.customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_order_received", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -73,7 +89,7 @@ async function sendCustomerOrderReceived(order) {
 async function sendCustomerPaymentConfirmed(order) {
   if (!resend || !order.customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_payment_confirmed", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -99,7 +115,7 @@ async function sendCustomerShipped(order) {
       ? courierInfo.urlTemplate.replace("{tracking}", encodeURIComponent(order.tracking_no))
       : null;
 
-  await resend.emails.send({
+  await sendTracked("customer_shipped", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -119,7 +135,7 @@ async function sendCustomerShipped(order) {
 async function sendAdminLowStock(items) {
   if (!resend || !process.env.ADMIN_NOTIFY_EMAIL || !items.length) return;
 
-  await resend.emails.send({
+  await sendTracked("admin_low_stock", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] 재고 소진 — ${items.map((it) => `${it.name} ${it.size}`).join(", ")}`,
@@ -140,7 +156,7 @@ async function sendAdminLowStock(items) {
 async function sendAdminRestockAlert(items, thresholdDays) {
   if (!resend || !process.env.ADMIN_NOTIFY_EMAIL || !items.length) return;
 
-  await resend.emails.send({
+  await sendTracked("admin_restock_alert", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] 발주 필요 — ${items.length}개 조합이 장기 품절 상태입니다`,
@@ -171,7 +187,7 @@ async function sendAdminCardPaid(order) {
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_card_paid", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] 카드결제 완료 — ${order.order_no}`,
@@ -193,7 +209,7 @@ async function sendAdminCardPaid(order) {
 async function sendCustomerCardPaid(order) {
   if (!resend || !order.customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_card_paid", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -213,7 +229,7 @@ async function sendCustomerCardPaid(order) {
 async function sendCustomerAutoCancelled(order) {
   if (!resend || !order.customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_auto_cancelled", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -234,7 +250,7 @@ async function sendCustomerAutoCancelled(order) {
 async function sendCustomerOrderCancelled(order, reason) {
   if (!resend || !order.customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_order_cancelled", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: order.customer.email,
     replyTo: SITE.order.email,
@@ -258,7 +274,7 @@ async function sendAdminCardCancelFailed({ paymentId, productId, size, cancelErr
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_card_cancel_failed", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] ⚠️ 긴급 — 카드결제 취소 실패 (재고부족 후)`,
@@ -282,7 +298,7 @@ async function sendAdminOrderFinalizeFailed({ paymentId, stage, reason, paymentC
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_order_finalize_failed", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] ⚠️ 긴급 — 카드결제 후 주문 확정 실패`,
@@ -304,7 +320,7 @@ async function sendAdminRefundFailed({ orderNo, amount, error }) {
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_refund_failed", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] ⚠️ 긴급 — 반품 자동환불 실패 (${orderNo})`,
@@ -327,7 +343,7 @@ async function sendAdminLoginLocked({ email, failCount }) {
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_login_locked", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] ⚠️ 관리자 로그인 ${failCount}회 연속 실패로 잠김 — ${email}`,
@@ -348,7 +364,7 @@ async function sendAdminSettlementReport({ monthLabel, summary, buffer }) {
     return;
   }
 
-  await resend.emails.send({
+  await sendTracked("admin_settlement_report", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: process.env.ADMIN_NOTIFY_EMAIL,
     subject: `[REITEN] ${monthLabel} 정산 리포트`,
@@ -370,7 +386,7 @@ async function sendAdminSettlementReport({ monthLabel, summary, buffer }) {
 async function sendCustomerFirstPurchaseThanks({ customer, code, discountValue }) {
   if (!resend || !customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_first_purchase_thanks", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: customer.email,
     replyTo: SITE.order.email,
@@ -390,7 +406,7 @@ async function sendCustomerFirstPurchaseThanks({ customer, code, discountValue }
 async function sendCustomerRepeatPurchaseThanks({ customer, code, discountValue, purchaseCount }) {
   if (!resend || !customer.email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_repeat_purchase_thanks", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: customer.email,
     replyTo: SITE.order.email,
@@ -411,7 +427,7 @@ async function sendCustomerRepeatPurchaseThanks({ customer, code, discountValue,
 async function sendCustomerRestockNotice({ email, productId, productName, color, size }) {
   if (!resend || !email) return;
 
-  await resend.emails.send({
+  await sendTracked("customer_restock_notice", {
     from: process.env.RESEND_FROM || "onboarding@resend.dev",
     to: email,
     replyTo: SITE.order.email,

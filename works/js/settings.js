@@ -76,6 +76,7 @@
      들어간 account.html에서 본인이 직접 비밀번호를 정하면 끝난다(관리자가 임시 비밀번호를
      만들어 전달할 필요 없음). */
   let currentAdminId = null;
+  let currentAdminEmail = null; // notices.js가 "본인 글인지" 판단할 때 씀
   /* 마스터 관리자(lib/auth.js의 MASTER_ADMIN_EMAIL)인지 — 서버는 이미 requireMasterAdmin으로
      막고 있으니 이 프런트 쪽 숨김은 실제 방어선이 아니라, 권한 없는 관리자에게 눌러도 되는
      것처럼 보이는 버튼을 안 보여줘 헷갈리지 않게 하는 용도일 뿐이다. */
