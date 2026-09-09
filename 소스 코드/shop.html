@@ -34,7 +34,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         전 품목 남녀공용 오버핏입니다. 사이즈 실측은 각 상품 페이지에서 확인하세요.
       </p>
 
-      <div class="chips" style="margin-top:30px" id="cats" data-reveal="140"></div>
+      <div class="field" style="max-width:36ch;margin-top:30px" data-reveal="120">
+        <label for="shop-search" class="sr-only" data-i18n="상품 검색">상품 검색</label>
+        <input id="shop-search" type="search" data-i18n-attr="placeholder:상품명으로 검색" placeholder="상품명으로 검색" autocomplete="off">
+      </div>
+      <div class="chips" style="margin-top:18px" id="cats" data-reveal="140"></div>
       <hr class="rule" style="margin:26px 0 34px">
 
       <div class="grid" id="grid"></div>
@@ -63,15 +67,33 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const catsEl = document.getElementById("cats");
     const gridEl = document.getElementById("grid");
     const noneEl = document.getElementById("none");
+    const searchEl = document.getElementById("shop-search");
+    searchEl.value = qs("q") || "";
+
+    // 상품 수가 적어(9종 안팎) 서버 검색 없이 이름·설명·카테고리를 그대로 훑는 클라이언트 필터로 충분하다.
+    function matchesSearch(p, needle) {
+      if (!needle) return true;
+      const haystack = [p.nameKo, p.name, p.short, p.desc, t(p.category)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    }
 
     function paint() {
       catsEl.innerHTML = cats.map(c =>
         `<button class="chip" type="button" data-cat="${esc(c)}" aria-pressed="${c === active}">${esc(t(c))}</button>`
       ).join("");
 
-      const list = active === "전체" ? PRODUCTS : PRODUCTS.filter(p => p.category === active);
+      const needle = searchEl.value.trim().toLowerCase();
+      const list = (active === "전체" ? PRODUCTS : PRODUCTS.filter(p => p.category === active))
+        .filter(p => matchesSearch(p, needle));
       gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
       noneEl.hidden = list.length > 0;
+      bindWishlistButtons(gridEl);
+      noneEl.querySelector("p").textContent = needle
+        ? t("검색 결과가 없습니다.")
+        : t("해당 카테고리의 상품이 아직 없습니다.");
 
       catsEl.querySelectorAll(".chip").forEach(b =>
         b.addEventListener("click", () => {
@@ -86,6 +108,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       initReveal();
       initBeams();
     }
+
+    let searchDebounce;
+    searchEl.addEventListener("input", () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        const u = new URL(location.href);
+        if (searchEl.value.trim()) u.searchParams.set("q", searchEl.value.trim());
+        else u.searchParams.delete("q");
+        history.replaceState(null, "", u);
+        paint();
+      }, 150);
+    });
+
     paint();
   })();
 </script>

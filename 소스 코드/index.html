@@ -180,6 +180,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     document.getElementById("home-grid").innerHTML =
       PRODUCTS.map((p, i) => productCard(p, i * 60)).join("");
+    bindWishlistButtons(document.getElementById("home-grid"));
 
     document.getElementById("charm-preview").innerHTML = CHARMS
       .filter(c => c.key !== "none")
