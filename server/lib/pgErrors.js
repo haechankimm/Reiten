@@ -6,12 +6,14 @@
 
    - PGRST205: PostgREST 스키마 캐시에 테이블 자체가 없음(SELECT/INSERT 공통).
    - 42P01: PostgREST를 거치지 않는 일부 RPC 등에서 나오는 "테이블 없음"의 raw Postgres 코드.
+   - PGRST202: PostgREST 스키마 캐시에 RPC 함수 자체가 없음(마이그레이션에 새 함수를
+     추가했는데 아직 실행 안 한 경우 — claim_coupon_usage 등).
    - PGRST204: INSERT/UPDATE에서 존재하지 않는 컬럼을 지정.
    - 42703: SELECT에서 존재하지 않는 컬럼을 지정했을 때의 raw Postgres 코드 — PostgREST가
      INSERT/UPDATE와 SELECT에서 컬럼 누락을 서로 다른 코드 체계로 알려준다는 걸 직접 테스트로
      확인한 뒤 반영함(server.js/routes/dashboard.js 원래 주석 참고). */
 function isMissingSchemaError(error) {
-  return !!error && (error.code === "PGRST205" || error.code === "42P01");
+  return !!error && (error.code === "PGRST205" || error.code === "PGRST202" || error.code === "42P01");
 }
 
 function isMissingColumnError(error) {

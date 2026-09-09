@@ -33,7 +33,7 @@ const {
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
-const { resolveCoupon } = require("./lib/coupons");
+const { resolveCoupon, claimCouponUsage, releaseCouponUsage } = require("./lib/coupons");
 const { toProductDto } = require("./lib/products");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
@@ -588,6 +588,18 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
   const orderNumber = orderNo(await nextOrderSeq());
 
+  /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 카드결제는 이 시점에 이미 결제가
+     끝난 뒤라(돈을 이미 받음) 여기서 소진됐다고 판정돼도 주문 생성 자체를 막지는 않는다(그러면
+     "결제는 됐는데 주문은 없는" 사고가 남). 극히 드문 경합으로 usage_limit을 1건 넘기는 것보다
+     낫다고 판단 — 대신 시스템 오류 로그로 남겨 관리자가 알 수 있게 한다. */
+  if (couponCode) {
+    const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    if (!claimed) {
+      console.warn("[order] 쿠폰 사용 횟수 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", couponCode, paymentId);
+      logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_card_order" });
+    }
+  }
+
   const inventoryItems = [];
   rawItems.forEach((raw, i) => {
     if (
@@ -617,6 +629,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
           logSystemError("card_cancel_failed", { paymentId, productId, size, error: cancelErr.message });
         }
+        if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
       }
       /* 재고부족(위 OUT_OF_STOCK)이 아닌 다른 이유(DB 오류 등)로 재고 차감 자체가 실패한
@@ -628,6 +641,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
         console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
       );
       logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError, paymentCancelled: cancelled });
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
   }
@@ -676,6 +690,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
         }
       }
+      // 재고와 같은 이유로, 이 중복 실행분이 방금 차감한 쿠폰 사용 횟수도 되돌린다(위 claimCouponUsage 참고).
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
       const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
       if (existing) return { ok: true, saved: existing };
       /* 유니크 위반인데 아직 다른 트랜잭션의 행이 안 보이는 극히 드문 복제 지연 케이스 —
@@ -704,6 +720,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
     );
     logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message, paymentCancelled: cancelled });
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
   }
 
@@ -959,6 +976,14 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
   const { customer } = req.body;
 
+  /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 무통장입금은 아직 돈을 받기 전이라
+     여기서 소진됐다고 판정되면 재고를 건드리기 전에 바로 실패시킨다(카드결제 쪽은 이미 결제가
+     끝난 뒤라 finalizeCardOrder에서 다르게 처리 — 위 claimCouponUsage 참고). */
+  if (coupon.code) {
+    const claimed = await claimCouponUsage(supabaseAdmin, coupon.code);
+    if (!claimed) return res.status(400).json({ error: "쿠폰 사용 횟수가 모두 소진되었습니다." });
+  }
+
   const orderNumber = orderNo(await nextOrderSeq());
 
   /* 실물 재고가 있는(참/추가아이템이 아닌) 상품·사이즈 조합만 차감 대상으로 뽑는다.
@@ -978,6 +1003,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   if (inventoryItems.length) {
     const decResult = await decrementInventoryForItems(inventoryItems, products, orderNumber);
     if (!decResult.ok) {
+      if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
       if (decResult.outOfStock) return res.status(409).json({ error: "OUT_OF_STOCK", ...decResult.outOfStock });
       console.error("[order] 재고 차감 실패:", decResult.dbError);
       return res.status(500).json({ error: "재고 확인 중 오류가 발생했습니다." });
@@ -1032,6 +1058,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         );
       }
     }
+    if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
     logSystemError("bank_order_finalize_failed", { orderNo: orderNumber, error: saveError.message });
     return res.status(500).json({ error: "주문 저장에 실패했습니다." });
   }

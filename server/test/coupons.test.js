@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { resolveCoupon } = require("../lib/coupons");
+const { resolveCoupon, claimCouponUsage, releaseCouponUsage } = require("../lib/coupons");
 const { createFakeSupabase } = require("../test-helpers/fakeSupabase");
 
 const items = [{ sum: 100000 }];
@@ -93,4 +93,47 @@ test("resolveCoupon — 코드는 대소문자 구분 없이 매칭된다", asyn
   const db = createFakeSupabase({ coupons: [baseCoupon()] });
   const result = await resolveCoupon(db, "testcode", { rawItems, items, subtotal: 100000 });
   assert.equal(result.code, "TESTCODE");
+});
+
+/* claim/releaseCouponUsage — 032_coupon_usage_lock.sql의 원자적 차감(usage_limit 경쟁 상태 수정,
+   2026-09 코드 감사에서 발견). resolveCoupon()의 count 기반 확인과 달리 이 두 함수만 실제로
+   coupons.used_count를 바꾼다. */
+test("claimCouponUsage — 코드가 없으면 그냥 통과", async () => {
+  const db = createFakeSupabase();
+  assert.equal(await claimCouponUsage(db, null), true);
+});
+
+test("claimCouponUsage — usage_limit 안에서는 계속 성공하고 used_count가 늘어난다", async () => {
+  const db = createFakeSupabase({ coupons: [baseCoupon({ usage_limit: 2 })] });
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), true);
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), true);
+  const { data: coupon } = await db.from("coupons").select("*").eq("code", "TESTCODE").single();
+  assert.equal(coupon.used_count, 2);
+});
+
+test("claimCouponUsage — usage_limit을 넘으면 실패하고 더 이상 증가하지 않는다", async () => {
+  const db = createFakeSupabase({ coupons: [baseCoupon({ usage_limit: 1, used_count: 1 })] });
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), false);
+  const { data: coupon } = await db.from("coupons").select("*").eq("code", "TESTCODE").single();
+  assert.equal(coupon.used_count, 1);
+});
+
+test("claimCouponUsage — usage_limit이 null이면 무제한 성공", async () => {
+  const db = createFakeSupabase({ coupons: [baseCoupon({ usage_limit: null })] });
+  for (let i = 0; i < 5; i++) assert.equal(await claimCouponUsage(db, "TESTCODE"), true);
+});
+
+test("releaseCouponUsage — 차감했던 슬롯을 되돌린다(경쟁 상태로 중복 확정된 주문 정리)", async () => {
+  const db = createFakeSupabase({ coupons: [baseCoupon({ usage_limit: 1 })] });
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), true);
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), false, "이미 소진된 상태여야 함");
+  await releaseCouponUsage(db, "TESTCODE");
+  assert.equal(await claimCouponUsage(db, "TESTCODE"), true, "복원 후에는 다시 성공해야 함");
+});
+
+test("releaseCouponUsage — 0 밑으로는 내려가지 않는다", async () => {
+  const db = createFakeSupabase({ coupons: [baseCoupon({ used_count: 0 })] });
+  await releaseCouponUsage(db, "TESTCODE");
+  const { data: coupon } = await db.from("coupons").select("*").eq("code", "TESTCODE").single();
+  assert.equal(coupon.used_count, 0);
 });
