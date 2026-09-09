@@ -1239,18 +1239,29 @@ app.get("/api/my/orders", requireAuth, async (req, res) => {
   );
 });
 
-/* ---------- 반품 · 교환 신청 ---------- */
+/* ---------- 반품 · 교환 · 주문취소 신청 ----------
+   반품/교환(request_type='return'|'exchange')과 주문취소 신청(request_type='cancel',
+   order-lookup.html)이 같은 테이블·같은 검증 로직을 쓴다(033_cancel_requests.sql) — 둘 다
+   "고객이 주문번호+연락처로 본인 확인 후 사유를 남기면 관리자가 처리한다"는 흐름이 동일해서
+   테이블을 분리하면 admin 목록·통계를 두 곳에서 따로 유지보수해야 하는 부담만 늘어난다.
+   reason은 프리셋 중 하나(예: "단순변심", "기타")이고, "기타"를 고르면 customReason에 고객이
+   직접 입력한 텍스트가 들어간다(사유 자체는 "기타"로 남겨 통계 카테고리가 잘게 안 쪼개짐). */
 app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
-  const { orderNo: reqOrderNo, contactName, contactTel, reason, detail } = req.body || {};
+  const { orderNo: reqOrderNo, contactName, contactTel, reason, detail, requestType, customReason } = req.body || {};
 
   const orderNoStr = String(reqOrderNo || "").trim();
   const nameStr = String(contactName || "").trim().slice(0, 40);
   const telStr = String(contactTel || "").trim().slice(0, 20);
   const reasonStr = String(reason || "").trim().slice(0, 40);
   const detailStr = String(detail || "").trim().slice(0, 1000);
+  const requestTypeStr = ["return", "exchange", "cancel"].includes(requestType) ? requestType : "return";
+  const customReasonStr = String(customReason || "").trim().slice(0, 300);
 
   if (!orderNoStr || !nameStr || !telStr || !reasonStr) {
     return res.status(400).json({ error: "주문번호·이름·연락처·사유를 모두 입력해 주세요." });
+  }
+  if (reasonStr === "기타" && !customReasonStr) {
+    return res.status(400).json({ error: "'기타'를 선택했다면 사유를 직접 입력해 주세요." });
   }
 
   /* 주문번호+연락처가 실제 주문과 일치하는지 확인한다(/api/orders/lookup, 리뷰 실구매 인증과
@@ -1269,7 +1280,7 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
     return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
   }
 
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from("return_requests")
     .insert({
       order_no: orderNoStr,
@@ -1278,9 +1289,28 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
       contact_tel: telStr,
       reason: reasonStr,
       detail: detailStr || null,
+      request_type: requestTypeStr,
+      custom_reason: customReasonStr || null,
     })
     .select()
     .single();
+
+  // request_type/custom_reason 컬럼이 아직 없음(033_cancel_requests.sql 미실행) — 그 두 값 없이 재시도.
+  if (isMissingColumnError(error)) {
+    console.warn("[returns] return_requests.request_type 컬럼 없음(마이그레이션 033 미실행) — 그 값 없이 재시도");
+    ({ data, error } = await supabaseAdmin
+      .from("return_requests")
+      .insert({
+        order_no: orderNoStr,
+        user_id: req.user ? req.user.id : null,
+        contact_name: nameStr,
+        contact_tel: telStr,
+        reason: reasonStr,
+        detail: detailStr || null,
+      })
+      .select()
+      .single());
+  }
 
   if (error) {
     console.error("[returns] 저장 실패:", error.message);
@@ -1294,6 +1324,8 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
     contactTel: data.contact_tel,
     reason: data.reason,
     detail: data.detail,
+    requestType: data.request_type || "return",
+    customReason: data.custom_reason || null,
     status: data.status,
     at: data.created_at,
   });
@@ -1744,14 +1776,21 @@ function applyReturnFilters(query, reqQuery) {
   return query;
 }
 
+const RETURN_REQUEST_SELECT_FULL = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, request_type, custom_reason, created_at";
+const RETURN_REQUEST_SELECT_FALLBACK = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at";
+
 app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  let query = supabaseAdmin
-    .from("return_requests")
-    .select("id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at", { count: "exact" })
-    .order("created_at", { ascending: false });
+  let query = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FULL, { count: "exact" }).order("created_at", { ascending: false });
   query = applyReturnFilters(query, req.query);
-  const { data, error, count } = await query.range(from, to);
+  let { data, error, count } = await query.range(from, to);
+
+  // request_type/custom_reason 컬럼이 아직 없음(033_cancel_requests.sql 미실행) — 그 두 값 없이 재조회.
+  if (isMissingColumnError(error)) {
+    let fallbackQuery = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FALLBACK, { count: "exact" }).order("created_at", { ascending: false });
+    fallbackQuery = applyReturnFilters(fallbackQuery, req.query);
+    ({ data, error, count } = await fallbackQuery.range(from, to));
+  }
 
   if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
 
@@ -1766,6 +1805,8 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       status: r.status,
       restocked: r.restocked,
       refunded: r.refunded,
+      requestType: r.request_type || "return",
+      customReason: r.custom_reason || null,
       at: r.created_at,
     })),
     page,

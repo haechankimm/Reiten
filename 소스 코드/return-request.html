@@ -63,6 +63,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <option value="기타" data-i18n="기타">기타</option>
           </select>
         </div>
+        <div class="field" id="rq-custom-field" hidden>
+          <label for="rq-custom" data-i18n-html data-i18n='사유 직접 입력 <span class="req">*</span>'>사유 직접 입력 <span class="req">*</span></label>
+          <input id="rq-custom" maxlength="300" data-i18n-attr="placeholder:사유를 입력해 주세요" placeholder="사유를 입력해 주세요">
+          <p class="err" data-i18n="사유를 입력해 주세요.">사유를 입력해 주세요.</p>
+        </div>
         <div class="field">
           <label for="rq-detail" data-i18n="상세 내용">상세 내용</label>
           <textarea id="rq-detail" placeholder="교환하실 사이즈, 불량 부위 등을 적어주세요" data-i18n-attr="placeholder:교환하실 사이즈, 불량 부위 등을 적어주세요"></textarea>
@@ -93,12 +98,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (profile && profile.name) el("rq-name").value = profile.name;
   })();
 
+  el("rq-reason").addEventListener("change", () => {
+    el("rq-custom-field").hidden = el("rq-reason").value !== "기타";
+  });
+
   el("return-form").addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const no = el("rq-no");
     const name = el("rq-name");
     const tel = el("rq-tel");
+    const isOther = el("rq-reason").value === "기타";
+    const custom = el("rq-custom");
     let ok = true;
     [
       [no, no.value.trim()],
@@ -110,6 +121,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       field.closest(".field").querySelector(".err")?.classList.toggle("on", invalid);
       if (invalid) ok = false;
     });
+    if (isOther && !custom.value.trim()) {
+      custom.setAttribute("aria-invalid", "true");
+      custom.closest(".field").querySelector(".err")?.classList.add("on");
+      ok = false;
+    } else {
+      custom.setAttribute("aria-invalid", "false");
+      custom.closest(".field").querySelector(".err")?.classList.remove("on");
+    }
     if (!ok) { toast(t("입력값을 확인해 주세요")); return; }
 
     const btn = el("rq-submit");
@@ -128,6 +147,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           contactName: name.value.trim(),
           contactTel: tel.value.trim(),
           reason: el("rq-reason").value,
+          customReason: isOther ? custom.value.trim() : "",
           detail: el("rq-detail").value.trim(),
         }),
       });

@@ -1,12 +1,19 @@
+  const REQUEST_TYPE_LABEL = { return: "반품", exchange: "교환", cancel: "주문취소 신청" };
+  const REQUEST_TYPE_CLASS = { return: "st-neutral", exchange: "st-neutral", cancel: "st-pending" };
+
   function returnCardHTML(r) {
+    const requestType = r.requestType || "return";
     return `
       <div class="panel" data-id="${esc(r.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
-          <b class="tnum">${esc(r.orderNo)}</b>
+          <span style="display:flex;gap:8px;align-items:baseline">
+            <b class="tnum">${esc(r.orderNo)}</b>
+            <span class="status-chip ${REQUEST_TYPE_CLASS[requestType] || "st-neutral"}">${esc(t(REQUEST_TYPE_LABEL[requestType] || requestType))}</span>
+          </span>
           <span class="small tnum">${fmtDate(r.at)}</span>
         </div>
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
-        <p style="margin-top:8px">${esc(r.reason)}${r.detail ? " — " + esc(r.detail) : ""}</p>
+        <p style="margin-top:8px">${esc(r.reason)}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>

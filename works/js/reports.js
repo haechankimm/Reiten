@@ -69,6 +69,23 @@
           .join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
 
+    /* 결제수단별 실제 매출 — salesByDevice와 같은 방식(취소 제외), server.js의
+       computeDashboardStats가 orders.payment_method로 집계해서 내려준다. */
+    const methodMax = Math.max(1, ...(d.salesByPaymentMethod || []).map((s) => s.revenue));
+    el("dashboard-sales-by-payment").innerHTML = (d.salesByPaymentMethod || []).length
+      ? d.salesByPaymentMethod
+          .map(
+            (s) => `
+          <div class="best-row">
+            <span></span>
+            <span>${esc(t(PAYMENT_METHOD_LABEL[s.method] || "확인 안 됨"))}</span>
+            <span class="tnum">${esc(money(s.revenue))} <span class="small" style="color:var(--text-muted)">(${esc(t("{n}건", { n: s.orders }))})</span></span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((s.revenue / methodMax) * 100)}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
+
     /* 반품 사유 통계 — return_requests.reason을 그대로 집계한 것(server.js의
        computeDashboardStats). 새 테이블 없이 "왜 반품이 많은지"를 한눈에 보여주는 용도. */
     const reasonMax = Math.max(1, ...(d.returnReasons || []).map((r) => r.count));
@@ -85,6 +102,24 @@
           )
           .join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 반품 신청이 없습니다"))}</p>`;
+
+    /* 주문취소 · 환불 사유 통계 — orders.cancel_reason(관리자 취소·미입금 자동취소)과 고객이
+       "주문취소 신청"(return-request.html)에서 직접 고른/입력한 사유(request_type='cancel')를
+       합쳐서 보여준다(server.js의 computeDashboardStats, 033_cancel_requests.sql). */
+    const cancelMax = Math.max(1, ...(d.cancelReasons || []).map((r) => r.count));
+    el("dashboard-cancel-reasons").innerHTML = (d.cancelReasons || []).length
+      ? d.cancelReasons
+          .map(
+            (r) => `
+          <div class="best-row">
+            <span></span>
+            <span>${esc(t(r.reason))}</span>
+            <span class="tnum">${esc(t("{n}건", { n: r.count }))}</span>
+            <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((r.count / cancelMax) * 100)}%"></div></div>
+          </div>`
+          )
+          .join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 취소된 주문이 없습니다"))}</p>`;
 
     /* 첫 구매·재구매 감사 쿠폰 발급/사용 현황 — server.js의 computeDashboardStats가
        coupons(발급)·orders.coupon_code(사용)만으로 집계해서 내려준다. 새 쿠폰이 하나도
@@ -109,6 +144,7 @@
   }
 
   const DEVICE_LABEL = { mobile: "모바일", desktop: "PC", tablet: "태블릿" };
+  const PAYMENT_METHOD_LABEL = { card: "카드결제", bank_transfer: "무통장입금", virtual_account: "가상계좌" };
   const CHANNEL_LABEL = {
     Direct: "직접 접속", "Organic Search": "검색(자연)", "Paid Search": "검색(광고)",
     Referral: "다른 사이트 링크", "Organic Social": "SNS(자연)", "Paid Social": "SNS(광고)",

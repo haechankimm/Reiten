@@ -63,6 +63,37 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <thead><tr><th data-i18n="상품">상품</th><th data-i18n="옵션">옵션</th><th data-i18n="수량">수량</th><th data-i18n="금액">금액</th></tr></thead>
           <tbody id="lk-items"></tbody>
         </table>
+
+        <div id="lk-cancel-block" hidden style="margin-top:28px">
+          <button class="btn btn--ghost" type="button" id="lk-cancel-open" data-i18n="주문취소 신청">주문취소 신청</button>
+          <form id="lk-cancel-form" hidden novalidate style="max-width:56ch;margin-top:16px">
+            <div class="field">
+              <label for="ck-name" data-i18n-html data-i18n='이름 <span class="req">*</span>'>이름 <span class="req">*</span></label>
+              <input id="ck-name" autocomplete="name" required>
+              <p class="err" data-i18n="이름을 입력해 주세요.">이름을 입력해 주세요.</p>
+            </div>
+            <div class="field">
+              <label for="ck-reason" data-i18n-html data-i18n='취소 사유 <span class="req">*</span>'>취소 사유 <span class="req">*</span></label>
+              <select id="ck-reason" required>
+                <option value="단순변심" data-i18n="단순변심">단순변심</option>
+                <option value="배송 지연" data-i18n="배송 지연">배송 지연</option>
+                <option value="주문 실수(옵션·수량 등)" data-i18n="주문 실수(옵션·수량 등)">주문 실수(옵션·수량 등)</option>
+                <option value="다른 상품 구매 예정" data-i18n="다른 상품 구매 예정">다른 상품 구매 예정</option>
+                <option value="기타" data-i18n="기타">기타</option>
+              </select>
+            </div>
+            <div class="field" id="ck-custom-field" hidden>
+              <label for="ck-custom" data-i18n-html data-i18n='사유 직접 입력 <span class="req">*</span>'>사유 직접 입력 <span class="req">*</span></label>
+              <input id="ck-custom" maxlength="300" data-i18n-attr="placeholder:취소 사유를 입력해 주세요" placeholder="취소 사유를 입력해 주세요">
+              <p class="err" data-i18n="사유를 입력해 주세요.">사유를 입력해 주세요.</p>
+            </div>
+            <button class="btn btn--full" type="submit" id="lk-cancel-submit" data-i18n="취소 신청하기">취소 신청하기</button>
+          </form>
+          <div id="lk-cancel-done" class="notice" hidden style="margin-top:16px">
+            <b data-i18n="취소 신청이 접수되었습니다.">취소 신청이 접수되었습니다.</b>
+            <p class="small" style="margin-top:6px" data-i18n="담당자가 확인 후 입력하신 연락처로 안내드립니다.">담당자가 확인 후 입력하신 연락처로 안내드립니다.</p>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -140,12 +171,78 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         <tr><td colspan="3" style="text-align:right;font-weight:650">${esc(t("총 결제금액"))}</td><td style="font-weight:650">${money(o.total)}</td></tr>`;
 
       el("lk-result").hidden = false;
+
+      // 발송 전(입금대기·입금확인) 상태에서만 고객이 스스로 주문취소를 신청할 수 있게 한다.
+      lookedUpOrder = { no: o.no, tel: tel.value.trim() };
+      el("lk-cancel-block").hidden = !["입금대기", "입금확인"].includes(o.status);
+      el("lk-cancel-form").hidden = true;
+      el("lk-cancel-done").hidden = true;
     } catch (err) {
       toast(t("조회에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
     } finally {
       btn.disabled = false;
     }
   });
+
+  /* ---------- 주문취소 신청 ---------- */
+  let lookedUpOrder = null;
+
+  el("lk-cancel-open").addEventListener("click", () => {
+    el("lk-cancel-form").hidden = false;
+    el("lk-cancel-open").hidden = true;
+  });
+
+  el("ck-reason").addEventListener("change", () => {
+    const isOther = el("ck-reason").value === "기타";
+    el("ck-custom-field").hidden = !isOther;
+  });
+
+  el("lk-cancel-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!lookedUpOrder) return;
+
+    const name = el("ck-name");
+    const isOther = el("ck-reason").value === "기타";
+    const custom = el("ck-custom");
+    let ok = true;
+    if (!name.value.trim()) { setErr(name, true); ok = false; } else setErr(name, false);
+    if (isOther && !custom.value.trim()) { setErr(custom, true); ok = false; } else setErr(custom, false);
+    if (!ok) { toast(t("입력값을 확인해 주세요")); return; }
+
+    const btn = el("lk-cancel-submit");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNo: lookedUpOrder.no,
+          contactName: name.value.trim(),
+          contactTel: lookedUpOrder.tel,
+          reason: el("ck-reason").value,
+          customReason: isOther ? custom.value.trim() : "",
+          requestType: "cancel",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || t("접수에 실패했습니다."));
+        btn.disabled = false;
+        return;
+      }
+      el("lk-cancel-form").hidden = true;
+      el("lk-cancel-done").hidden = false;
+    } catch (err) {
+      toast(t("접수에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
+      btn.disabled = false;
+    }
+  });
+
+  function setErr(input, on) {
+    input.setAttribute("aria-invalid", String(on));
+    const err = input.closest(".field")?.querySelector(".err");
+    if (err) err.classList.toggle("on", on);
+  }
 
   renderFooter();
 </script>
