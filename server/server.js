@@ -20,6 +20,7 @@ const {
   sendAdminRestockAlert,
   sendAdminCardPaid,
   sendCustomerCardPaid,
+  sendCustomerVirtualAccountIssued,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
   sendAdminOrderFinalizeFailed,
@@ -50,7 +51,7 @@ const {
   REPEAT_PURCHASE_COUPON_THRESHOLD_LABEL,
   REPEAT_PURCHASE_COUPON_PERCENT_LABEL,
 } = require("./lib/thanksCoupons");
-const { isMissingSchemaError, isMissingColumnError } = require("./lib/pgErrors");
+const { isMissingSchemaError, isMissingColumnError, extractMissingColumnName } = require("./lib/pgErrors");
 const { normalizeTel } = require("./lib/phone");
 /* 아래는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
    각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1·2단계). 결제·주문·재고·
@@ -180,14 +181,50 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     return res.status(400).end();
   }
 
+  /* 가상계좌가 발급된 순간 — 브라우저가 그 사이 닫혀도(카드결제 웹훅과 같은 이유) 이 웹훅이
+     주문 생성의 주된 경로가 될 수 있다(프론트의 /api/order 확인 요청은 보조). data에는
+     paymentId만 오고 실제 계좌번호·은행 등은 없어(WebhookTransactionDataVirtualAccountIssued
+     참고) getVerifiedPayment로 다시 조회해야 한다. */
+  if (webhook.type === "Transaction.VirtualAccountIssued") {
+    const { paymentId } = webhook.data;
+    const { data: existingOrder } = await supabaseAdmin.from("orders").select("order_no").eq("payment_id", paymentId).maybeSingle();
+    if (existingOrder) return res.status(200).end(); // /api/order 쪽에서 이미 처리됨
+
+    const { data: pending } = await supabaseAdmin.from("pending_payments").select("*").eq("payment_id", paymentId).maybeSingle();
+    if (!pending) return res.status(200).end();
+
+    let verified;
+    try {
+      verified = await portone.getVerifiedPayment(paymentId);
+    } catch (e) {
+      console.error("[payments/webhook] 가상계좌 조회 실패:", e.message);
+      return res.status(500).end();
+    }
+    if (verified.status !== "VIRTUAL_ACCOUNT_ISSUED" || verified.amount.total !== pending.total) {
+      console.error("[payments/webhook] 가상계좌 금액/상태 불일치:", paymentId);
+      return res.status(200).end();
+    }
+    const result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
+    return res.status(result.ok ? 200 : result.status).end();
+  }
+
   if (webhook.type !== "Transaction.Paid") {
     return res.status(200).end();
   }
 
   const { paymentId } = webhook.data;
 
-  const { data: existingOrder } = await supabaseAdmin.from("orders").select("order_no").eq("payment_id", paymentId).maybeSingle();
-  if (existingOrder) return res.status(200).end(); // /api/order 쪽에서 이미 처리됨
+  const { data: existingOrder } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+  if (existingOrder) {
+    /* 카드결제는 생성 즉시 "입금확인"이라 여기 다시 걸리면 이미 처리된 것 — 하지만 가상계좌는
+       "입금대기"로 만들어뒀다가 이 Paid 웹훅이 와야 비로소 결제가 끝난다(README "무통장입금은
+       진짜 실시간 자동 알림이 아님" 제약을 가상계좌만 해결하는 지점). */
+    if (existingOrder.status === "입금대기" && existingOrder.payment_method === "virtual_account") {
+      const result = await markVirtualAccountPaid(paymentId);
+      return res.status(result.ok ? 200 : 500).end();
+    }
+    return res.status(200).end();
+  }
 
   const { data: pending } = await supabaseAdmin.from("pending_payments").select("*").eq("payment_id", paymentId).maybeSingle();
   if (!pending) return res.status(200).end(); // 알 수 없는 결제 건이거나 이미 소비됨
@@ -206,7 +243,7 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     return res.status(200).end(); // 재시도해도 결과가 같으므로 200으로 끝내 재전송을 막는다
   }
 
-  const result = await finalizeCardOrder({ pending, paymentId, userId: null });
+  const result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null });
   res.status(result.ok ? 200 : result.status).end();
 });
 
@@ -472,6 +509,7 @@ app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) =
 
   const { error } = await insertOrderRow("pending_payments", {
     payment_id: paymentId,
+    user_id: req.user ? req.user.id : null,
     customer: normalizedCustomer,
     raw_items: rawItems,
     items,
@@ -516,7 +554,10 @@ app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) =
    않도록, "있으면 넣고 없으면 빼고 재시도"할 선택 컬럼 목록을 하나로 관리한다. PostgREST가
    어떤 컬럼이 없는지까지는 구조화해서 안 알려줘서(PGRST204/42703 코드만 옴), 하나씩 빼보며
    재시도한다(선택 컬럼이 실무에서 한 번에 여러 개 밀려있는 경우는 드물어 이 정도로 충분하다). */
-const OPTIONAL_ORDER_COLUMNS = ["device", "points_used", "points_earned"];
+const OPTIONAL_ORDER_COLUMNS = [
+  "device", "points_used", "points_earned", "user_id",
+  "virtual_account_bank", "virtual_account_number", "virtual_account_holder", "virtual_account_due_at",
+];
 
 async function insertOrderRow(table, row, { returning = false } = {}) {
   const run = (r) => {
@@ -525,8 +566,14 @@ async function insertOrderRow(table, row, { returning = false } = {}) {
   };
   let result = await run(row);
   let current = row;
-  for (const col of OPTIONAL_ORDER_COLUMNS) {
-    if (!isMissingColumnError(result.error) || !(col in current)) continue;
+  /* 에러 메시지에서 실제 없는 컬럼 이름을 뽑아 그것만 정확히 뺀다(lib/pgErrors.js 참고) —
+     이름을 못 뽑으면(포맷이 예상과 다른 극히 드문 경우) 예전처럼 OPTIONAL_ORDER_COLUMNS
+     순서대로 하나씩 찍어 넘기는 걸로 폴백한다. 둘 다 최대 OPTIONAL_ORDER_COLUMNS.length번
+     안에는 반드시 끝나야 하므로(선택 컬럼이 그보다 많이 없을 수는 없음) 그만큼만 반복한다. */
+  for (let i = 0; i < OPTIONAL_ORDER_COLUMNS.length && isMissingColumnError(result.error); i++) {
+    const named = extractMissingColumnName(result.error);
+    const col = named && named in current ? named : OPTIONAL_ORDER_COLUMNS.find((c) => c in current);
+    if (!col) break;
     console.warn(`[${table}] '${col}' 컬럼 없음(마이그레이션 미실행) — ${col} 없이 재시도`);
     const { [col]: _omit, ...rest } = current;
     current = rest;
@@ -778,6 +825,167 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
   return { ok: true, saved };
 }
 
+/* ---------- 가상계좌 결제 ----------
+   카드결제(finalizeCardOrder)와 거의 같은 구조지만 결정적으로 다른 점 하나 — 이 시점엔 아직
+   "계좌가 발급됐을 뿐" 돈은 안 들어왔다(status: VIRTUAL_ACCOUNT_ISSUED). 그래서:
+   ① 주문을 "입금확인"이 아니라 "입금대기"로 만든다(재고는 무통장입금처럼 미리 잡아둠 —
+      특정 계좌+입금기한을 이미 이 주문에 걸어준 상태라 다른 손님에게 같은 재고를 또 파는
+      사고를 막아야 함) ② 실패 시 "결제 취소(환불)"가 아니라 "계좌 폐쇄"다(아직 오간 돈이
+      없음) ③ 감사쿠폰·적립금은 여기서 안 주고, 실제 입금이 확인돼 "입금확인"이 되는 순간
+      (markVirtualAccountPaid, 무통장입금 관리자 확인과 같은 지점)에 준다.
+   verified.method는 PaymentMethodVirtualAccount 형태(bank/accountNumber/remitteeName/
+   expiredAt) — 실제 발급된 계좌 정보를 고객에게 보여주기 위해 주문에 그대로 저장한다. */
+async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
+  const products = await getActiveProducts();
+  const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
+  const pointsUsed = pending.points_used || 0;
+  const orderNumber = orderNo(await nextOrderSeq());
+
+  if (couponCode) {
+    const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    if (!claimed) {
+      console.warn("[order] 쿠폰 사용 횟수 소진 후 가상계좌 발급 확정 — 계좌는 이미 발급돼 주문은 그대로 생성:", couponCode, paymentId);
+      logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_virtual_account_order" });
+    }
+  }
+  if (pointsUsed) {
+    const claimed = await claimPointsUsage(supabaseAdmin, pending.user_id, pointsUsed, orderNumber);
+    if (!claimed) {
+      console.warn("[order] 포인트 잔액 소진 후 가상계좌 발급 확정 — 계좌는 이미 발급돼 주문은 그대로 생성:", pending.user_id, paymentId);
+      logSystemError("points_balance_exceeded", { userId: pending.user_id, pointsUsed, paymentId, stage: "finalize_virtual_account_order" });
+    }
+  }
+
+  const inventoryItems = [];
+  rawItems.forEach((raw, i) => {
+    if (typeof raw.productId === "string" && !raw.productId.startsWith("charm-") && typeof raw.size === "string" && raw.size) {
+      inventoryItems.push({ productId: raw.productId, color: raw.color || "", size: raw.size, qty: items[i].qty });
+    }
+  });
+
+  async function closeAndRelease() {
+    try {
+      await portone.closeVirtualAccount(paymentId);
+    } catch (closeErr) {
+      console.error("[order] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+    }
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+  }
+
+  if (inventoryItems.length) {
+    const decResult = await decrementInventoryForItems(inventoryItems, products, orderNumber);
+    if (!decResult.ok) {
+      await closeAndRelease();
+      if (decResult.outOfStock) {
+        const { productId, color, size, name } = decResult.outOfStock;
+        return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
+      }
+      console.error("[order] 재고 차감 실패:", decResult.dbError);
+      logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError });
+      return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
+    }
+  }
+
+  const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
+  const vaMethod = verified.method || {};
+
+  const { data: saved, error: saveError } = await insertOrderRow(
+    "orders",
+    {
+      order_no: orderNumber,
+      user_id: pending.user_id || null,
+      customer,
+      items: itemsForStorage,
+      device: device || "unknown",
+      subtotal,
+      shipping,
+      total,
+      coupon_code: couponCode || null,
+      discount: discount || 0,
+      points_used: pointsUsed,
+      points_earned: 0,
+      payment_method: "virtual_account",
+      payment_id: paymentId,
+      status: "입금대기",
+      virtual_account_bank: portone.bankLabel(vaMethod.bank),
+      virtual_account_number: vaMethod.accountNumber || null,
+      virtual_account_holder: vaMethod.remitteeName || null,
+      virtual_account_due_at: vaMethod.expiredAt || null,
+    },
+    { returning: true }
+  );
+
+  if (saveError) {
+    if (saveError.code === "23505") {
+      // 웹훅(Transaction.VirtualAccountIssued)과 프론트 확인 요청이 겹친 경쟁 상태 — finalizeCardOrder와 같은 처리.
+      console.warn("[order] 가상계좌 주문 저장 중복(경쟁 상태) — 기존 주문으로 대체:", paymentId);
+      if (inventoryItems.length) {
+        const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+        if (restoreError) console.error("[order] ⚠️ 중복 저장 정리 중 재고 복원 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+        else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_duplicate", ref: paymentId })));
+      }
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+      const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+      if (existing) return { ok: true, saved: existing };
+      logSystemError("order_finalize_duplicate_not_found", { paymentId });
+      return { ok: false, status: 500, body: { error: "주문 처리 중입니다. 잠시 후 주문 조회에서 확인해 주세요." } };
+    }
+
+    console.error("[order] 가상계좌 주문 저장 실패:", saveError.message);
+    if (inventoryItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+      if (restoreError) console.error("[order] ⚠️ 주문 저장 실패 후 재고 복원도 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+      else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_failed", ref: paymentId })));
+    }
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+    try {
+      await portone.closeVirtualAccount(paymentId);
+    } catch (closeErr) {
+      console.error("[order] ⚠️ 주문 저장 실패 후 가상계좌 폐쇄도 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+    }
+    logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message });
+    return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
+  }
+
+  await supabaseAdmin.from("pending_payments").delete().eq("payment_id", paymentId);
+  sendCustomerVirtualAccountIssued(saved).catch((err) => console.error("[mailer] 가상계좌 발급 안내 메일 발송 실패:", err.message));
+  sendPushToAdmins({ title: "가상계좌 발급", body: `${saved.order_no} · 입금 대기`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
+
+  return { ok: true, saved };
+}
+
+/* 가상계좌에 실제로 입금이 확인되면(웹훅 Transaction.Paid) 부른다 — 무통장입금을 관리자가
+   수동으로 "입금확인" 처리하는 것과 같은 부수효과(입금확인 메일·감사쿠폰·적립금)를 재사용한다
+   (notifyOrderStatusSideEffects). 관리자가 개입할 필요 없이 자동으로 일어나는 게 무통장입금과의
+   핵심 차이 — README의 "무통장입금은 진짜 실시간 자동 알림이 아님" 제약을 해결하는 지점. */
+async function markVirtualAccountPaid(paymentId) {
+  const { data: prev, error: prevError } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+  if (prevError || !prev) return { ok: false, notFound: true };
+  if (prev.status !== "입금대기") return { ok: true }; // 이미 처리됨(웹훅 재전송 등) — 멱등하게 통과
+
+  const { data: saved, error } = await supabaseAdmin
+    .from("orders")
+    .update({ status: "입금확인" })
+    .eq("order_no", prev.order_no)
+    .eq("status", "입금대기")
+    .select()
+    .maybeSingle();
+  if (error || !saved) {
+    console.error("[order] 가상계좌 입금확인 처리 실패:", paymentId, error && error.message);
+    return { ok: false };
+  }
+  await notifyOrderStatusSideEffects(prev, saved, { status: "입금확인" });
+  sendPushToAdmins({ title: "입금 완료", body: `${saved.order_no} · 가상계좌 입금 확인`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
+  return { ok: true };
+}
+
 /* 고객 전용 1회용 감사 쿠폰(THANKS-/LOYAL- 접두사)에 공통으로 쓰는 고유 코드 생성 — 첫 구매·
    재구매 감사 쿠폰 둘 다 같은 규칙(접두사+무작위 6자리 hex, 충돌 시 최대 5회 재시도)이라
    하나로 뽑았다(재고 차감 로직을 통합했던 것과 같은 원칙 — 위 운영 규칙 2번 참고). */
@@ -976,6 +1184,10 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
           subtotal: already.subtotal, shipping: already.shipping, total: already.total,
           discount: already.discount, couponCode: already.coupon_code, pointsUsed: already.points_used || 0,
           paymentMethod: already.payment_method, sent: true,
+          virtualAccount: already.payment_method === "virtual_account" ? {
+            bank: already.virtual_account_bank, accountNumber: already.virtual_account_number,
+            holder: already.virtual_account_holder, dueAt: already.virtual_account_due_at,
+          } : null,
         });
       }
       return res.status(400).json({ error: "결제 정보를 찾을 수 없습니다. 처음부터 다시 시도해 주세요." });
@@ -989,22 +1201,35 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       logPaymentAttempt({ paymentId, status: "error", amount: pending.total, reason: e.message });
       return res.status(502).json({ error: "결제 확인 중 오류가 발생했습니다." });
     }
-    if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
-      console.error(
-        "[order] 결제 검증 실패:", paymentId,
-        "status=", verified.status, "amount=", verified.amount && verified.amount.total, "expected=", pending.total
-      );
-      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
+    if (verified.amount.total !== pending.total) {
+      console.error("[order] 결제 금액 불일치:", paymentId, "amount=", verified.amount && verified.amount.total, "expected=", pending.total);
+      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `amount mismatch, status=${verified.status}` });
       return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
     }
 
-    const result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+    /* 카드는 결제창을 닫는 순간 이미 PAID, 가상계좌는 이 시점엔 계좌만 발급된 상태
+       (VIRTUAL_ACCOUNT_ISSUED) — 서로 다른 함수로 주문을 만든다(finalizeVirtualAccountOrder
+       주석 참고, 위 웹훅 핸들러와 완전히 같은 분기). */
+    let result;
+    if (verified.status === "PAID") {
+      result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+    } else if (verified.status === "VIRTUAL_ACCOUNT_ISSUED") {
+      result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
+    } else {
+      console.error("[order] 결제 검증 실패:", paymentId, "status=", verified.status);
+      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
+      return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
+    }
     if (!result.ok) return res.status(result.status).json(result.body);
     return res.json({
       no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
       subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
       discount: result.saved.discount, couponCode: result.saved.coupon_code, pointsUsed: result.saved.points_used || 0,
       paymentMethod: result.saved.payment_method, sent: true,
+      virtualAccount: result.saved.payment_method === "virtual_account" ? {
+        bank: result.saved.virtual_account_bank, accountNumber: result.saved.virtual_account_number,
+        holder: result.saved.virtual_account_holder, dueAt: result.saved.virtual_account_due_at,
+      } : null,
     });
   }
 
@@ -1146,6 +1371,10 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   });
 });
 
+// 가상계좌 입금 기한 기본값 — 무통장입금 자동취소(PENDING_CANCEL_HOURS)와 맞춰 24시간.
+// 관리자가 PORTONE_VIRTUAL_ACCOUNT_VALID_HOURS로 다르게 정할 수 있다.
+const VIRTUAL_ACCOUNT_DEFAULT_VALID_HOURS = 24;
+
 /* 브라우저가 Supabase 클라이언트를 초기화하기 위한 공개 설정값 — anon key는 비밀이 아니다
    (Supabase의 RLS가 실제 접근 권한을 결정하며, service role key만 비밀로 취급한다). */
 app.get("/api/config", (req, res) => {
@@ -1157,6 +1386,12 @@ app.get("/api/config", (req, res) => {
     cardPaymentEnabled: portone.isConfigured(),
     portoneStoreId: process.env.PORTONE_STORE_ID || null,
     portoneChannelKey: process.env.PORTONE_CHANNEL_KEY || null,
+    // 가상계좌는 PG사 결제수단 별도 심사가 필요해(README 참고) 관리자가 은행을 직접 정해
+    // 넣기 전까지는(PORTONE_VIRTUAL_ACCOUNT_BANK) 꺼진 채로 있다 — lib/portone.js 참고.
+    virtualAccountEnabled: portone.isVirtualAccountConfigured(),
+    virtualAccountBank: process.env.PORTONE_VIRTUAL_ACCOUNT_BANK || null,
+    virtualAccountBankLabel: portone.bankLabel(process.env.PORTONE_VIRTUAL_ACCOUNT_BANK),
+    virtualAccountValidHours: Number(process.env.PORTONE_VIRTUAL_ACCOUNT_VALID_HOURS) || VIRTUAL_ACCOUNT_DEFAULT_VALID_HOURS,
   });
 });
 
@@ -2350,10 +2585,15 @@ const PENDING_CANCEL_HOURS = 24;
 
 async function cancelStalePendingOrders() {
   const cutoff = new Date(Date.now() - PENDING_CANCEL_HOURS * 3600 * 1000).toISOString();
+  /* 가상계좌는 여기서 다루지 않는다 — 발급 시 받은 실제 입금기한(virtual_account_due_at)이
+     이 24시간 고정값과 다를 수 있어(관리자가 더 길게 설정 가능) closeExpiredVirtualAccounts()가
+     따로 그 값을 기준으로 처리한다. 여기서 같이 잡으면 아직 기한이 안 지난 가상계좌 주문을
+     "생성된 지 24시간 지났다"는 이유만으로 잘못 취소해버릴 수 있다. */
   let { data: stale, error } = await supabaseAdmin
     .from("orders")
     .select("id, order_no, items, customer, subtotal, shipping, total, points_used, created_at")
     .eq("status", "입금대기")
+    .neq("payment_method", "virtual_account")
     .lt("created_at", cutoff);
 
   // points_used 컬럼이 아직 없음(034_loyalty_points.sql 미실행) — 그 컬럼 없이 재조회.
@@ -2362,6 +2602,7 @@ async function cancelStalePendingOrders() {
       .from("orders")
       .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
       .eq("status", "입금대기")
+      .neq("payment_method", "virtual_account")
       .lt("created_at", cutoff));
   }
 
@@ -2413,8 +2654,69 @@ async function cancelStalePendingOrders() {
   }
 }
 
+/* ---------- 가상계좌 입금기한 만료 자동취소 ----------
+   위 무통장입금 자동취소와 같은 크론에서 같이 돈다. 다른 점은 기준 시각 — 무통장입금은
+   "생성 후 PENDING_CANCEL_HOURS시간"이 고정이지만, 가상계좌는 발급 시 실제로 받은 입금기한
+   (virtual_account_due_at)이 주문마다 다를 수 있어 그 값을 그대로 기준으로 쓴다. 계좌 자체도
+   더 이상 쓰지 못하게 폐쇄한다(closeVirtualAccount — 아직 돈이 안 들어온 상태라 "취소·환불"이
+   아니라 "폐쇄", finalizeVirtualAccountOrder 주석 참고). */
+async function closeExpiredVirtualAccounts() {
+  const now = new Date().toISOString();
+  const { data: expired, error } = await supabaseAdmin
+    .from("orders")
+    .select("id, order_no, payment_id, items, customer, subtotal, shipping, total, points_used, created_at")
+    .eq("status", "입금대기")
+    .eq("payment_method", "virtual_account")
+    .lt("virtual_account_due_at", now);
+
+  if (error) {
+    if (!isMissingColumnError(error)) console.error("[auto-cancel] 만료 가상계좌 조회 실패:", error.message);
+    return; // virtual_account_due_at 컬럼 없음(035 미실행) — 조용히 건너뜀
+  }
+  if (!expired.length) return;
+
+  for (const order of expired) {
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "취소", cancel_reason: "가상계좌 입금기한 만료 자동 취소" })
+      .eq("id", order.id)
+      .eq("status", "입금대기")
+      .select("id");
+    if (updateError) {
+      console.error("[auto-cancel] 가상계좌 만료 취소 실패:", order.order_no, updateError.message);
+      continue;
+    }
+    if (!updated || !updated.length) continue; // 그 사이 입금 확인됨(경쟁 상태 방지) — 정상 케이스
+
+    const restoreItems = restoreItemsFromOrder(order.items);
+    if (restoreItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
+      if (restoreError) {
+        console.error("[auto-cancel] 재고 복원 실패:", order.order_no, restoreError.message);
+      } else {
+        logInventoryChange(
+          restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
+        );
+      }
+    }
+    if (order.points_used) {
+      reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
+    }
+    try {
+      await portone.closeVirtualAccount(order.payment_id);
+    } catch (closeErr) {
+      console.error("[auto-cancel] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", order.order_no, closeErr.message);
+    }
+
+    sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
+    kakao.sendAlimtalk("ORDER_CANCELLED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no }).catch(() => {});
+    console.log(`[auto-cancel] ${order.order_no} 가상계좌 입금기한 만료 자동 취소 처리 완료`);
+  }
+}
+
 cron.schedule("0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
+  closeExpiredVirtualAccounts().catch((err) => console.error("[auto-cancel] 가상계좌 만료 처리 실행 실패:", err.message));
 });
 
 /* ---------- 재입고 발주 알림 ----------

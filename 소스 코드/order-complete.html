@@ -90,6 +90,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         <b>${t("결제 완료")}</b><br>
         ${t("결제금액")} <b class="tnum">${money(order.total)}</b><br>
         <span class="small">${esc(t(SITE.shipping.leadTime))}.</span>
+      </div>` : order.paymentMethod === "virtual_account" && order.virtualAccount ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("가상계좌 발급 완료")}</b><br>
+        ${esc(order.virtualAccount.bank || "")} ${esc(order.virtualAccount.accountNumber || "")}<br>
+        ${t("입금액")} <b class="tnum">${money(order.total)}</b>
+        ${order.virtualAccount.dueAt ? `· ${t("입금기한")} <b>${new Date(order.virtualAccount.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US")}</b>` : ""}<br>
+        <span class="small">${t("이 계좌로 입금하시면 확인 절차 없이 자동으로 결제완료 처리됩니다.")}</span>
       </div>` : `
       <div class="notice" style="margin-top:28px">
         <b>${t("입금 안내")}</b><br>

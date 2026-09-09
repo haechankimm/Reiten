@@ -20,4 +20,24 @@ function isMissingColumnError(error) {
   return !!error && (error.code === "PGRST204" || error.code === "42703");
 }
 
-module.exports = { isMissingSchemaError, isMissingColumnError };
+/* PGRST204/42703 에러의 message에는 실제 어떤 컬럼이 없는지가 사람이 읽는 문장으로 들어있다
+   (PostgREST: "Could not find the 'foo' column of 'orders' in the schema cache", raw
+   Postgres: "column orders.foo does not exist" 또는 "column \"foo\" of relation \"orders\"
+   does not exist"). insertOrderRow(server.js)처럼 "선택 컬럼 여러 개 중 없는 것만 하나씩
+   빼고 재시도"하는 코드가 이 이름을 모르면, 정말 없는 컬럼이 아니라 앞에서부터 순서대로
+   찍어 넘기다가 실제로는 존재하는 다른 선택 컬럼까지 잘못 빼버릴 위험이 있다(2026-09
+   코드 감사에서 발견 — 마이그레이션 034/035만 안 돌린 배포에서 032/033은 이미 적용된 값까지
+   같이 날아갈 뻔함). 못 찾으면 null을 반환해 호출부가 예전처럼 순서대로 시도하는 폴백을
+   쓰게 한다. */
+function extractMissingColumnName(error) {
+  const msg = (error && error.message) || "";
+  const byPostgrest = /Could not find the '([a-zA-Z0-9_]+)' column/.exec(msg);
+  if (byPostgrest) return byPostgrest[1];
+  const byTableDotCol = /column ([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+) does not exist/.exec(msg);
+  if (byTableDotCol) return byTableDotCol[2];
+  const byRelation = /column "([a-zA-Z0-9_]+)" of relation/.exec(msg);
+  if (byRelation) return byRelation[1];
+  return null;
+}
+
+module.exports = { isMissingSchemaError, isMissingColumnError, extractMissingColumnName };

@@ -1204,6 +1204,52 @@ const I18N = {
   "원으로 지정": { de: "Preis" },
   "선택한 {n}개 상품 가격을 {value}{mode} 적용할까요?": { de: "Preis für {n} ausgewählte Produkte um {value}{mode} anpassen?" },
   "{n}개 상품 가격을 수정했습니다": { de: "Preis für {n} Produkte geändert" },
+
+  /* ---------- 상품 검색 · 위시리스트 ---------- */
+  "상품 검색": { en: "Search products", ja: "商品検索" },
+  "상품명으로 검색": { en: "Search by product name", ja: "商品名で検索" },
+  "검색 결과가 없습니다.": { en: "No results found.", ja: "検索結果がありません。" },
+  "위시리스트": { en: "Wishlist", ja: "ウィッシュリスト" },
+  "위시리스트에 담기": { en: "Add to wishlist", ja: "ウィッシュリストに追加" },
+  "위시리스트에 담았습니다": { en: "Added to your wishlist", ja: "ウィッシュリストに追加しました" },
+  "위시리스트에서 뺐습니다": { en: "Removed from your wishlist", ja: "ウィッシュリストから削除しました" },
+  "담아둔 상품은 이 기기의 브라우저에만 저장됩니다.": {
+    en: "Saved items are stored only in this browser on this device.",
+    ja: "保存した商品はこの端末のブラウザにのみ保存されます。",
+  },
+  "아직 담은 상품이 없습니다.": { en: "Your wishlist is empty.", ja: "まだ保存した商品がありません。" },
+  "상품 보러 가기": { en: "Browse products", ja: "商品を見る" },
+
+  /* ---------- 주문취소 신청 ---------- */
+  "주문취소 신청": { en: "Request order cancellation", ja: "注文キャンセル申請" },
+  "취소 사유": { en: "Cancellation reason", ja: "キャンセル理由" },
+  "사유 직접 입력": { en: "Enter reason", ja: "理由を入力" },
+  "사유를 입력해 주세요.": { en: "Please enter a reason.", ja: "理由を入力してください。" },
+  "취소 신청하기": { en: "Submit cancellation request", ja: "キャンセルを申請する" },
+  "취소 신청이 접수되었습니다.": { en: "Your cancellation request has been received.", ja: "キャンセル申請を受け付けました。" },
+  "배송 지연": { en: "Delayed shipping", ja: "配送遅延" },
+  "주문 실수(옵션·수량 등)": { en: "Ordered by mistake (option/quantity, etc.)", ja: "注文ミス(オプション・数量など)" },
+  "다른 상품 구매 예정": { en: "Planning to buy a different item", ja: "他の商品を購入予定" },
+
+  /* ---------- 적립금(포인트) ---------- */
+  "전액사용": { en: "Use all", ja: "全額使用" },
+  "보유 적립금 {balance}": { en: "Points balance: {balance}", ja: "保有ポイント {balance}" },
+
+  /* ---------- 가상계좌 ---------- */
+  "가상계좌": { en: "Virtual account", ja: "仮想口座" },
+  "계좌 발급받기": { en: "Issue account", ja: "口座を発行する" },
+  "신청하면 이 주문 전용 계좌가 발급됩니다. 그 계좌로 입금하면 확인 절차 없이 자동으로 결제완료 처리됩니다.": {
+    en: "A dedicated account for this order will be issued. Once you deposit into it, payment is confirmed automatically — no manual check needed.",
+    ja: "この注文専用の口座が発行されます。その口座に入金すると、確認手続きなしで自動的に決済完了となります。",
+  },
+  "계좌 발급이 취소되었습니다": { en: "Account issuance was cancelled", ja: "口座発行がキャンセルされました" },
+  "계좌 발급 중 오류가 발생했습니다": { en: "An error occurred while issuing the account", ja: "口座発行中にエラーが発生しました" },
+  "가상계좌 발급 완료": { en: "Virtual account issued", ja: "仮想口座発行完了" },
+  "입금기한": { en: "Deposit due", ja: "入金期限" },
+  "이 계좌로 입금하시면 확인 절차 없이 자동으로 결제완료 처리됩니다.": {
+    en: "Once you deposit into this account, payment is confirmed automatically — no manual check needed.",
+    ja: "この口座に入金すると、確認手続きなしで自動的に決済完了となります。",
+  },
 };
 
 /**
