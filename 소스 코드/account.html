@@ -130,6 +130,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       <!-- ============ 로그인 상태 ============ -->
       <div id="me-view" hidden>
         <p class="lede" id="me-greeting"></p>
+        <p class="small" id="me-points" style="margin-top:6px"></p>
         <p style="margin-top:10px">
           <a class="btn" href="return-request.html" data-i18n="반품 · 교환 신청">반품 · 교환 신청</a>
           <button class="btn" type="button" id="logout" style="margin-left:8px" data-i18n="로그아웃">로그아웃</button>
@@ -275,6 +276,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     } catch (e) {}
   }
 
+  async function paintPointsBalance() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/points/balance", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const { balance } = await res.json();
+      el("me-points").textContent = t("보유 적립금 {balance}", { balance: money(balance) });
+    } catch (e) {}
+  }
+
   /* 관리자 로그인 시각 표시(배지 · 초록 테마 · 말 애니메이션) 확인용 — 실제 관리자 CRUD 기능은
      전부 별도 관리자 전용 사이트(works.reiten.kr, Reiten Works)로 옮겨졌다. 이 계정 페이지에
      남아있던 옛 관리자 패널(주문/반품/재고/Q&A/상품/리뷰/룩북 관리 폼)은 works와 중복 유지되며
@@ -378,6 +390,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       el("me-view").hidden = false;
       el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
       paintMyOrders();
+      paintPointsBalance();
       if (profile.role === "admin") tryShowAdminPanel(profile);
     }
 

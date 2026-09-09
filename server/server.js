@@ -20,6 +20,7 @@ const {
   sendAdminRestockAlert,
   sendAdminCardPaid,
   sendCustomerCardPaid,
+  sendCustomerVirtualAccountIssued,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
   sendAdminOrderFinalizeFailed,
@@ -33,7 +34,8 @@ const {
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
-const { resolveCoupon } = require("./lib/coupons");
+const { resolveCoupon, claimCouponUsage, releaseCouponUsage } = require("./lib/coupons");
+const { getPointsBalance, resolvePointsToUse, claimPointsUsage, previewEarnedPoints, creditPoints, awardPoints, reversePointsForOrder } = require("./lib/loyaltyPoints");
 const { toProductDto } = require("./lib/products");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
@@ -49,7 +51,7 @@ const {
   REPEAT_PURCHASE_COUPON_THRESHOLD_LABEL,
   REPEAT_PURCHASE_COUPON_PERCENT_LABEL,
 } = require("./lib/thanksCoupons");
-const { isMissingSchemaError, isMissingColumnError } = require("./lib/pgErrors");
+const { isMissingSchemaError, isMissingColumnError, extractMissingColumnName } = require("./lib/pgErrors");
 const { normalizeTel } = require("./lib/phone");
 /* 아래는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
    각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1·2단계). 결제·주문·재고·
@@ -179,14 +181,50 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     return res.status(400).end();
   }
 
+  /* 가상계좌가 발급된 순간 — 브라우저가 그 사이 닫혀도(카드결제 웹훅과 같은 이유) 이 웹훅이
+     주문 생성의 주된 경로가 될 수 있다(프론트의 /api/order 확인 요청은 보조). data에는
+     paymentId만 오고 실제 계좌번호·은행 등은 없어(WebhookTransactionDataVirtualAccountIssued
+     참고) getVerifiedPayment로 다시 조회해야 한다. */
+  if (webhook.type === "Transaction.VirtualAccountIssued") {
+    const { paymentId } = webhook.data;
+    const { data: existingOrder } = await supabaseAdmin.from("orders").select("order_no").eq("payment_id", paymentId).maybeSingle();
+    if (existingOrder) return res.status(200).end(); // /api/order 쪽에서 이미 처리됨
+
+    const { data: pending } = await supabaseAdmin.from("pending_payments").select("*").eq("payment_id", paymentId).maybeSingle();
+    if (!pending) return res.status(200).end();
+
+    let verified;
+    try {
+      verified = await portone.getVerifiedPayment(paymentId);
+    } catch (e) {
+      console.error("[payments/webhook] 가상계좌 조회 실패:", e.message);
+      return res.status(500).end();
+    }
+    if (verified.status !== "VIRTUAL_ACCOUNT_ISSUED" || verified.amount.total !== pending.total) {
+      console.error("[payments/webhook] 가상계좌 금액/상태 불일치:", paymentId);
+      return res.status(200).end();
+    }
+    const result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
+    return res.status(result.ok ? 200 : result.status).end();
+  }
+
   if (webhook.type !== "Transaction.Paid") {
     return res.status(200).end();
   }
 
   const { paymentId } = webhook.data;
 
-  const { data: existingOrder } = await supabaseAdmin.from("orders").select("order_no").eq("payment_id", paymentId).maybeSingle();
-  if (existingOrder) return res.status(200).end(); // /api/order 쪽에서 이미 처리됨
+  const { data: existingOrder } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+  if (existingOrder) {
+    /* 카드결제는 생성 즉시 "입금확인"이라 여기 다시 걸리면 이미 처리된 것 — 하지만 가상계좌는
+       "입금대기"로 만들어뒀다가 이 Paid 웹훅이 와야 비로소 결제가 끝난다(README "무통장입금은
+       진짜 실시간 자동 알림이 아님" 제약을 가상계좌만 해결하는 지점). */
+    if (existingOrder.status === "입금대기" && existingOrder.payment_method === "virtual_account") {
+      const result = await markVirtualAccountPaid(paymentId);
+      return res.status(result.ok ? 200 : 500).end();
+    }
+    return res.status(200).end();
+  }
 
   const { data: pending } = await supabaseAdmin.from("pending_payments").select("*").eq("payment_id", paymentId).maybeSingle();
   if (!pending) return res.status(200).end(); // 알 수 없는 결제 건이거나 이미 소비됨
@@ -205,7 +243,7 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     return res.status(200).end(); // 재시도해도 결과가 같으므로 200으로 끝내 재전송을 막는다
   }
 
-  const result = await finalizeCardOrder({ pending, paymentId, userId: null });
+  const result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null });
   res.status(result.ok ? 200 : result.status).end();
 });
 
@@ -392,8 +430,8 @@ const ORDER_DEVICE_TYPES = ["mobile", "tablet", "desktop"];
    가격 정책을 바꿀 때 한쪽만 고치고 다른 쪽을 놓치기 쉬운 지점이라 하나로 합친다. 이 함수는
    DB에 아무것도 쓰지 않고(coupon 조회만 함) 검증된 값 또는 에러만 돌려주므로, 호출부가
    재고 차감·저장 같은 각자의 나머지 절차를 이어서 하면 된다. */
-async function validateAndPriceOrder(body, products) {
-  const { customer, items: rawItems, couponCode, device } = body || {};
+async function validateAndPriceOrder(body, products, userId) {
+  const { customer, items: rawItems, couponCode, device, pointsToUse: rawPointsToUse } = body || {};
   if (!customer || typeof customer !== "object") {
     return { error: { status: 400, body: { error: "customer 정보가 없습니다." } } };
   }
@@ -420,13 +458,18 @@ async function validateAndPriceOrder(body, products) {
     return { error: { status: e.status || 400, body: { error: e.message } } };
   }
 
-  const total = subtotal - coupon.discount + shipping;
+  /* 배송비까지 포인트로 낼 수는 없으므로 (상품 합계 - 쿠폰 할인액)을 상한으로 clamp한다
+     (lib/loyaltyPoints.js 참고) — 비회원(userId 없음)이면 항상 0. */
+  const pointsUsed = await resolvePointsToUse(supabaseAdmin, userId, rawPointsToUse, Math.max(0, subtotal - coupon.discount));
+
+  const total = subtotal - coupon.discount - pointsUsed + shipping;
   return {
     rawItems,
     items,
     subtotal,
     shipping,
     coupon,
+    pointsUsed,
     total,
     device: ORDER_DEVICE_TYPES.includes(device) ? device : "unknown",
   };
@@ -437,15 +480,15 @@ async function validateAndPriceOrder(body, products) {
    결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
    서버 계산값이라 소용없다. 결제가 끝나면 /api/order가 paymentId로 다시 포트원에 물어봐서
    실제로 그 금액만큼 결제됐는지 확인한 뒤에만 주문을 만든다(사후검증, 009_card_payments.sql 참고). */
-app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
+app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) => {
   if (!portone.isConfigured()) {
     return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
   }
 
   const products = await getActiveProducts();
-  const priced = await validateAndPriceOrder(req.body, products);
+  const priced = await validateAndPriceOrder(req.body, products, req.user ? req.user.id : null);
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
-  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
 
   /* "reiten-" 접두어를 붙이면 43자가 되는데, NHN KCP V2 라이브 채널로 전환한 뒤 실제 결제를
@@ -466,6 +509,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
 
   const { error } = await insertOrderRow("pending_payments", {
     payment_id: paymentId,
+    user_id: req.user ? req.user.id : null,
     customer: normalizedCustomer,
     raw_items: rawItems,
     items,
@@ -474,6 +518,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     total,
     coupon_code: coupon.code,
     discount: coupon.discount,
+    points_used: pointsUsed,
     device,
   });
   if (error) {
@@ -493,6 +538,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     paymentId,
     totalAmount: total,
     orderName,
+    pointsUsed,
     storeId: process.env.PORTONE_STORE_ID,
     channelKey: process.env.PORTONE_CHANNEL_KEY,
     customer: { fullName: normalizedCustomer.name, phoneNumber: normalizedCustomer.tel, email: normalizedCustomer.email },
@@ -503,16 +549,35 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
    마이그레이션이 아직 안 돌아서 컬럼이 없으면(PGRST204) device 없이 한 번 더 시도한다.
    기기 정보는 부가 통계용일 뿐이라 이것 때문에 주문·결제 생성 자체(핵심 기능)가 막히면
    절대 안 된다 — reviews.order_no와 같은 원칙(위 리뷰 실구매 인증 참고). */
+/* device(022_order_device.sql)에 이어 points_used(034_loyalty_points.sql)도 나중에 추가된
+   선택 컬럼이라 같은 폴백이 필요해졌다 — 컬럼 하나가 없을 때마다 매번 이 함수를 새로 고치지
+   않도록, "있으면 넣고 없으면 빼고 재시도"할 선택 컬럼 목록을 하나로 관리한다. PostgREST가
+   어떤 컬럼이 없는지까지는 구조화해서 안 알려줘서(PGRST204/42703 코드만 옴), 하나씩 빼보며
+   재시도한다(선택 컬럼이 실무에서 한 번에 여러 개 밀려있는 경우는 드물어 이 정도로 충분하다). */
+const OPTIONAL_ORDER_COLUMNS = [
+  "device", "points_used", "points_earned", "user_id",
+  "virtual_account_bank", "virtual_account_number", "virtual_account_holder", "virtual_account_due_at",
+];
+
 async function insertOrderRow(table, row, { returning = false } = {}) {
   const run = (r) => {
     const q = supabaseAdmin.from(table).insert(r);
     return returning ? q.select().single() : q;
   };
   let result = await run(row);
-  if (isMissingColumnError(result.error) && "device" in row) {
-    console.warn(`[${table}] 'device' 컬럼 없음(마이그레이션 022 미실행) — device 없이 재시도`);
-    const { device, ...rest } = row;
-    result = await run(rest);
+  let current = row;
+  /* 에러 메시지에서 실제 없는 컬럼 이름을 뽑아 그것만 정확히 뺀다(lib/pgErrors.js 참고) —
+     이름을 못 뽑으면(포맷이 예상과 다른 극히 드문 경우) 예전처럼 OPTIONAL_ORDER_COLUMNS
+     순서대로 하나씩 찍어 넘기는 걸로 폴백한다. 둘 다 최대 OPTIONAL_ORDER_COLUMNS.length번
+     안에는 반드시 끝나야 하므로(선택 컬럼이 그보다 많이 없을 수는 없음) 그만큼만 반복한다. */
+  for (let i = 0; i < OPTIONAL_ORDER_COLUMNS.length && isMissingColumnError(result.error); i++) {
+    const named = extractMissingColumnName(result.error);
+    const col = named && named in current ? named : OPTIONAL_ORDER_COLUMNS.find((c) => c in current);
+    if (!col) break;
+    console.warn(`[${table}] '${col}' 컬럼 없음(마이그레이션 미실행) — ${col} 없이 재시도`);
+    const { [col]: _omit, ...rest } = current;
+    current = rest;
+    result = await run(current);
   }
   return result;
 }
@@ -586,7 +651,32 @@ async function decrementInventoryForItems(inventoryItems, products, ref) {
 async function finalizeCardOrder({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
+  const pointsUsed = pending.points_used || 0;
   const orderNumber = orderNo(await nextOrderSeq());
+
+  /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 카드결제는 이 시점에 이미 결제가
+     끝난 뒤라(돈을 이미 받음) 여기서 소진됐다고 판정돼도 주문 생성 자체를 막지는 않는다(그러면
+     "결제는 됐는데 주문은 없는" 사고가 남). 극히 드문 경합으로 usage_limit을 1건 넘기는 것보다
+     낫다고 판단 — 대신 시스템 오류 로그로 남겨 관리자가 알 수 있게 한다. */
+  if (couponCode) {
+    const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    if (!claimed) {
+      console.warn("[order] 쿠폰 사용 횟수 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", couponCode, paymentId);
+      logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_card_order" });
+    }
+  }
+
+  /* 포인트 사용 원자적 차감(034_loyalty_points.sql) — 쿠폰과 같은 원칙: 카드결제는 이미 결제가
+     끝난 뒤라 잔액 부족으로 판정돼도 주문 생성 자체를 막지 않는다. pending.points_used는
+     /api/payments/prepare 시점에 그때 로그인해 있던 사용자 기준으로 계산된 값이라, 결제 확인
+     요청(userId) 사이에 로그아웃했다면 차감 대상 계정이 없어 조용히 건너뛴다(적립도 같은 문제). */
+  if (pointsUsed && userId) {
+    const claimed = await claimPointsUsage(supabaseAdmin, userId, pointsUsed, orderNumber);
+    if (!claimed) {
+      console.warn("[order] 포인트 잔액 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", userId, paymentId);
+      logSystemError("points_balance_exceeded", { userId, pointsUsed, paymentId, stage: "finalize_card_order" });
+    }
+  }
 
   const inventoryItems = [];
   rawItems.forEach((raw, i) => {
@@ -617,6 +707,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
           logSystemError("card_cancel_failed", { paymentId, productId, size, error: cancelErr.message });
         }
+        if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+        if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
       }
       /* 재고부족(위 OUT_OF_STOCK)이 아닌 다른 이유(DB 오류 등)로 재고 차감 자체가 실패한
@@ -628,6 +720,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
         console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
       );
       logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError, paymentCancelled: cancelled });
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
   }
@@ -636,6 +730,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
      한다 — items(name/options/qty/unit/sum)에는 원래 productId가 없어서 나중엔 알 수 없었다.
      rawItems와 순서가 그대로 대응되므로 그대로 붙여서 저장한다. */
   const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
+
+  const pointsEarned = await previewEarnedPoints(supabaseAdmin, userId, total);
 
   const { data: saved, error: saveError } = await insertOrderRow(
     "orders",
@@ -650,6 +746,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       total,
       coupon_code: couponCode || null,
       discount: discount || 0,
+      points_used: pointsUsed,
+      points_earned: pointsEarned,
       payment_method: "card",
       payment_id: paymentId,
       status: "입금확인",
@@ -676,6 +774,9 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
         }
       }
+      // 재고와 같은 이유로, 이 중복 실행분이 방금 차감한 쿠폰 사용 횟수·포인트도 되돌린다(위 claimCouponUsage 참고).
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
       if (existing) return { ok: true, saved: existing };
       /* 유니크 위반인데 아직 다른 트랜잭션의 행이 안 보이는 극히 드문 복제 지연 케이스 —
@@ -704,6 +805,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
     );
     logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message, paymentCancelled: cancelled });
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
   }
 
@@ -717,8 +820,170 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     console.error("[push] 알림 발송 실패:", err.message)
   );
   issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
+  creditPoints(supabaseAdmin, userId, pointsEarned, orderNumber).catch((err) => console.error("[points] 적립 실패:", err.message));
 
   return { ok: true, saved };
+}
+
+/* ---------- 가상계좌 결제 ----------
+   카드결제(finalizeCardOrder)와 거의 같은 구조지만 결정적으로 다른 점 하나 — 이 시점엔 아직
+   "계좌가 발급됐을 뿐" 돈은 안 들어왔다(status: VIRTUAL_ACCOUNT_ISSUED). 그래서:
+   ① 주문을 "입금확인"이 아니라 "입금대기"로 만든다(재고는 무통장입금처럼 미리 잡아둠 —
+      특정 계좌+입금기한을 이미 이 주문에 걸어준 상태라 다른 손님에게 같은 재고를 또 파는
+      사고를 막아야 함) ② 실패 시 "결제 취소(환불)"가 아니라 "계좌 폐쇄"다(아직 오간 돈이
+      없음) ③ 감사쿠폰·적립금은 여기서 안 주고, 실제 입금이 확인돼 "입금확인"이 되는 순간
+      (markVirtualAccountPaid, 무통장입금 관리자 확인과 같은 지점)에 준다.
+   verified.method는 PaymentMethodVirtualAccount 형태(bank/accountNumber/remitteeName/
+   expiredAt) — 실제 발급된 계좌 정보를 고객에게 보여주기 위해 주문에 그대로 저장한다. */
+async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
+  const products = await getActiveProducts();
+  const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
+  const pointsUsed = pending.points_used || 0;
+  const orderNumber = orderNo(await nextOrderSeq());
+
+  if (couponCode) {
+    const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    if (!claimed) {
+      console.warn("[order] 쿠폰 사용 횟수 소진 후 가상계좌 발급 확정 — 계좌는 이미 발급돼 주문은 그대로 생성:", couponCode, paymentId);
+      logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_virtual_account_order" });
+    }
+  }
+  if (pointsUsed) {
+    const claimed = await claimPointsUsage(supabaseAdmin, pending.user_id, pointsUsed, orderNumber);
+    if (!claimed) {
+      console.warn("[order] 포인트 잔액 소진 후 가상계좌 발급 확정 — 계좌는 이미 발급돼 주문은 그대로 생성:", pending.user_id, paymentId);
+      logSystemError("points_balance_exceeded", { userId: pending.user_id, pointsUsed, paymentId, stage: "finalize_virtual_account_order" });
+    }
+  }
+
+  const inventoryItems = [];
+  rawItems.forEach((raw, i) => {
+    if (typeof raw.productId === "string" && !raw.productId.startsWith("charm-") && typeof raw.size === "string" && raw.size) {
+      inventoryItems.push({ productId: raw.productId, color: raw.color || "", size: raw.size, qty: items[i].qty });
+    }
+  });
+
+  async function closeAndRelease() {
+    try {
+      await portone.closeVirtualAccount(paymentId);
+    } catch (closeErr) {
+      console.error("[order] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+    }
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+  }
+
+  if (inventoryItems.length) {
+    const decResult = await decrementInventoryForItems(inventoryItems, products, orderNumber);
+    if (!decResult.ok) {
+      await closeAndRelease();
+      if (decResult.outOfStock) {
+        const { productId, color, size, name } = decResult.outOfStock;
+        return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
+      }
+      console.error("[order] 재고 차감 실패:", decResult.dbError);
+      logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError });
+      return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
+    }
+  }
+
+  const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
+  const vaMethod = verified.method || {};
+
+  const { data: saved, error: saveError } = await insertOrderRow(
+    "orders",
+    {
+      order_no: orderNumber,
+      user_id: pending.user_id || null,
+      customer,
+      items: itemsForStorage,
+      device: device || "unknown",
+      subtotal,
+      shipping,
+      total,
+      coupon_code: couponCode || null,
+      discount: discount || 0,
+      points_used: pointsUsed,
+      points_earned: 0,
+      payment_method: "virtual_account",
+      payment_id: paymentId,
+      status: "입금대기",
+      virtual_account_bank: portone.bankLabel(vaMethod.bank),
+      virtual_account_number: vaMethod.accountNumber || null,
+      virtual_account_holder: vaMethod.remitteeName || null,
+      virtual_account_due_at: vaMethod.expiredAt || null,
+    },
+    { returning: true }
+  );
+
+  if (saveError) {
+    if (saveError.code === "23505") {
+      // 웹훅(Transaction.VirtualAccountIssued)과 프론트 확인 요청이 겹친 경쟁 상태 — finalizeCardOrder와 같은 처리.
+      console.warn("[order] 가상계좌 주문 저장 중복(경쟁 상태) — 기존 주문으로 대체:", paymentId);
+      if (inventoryItems.length) {
+        const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+        if (restoreError) console.error("[order] ⚠️ 중복 저장 정리 중 재고 복원 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+        else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_duplicate", ref: paymentId })));
+      }
+      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+      const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+      if (existing) return { ok: true, saved: existing };
+      logSystemError("order_finalize_duplicate_not_found", { paymentId });
+      return { ok: false, status: 500, body: { error: "주문 처리 중입니다. 잠시 후 주문 조회에서 확인해 주세요." } };
+    }
+
+    console.error("[order] 가상계좌 주문 저장 실패:", saveError.message);
+    if (inventoryItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: inventoryItems });
+      if (restoreError) console.error("[order] ⚠️ 주문 저장 실패 후 재고 복원도 실패 — 수동 확인 필요:", paymentId, restoreError.message);
+      else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_failed", ref: paymentId })));
+    }
+    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
+    try {
+      await portone.closeVirtualAccount(paymentId);
+    } catch (closeErr) {
+      console.error("[order] ⚠️ 주문 저장 실패 후 가상계좌 폐쇄도 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+    }
+    logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message });
+    return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
+  }
+
+  await supabaseAdmin.from("pending_payments").delete().eq("payment_id", paymentId);
+  sendCustomerVirtualAccountIssued(saved).catch((err) => console.error("[mailer] 가상계좌 발급 안내 메일 발송 실패:", err.message));
+  sendPushToAdmins({ title: "가상계좌 발급", body: `${saved.order_no} · 입금 대기`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
+
+  return { ok: true, saved };
+}
+
+/* 가상계좌에 실제로 입금이 확인되면(웹훅 Transaction.Paid) 부른다 — 무통장입금을 관리자가
+   수동으로 "입금확인" 처리하는 것과 같은 부수효과(입금확인 메일·감사쿠폰·적립금)를 재사용한다
+   (notifyOrderStatusSideEffects). 관리자가 개입할 필요 없이 자동으로 일어나는 게 무통장입금과의
+   핵심 차이 — README의 "무통장입금은 진짜 실시간 자동 알림이 아님" 제약을 해결하는 지점. */
+async function markVirtualAccountPaid(paymentId) {
+  const { data: prev, error: prevError } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+  if (prevError || !prev) return { ok: false, notFound: true };
+  if (prev.status !== "입금대기") return { ok: true }; // 이미 처리됨(웹훅 재전송 등) — 멱등하게 통과
+
+  const { data: saved, error } = await supabaseAdmin
+    .from("orders")
+    .update({ status: "입금확인" })
+    .eq("order_no", prev.order_no)
+    .eq("status", "입금대기")
+    .select()
+    .maybeSingle();
+  if (error || !saved) {
+    console.error("[order] 가상계좌 입금확인 처리 실패:", paymentId, error && error.message);
+    return { ok: false };
+  }
+  await notifyOrderStatusSideEffects(prev, saved, { status: "입금확인" });
+  sendPushToAdmins({ title: "입금 완료", body: `${saved.order_no} · 가상계좌 입금 확인`, tab: "orders" }).catch((err) =>
+    console.error("[push] 알림 발송 실패:", err.message)
+  );
+  return { ok: true };
 }
 
 /* 고객 전용 1회용 감사 쿠폰(THANKS-/LOYAL- 접두사)에 공통으로 쓰는 고유 코드 생성 — 첫 구매·
@@ -917,8 +1182,12 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         return res.json({
           no: already.order_no, at: already.created_at, customer: already.customer, items: already.items,
           subtotal: already.subtotal, shipping: already.shipping, total: already.total,
-          discount: already.discount, couponCode: already.coupon_code,
+          discount: already.discount, couponCode: already.coupon_code, pointsUsed: already.points_used || 0,
           paymentMethod: already.payment_method, sent: true,
+          virtualAccount: already.payment_method === "virtual_account" ? {
+            bank: already.virtual_account_bank, accountNumber: already.virtual_account_number,
+            holder: already.virtual_account_holder, dueAt: already.virtual_account_due_at,
+          } : null,
         });
       }
       return res.status(400).json({ error: "결제 정보를 찾을 수 없습니다. 처음부터 다시 시도해 주세요." });
@@ -932,34 +1201,68 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       logPaymentAttempt({ paymentId, status: "error", amount: pending.total, reason: e.message });
       return res.status(502).json({ error: "결제 확인 중 오류가 발생했습니다." });
     }
-    if (verified.status !== "PAID" || verified.amount.total !== pending.total) {
-      console.error(
-        "[order] 결제 검증 실패:", paymentId,
-        "status=", verified.status, "amount=", verified.amount && verified.amount.total, "expected=", pending.total
-      );
-      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
+    if (verified.amount.total !== pending.total) {
+      console.error("[order] 결제 금액 불일치:", paymentId, "amount=", verified.amount && verified.amount.total, "expected=", pending.total);
+      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `amount mismatch, status=${verified.status}` });
       return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
     }
 
-    const result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+    /* 카드는 결제창을 닫는 순간 이미 PAID, 가상계좌는 이 시점엔 계좌만 발급된 상태
+       (VIRTUAL_ACCOUNT_ISSUED) — 서로 다른 함수로 주문을 만든다(finalizeVirtualAccountOrder
+       주석 참고, 위 웹훅 핸들러와 완전히 같은 분기). */
+    let result;
+    if (verified.status === "PAID") {
+      result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+    } else if (verified.status === "VIRTUAL_ACCOUNT_ISSUED") {
+      result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
+    } else {
+      console.error("[order] 결제 검증 실패:", paymentId, "status=", verified.status);
+      logPaymentAttempt({ paymentId, status: "mismatch", amount: pending.total, reason: `status=${verified.status}` });
+      return res.status(402).json({ error: "결제가 확인되지 않았습니다." });
+    }
     if (!result.ok) return res.status(result.status).json(result.body);
     return res.json({
       no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
       subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
-      discount: result.saved.discount, couponCode: result.saved.coupon_code,
+      discount: result.saved.discount, couponCode: result.saved.coupon_code, pointsUsed: result.saved.points_used || 0,
       paymentMethod: result.saved.payment_method, sent: true,
+      virtualAccount: result.saved.payment_method === "virtual_account" ? {
+        bank: result.saved.virtual_account_bank, accountNumber: result.saved.virtual_account_number,
+        holder: result.saved.virtual_account_holder, dueAt: result.saved.virtual_account_due_at,
+      } : null,
     });
   }
 
   /* 쿠폰이 유효하지 않으면 재고를 건드리기 전에(아래 decrement_inventory 호출 전에) 먼저 실패시킨다 —
      재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
   const products = await getActiveProducts();
-  const priced = await validateAndPriceOrder(req.body, products);
+  const userId = req.user ? req.user.id : null;
+  const priced = await validateAndPriceOrder(req.body, products, userId);
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
-  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
 
+  /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 무통장입금은 아직 돈을 받기 전이라
+     여기서 소진됐다고 판정되면 재고를 건드리기 전에 바로 실패시킨다(카드결제 쪽은 이미 결제가
+     끝난 뒤라 finalizeCardOrder에서 다르게 처리 — 위 claimCouponUsage 참고). */
+  if (coupon.code) {
+    const claimed = await claimCouponUsage(supabaseAdmin, coupon.code);
+    if (!claimed) return res.status(400).json({ error: "쿠폰 사용 횟수가 모두 소진되었습니다." });
+  }
+
   const orderNumber = orderNo(await nextOrderSeq());
+
+  /* 포인트 사용 원자적 차감(034_loyalty_points.sql) — 쿠폰과 같은 자리, 같은 이유. 무통장입금은
+     아직 "입금대기"일 뿐 실제로 돈을 받은 게 아니라서(24시간 내 미입금 시 자동취소, 아래
+     PENDING_CANCEL_HOURS 크론 참고), 이 주문이 나중에 취소되면 reversePointsForOrder로 돌려준다. */
+  if (pointsUsed) {
+    const claimed = await claimPointsUsage(supabaseAdmin, userId, pointsUsed, orderNumber);
+    if (!claimed) {
+      // 포인트가 부족해 주문을 못 만든다면, 방금 위에서 먼저 차감한 쿠폰 사용 횟수를 되돌려야 한다.
+      if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+      return res.status(400).json({ error: "포인트 잔액이 부족합니다." });
+    }
+  }
 
   /* 실물 재고가 있는(참/추가아이템이 아닌) 상품·사이즈 조합만 차감 대상으로 뽑는다.
      rawItems와 items는 map()으로 만들어져 인덱스가 그대로 대응된다. */
@@ -978,6 +1281,8 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   if (inventoryItems.length) {
     const decResult = await decrementInventoryForItems(inventoryItems, products, orderNumber);
     if (!decResult.ok) {
+      if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       if (decResult.outOfStock) return res.status(409).json({ error: "OUT_OF_STOCK", ...decResult.outOfStock });
       console.error("[order] 재고 차감 실패:", decResult.dbError);
       return res.status(500).json({ error: "재고 확인 중 오류가 발생했습니다." });
@@ -1003,7 +1308,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     "orders",
     {
       order_no: orderNumber,
-      user_id: req.user ? req.user.id : null,
+      user_id: userId,
       customer: normalizedCustomer,
       items: itemsForStorage,
       device,
@@ -1012,6 +1317,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       total,
       coupon_code: coupon.code,
       discount: coupon.discount,
+      points_used: pointsUsed,
     },
     { returning: true }
   );
@@ -1032,6 +1338,8 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         );
       }
     }
+    if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     logSystemError("bank_order_finalize_failed", { orderNo: orderNumber, error: saveError.message });
     return res.status(500).json({ error: "주문 저장에 실패했습니다." });
   }
@@ -1057,10 +1365,15 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     total: saved.total,
     discount: saved.discount,
     couponCode: saved.coupon_code,
+    pointsUsed: saved.points_used || 0,
     paymentMethod: "bank_transfer",
     sent: true,
   });
 });
+
+// 가상계좌 입금 기한 기본값 — 무통장입금 자동취소(PENDING_CANCEL_HOURS)와 맞춰 24시간.
+// 관리자가 PORTONE_VIRTUAL_ACCOUNT_VALID_HOURS로 다르게 정할 수 있다.
+const VIRTUAL_ACCOUNT_DEFAULT_VALID_HOURS = 24;
 
 /* 브라우저가 Supabase 클라이언트를 초기화하기 위한 공개 설정값 — anon key는 비밀이 아니다
    (Supabase의 RLS가 실제 접근 권한을 결정하며, service role key만 비밀로 취급한다). */
@@ -1073,6 +1386,12 @@ app.get("/api/config", (req, res) => {
     cardPaymentEnabled: portone.isConfigured(),
     portoneStoreId: process.env.PORTONE_STORE_ID || null,
     portoneChannelKey: process.env.PORTONE_CHANNEL_KEY || null,
+    // 가상계좌는 PG사 결제수단 별도 심사가 필요해(README 참고) 관리자가 은행을 직접 정해
+    // 넣기 전까지는(PORTONE_VIRTUAL_ACCOUNT_BANK) 꺼진 채로 있다 — lib/portone.js 참고.
+    virtualAccountEnabled: portone.isVirtualAccountConfigured(),
+    virtualAccountBank: process.env.PORTONE_VIRTUAL_ACCOUNT_BANK || null,
+    virtualAccountBankLabel: portone.bankLabel(process.env.PORTONE_VIRTUAL_ACCOUNT_BANK),
+    virtualAccountValidHours: Number(process.env.PORTONE_VIRTUAL_ACCOUNT_VALID_HOURS) || VIRTUAL_ACCOUNT_DEFAULT_VALID_HOURS,
   });
 });
 
@@ -1212,18 +1531,29 @@ app.get("/api/my/orders", requireAuth, async (req, res) => {
   );
 });
 
-/* ---------- 반품 · 교환 신청 ---------- */
+/* ---------- 반품 · 교환 · 주문취소 신청 ----------
+   반품/교환(request_type='return'|'exchange')과 주문취소 신청(request_type='cancel',
+   order-lookup.html)이 같은 테이블·같은 검증 로직을 쓴다(033_cancel_requests.sql) — 둘 다
+   "고객이 주문번호+연락처로 본인 확인 후 사유를 남기면 관리자가 처리한다"는 흐름이 동일해서
+   테이블을 분리하면 admin 목록·통계를 두 곳에서 따로 유지보수해야 하는 부담만 늘어난다.
+   reason은 프리셋 중 하나(예: "단순변심", "기타")이고, "기타"를 고르면 customReason에 고객이
+   직접 입력한 텍스트가 들어간다(사유 자체는 "기타"로 남겨 통계 카테고리가 잘게 안 쪼개짐). */
 app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
-  const { orderNo: reqOrderNo, contactName, contactTel, reason, detail } = req.body || {};
+  const { orderNo: reqOrderNo, contactName, contactTel, reason, detail, requestType, customReason } = req.body || {};
 
   const orderNoStr = String(reqOrderNo || "").trim();
   const nameStr = String(contactName || "").trim().slice(0, 40);
   const telStr = String(contactTel || "").trim().slice(0, 20);
   const reasonStr = String(reason || "").trim().slice(0, 40);
   const detailStr = String(detail || "").trim().slice(0, 1000);
+  const requestTypeStr = ["return", "exchange", "cancel"].includes(requestType) ? requestType : "return";
+  const customReasonStr = String(customReason || "").trim().slice(0, 300);
 
   if (!orderNoStr || !nameStr || !telStr || !reasonStr) {
     return res.status(400).json({ error: "주문번호·이름·연락처·사유를 모두 입력해 주세요." });
+  }
+  if (reasonStr === "기타" && !customReasonStr) {
+    return res.status(400).json({ error: "'기타'를 선택했다면 사유를 직접 입력해 주세요." });
   }
 
   /* 주문번호+연락처가 실제 주문과 일치하는지 확인한다(/api/orders/lookup, 리뷰 실구매 인증과
@@ -1242,7 +1572,7 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
     return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
   }
 
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from("return_requests")
     .insert({
       order_no: orderNoStr,
@@ -1251,9 +1581,28 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
       contact_tel: telStr,
       reason: reasonStr,
       detail: detailStr || null,
+      request_type: requestTypeStr,
+      custom_reason: customReasonStr || null,
     })
     .select()
     .single();
+
+  // request_type/custom_reason 컬럼이 아직 없음(033_cancel_requests.sql 미실행) — 그 두 값 없이 재시도.
+  if (isMissingColumnError(error)) {
+    console.warn("[returns] return_requests.request_type 컬럼 없음(마이그레이션 033 미실행) — 그 값 없이 재시도");
+    ({ data, error } = await supabaseAdmin
+      .from("return_requests")
+      .insert({
+        order_no: orderNoStr,
+        user_id: req.user ? req.user.id : null,
+        contact_name: nameStr,
+        contact_tel: telStr,
+        reason: reasonStr,
+        detail: detailStr || null,
+      })
+      .select()
+      .single());
+  }
 
   if (error) {
     console.error("[returns] 저장 실패:", error.message);
@@ -1267,6 +1616,8 @@ app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
     contactTel: data.contact_tel,
     reason: data.reason,
     detail: data.detail,
+    requestType: data.request_type || "return",
+    customReason: data.custom_reason || null,
     status: data.status,
     at: data.created_at,
   });
@@ -1481,6 +1832,15 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
     });
     kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
     issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
+    /* 카드결제는 finalizeCardOrder가 결제 확정 즉시 적립하므로 여기 다시 안 걸린다(생성 시점에
+       이미 "입금확인"으로 저장됨) — 이 분기는 무통장입금이 관리자 확인으로 처음 "입금확인"이
+       되는 순간만 탄다. points_earned는 생성 시 0으로 저장돼 있었으므로 여기서 실제 적립액으로
+       채워 넣는다(고객이 주문 내역에서 정확한 적립 예정 포인트를 보게 하기 위함). */
+    awardPoints(supabaseAdmin, saved.user_id, saved.total, saved.order_no)
+      .then((amount) => {
+        if (amount) supabaseAdmin.from("orders").update({ points_earned: amount }).eq("order_no", saved.order_no).then(() => {});
+      })
+      .catch((err) => console.error("[points] 적립 실패:", err.message));
   }
   if (!prev?.tracking_no && saved.tracking_no) {
     sendCustomerShipped(saved).catch((err) => {
@@ -1650,6 +2010,10 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
         );
       }
     }
+    // 재고 복원과 같은 원칙 — 이 주문으로 적립된 포인트는 회수하고, 사용한 포인트는 되돌려준다.
+    if (saved.points_used || saved.points_earned) {
+      reversePointsForOrder(supabaseAdmin, saved.order_no).catch((err) => console.error("[points] 취소 시 되돌리기 실패:", err.message));
+    }
 
     if (saved.payment_method === "card" && saved.payment_id) {
       try {
@@ -1717,14 +2081,21 @@ function applyReturnFilters(query, reqQuery) {
   return query;
 }
 
+const RETURN_REQUEST_SELECT_FULL = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, request_type, custom_reason, created_at";
+const RETURN_REQUEST_SELECT_FALLBACK = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at";
+
 app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  let query = supabaseAdmin
-    .from("return_requests")
-    .select("id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at", { count: "exact" })
-    .order("created_at", { ascending: false });
+  let query = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FULL, { count: "exact" }).order("created_at", { ascending: false });
   query = applyReturnFilters(query, req.query);
-  const { data, error, count } = await query.range(from, to);
+  let { data, error, count } = await query.range(from, to);
+
+  // request_type/custom_reason 컬럼이 아직 없음(033_cancel_requests.sql 미실행) — 그 두 값 없이 재조회.
+  if (isMissingColumnError(error)) {
+    let fallbackQuery = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FALLBACK, { count: "exact" }).order("created_at", { ascending: false });
+    fallbackQuery = applyReturnFilters(fallbackQuery, req.query);
+    ({ data, error, count } = await fallbackQuery.range(from, to));
+  }
 
   if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
 
@@ -1739,6 +2110,8 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       status: r.status,
       restocked: r.restocked,
       refunded: r.refunded,
+      requestType: r.request_type || "return",
+      customReason: r.custom_reason || null,
       at: r.created_at,
     })),
     page,
@@ -2161,6 +2534,14 @@ app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
   }
 });
 
+/* 로그인한 회원의 적립금 잔액 — 장바구니에서 "포인트 사용"을 켜기 전에 얼마나 남았는지 보여주는
+   용도(034_loyalty_points.sql). 실제 사용 금액은 쿠폰과 같은 원칙으로 /api/order·
+   /api/payments/prepare가 다시 clamp해서 재계산하므로, 여기서 조작해도 결제 금액엔 영향 없다. */
+app.get("/api/points/balance", requireAuth, async (req, res) => {
+  const balance = await getPointsBalance(supabaseAdmin, req.user.id);
+  res.json({ balance });
+});
+
 /* 상품 관리자 CRUD(GET/POST/PATCH/DELETE·일괄 처리·사진 업로드) — 결제·재고와 얽히지 않는
    부분만 routes/products.js로 분리했다(공개 목록 GET /api/products는 결제 가격 검증이 쓰는
    캐시를 공유해 여기 그대로 둔다 — 2026-09-01, 라우트 분리 다음 라운드). */
@@ -2204,11 +2585,26 @@ const PENDING_CANCEL_HOURS = 24;
 
 async function cancelStalePendingOrders() {
   const cutoff = new Date(Date.now() - PENDING_CANCEL_HOURS * 3600 * 1000).toISOString();
-  const { data: stale, error } = await supabaseAdmin
+  /* 가상계좌는 여기서 다루지 않는다 — 발급 시 받은 실제 입금기한(virtual_account_due_at)이
+     이 24시간 고정값과 다를 수 있어(관리자가 더 길게 설정 가능) closeExpiredVirtualAccounts()가
+     따로 그 값을 기준으로 처리한다. 여기서 같이 잡으면 아직 기한이 안 지난 가상계좌 주문을
+     "생성된 지 24시간 지났다"는 이유만으로 잘못 취소해버릴 수 있다. */
+  let { data: stale, error } = await supabaseAdmin
     .from("orders")
-    .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
+    .select("id, order_no, items, customer, subtotal, shipping, total, points_used, created_at")
     .eq("status", "입금대기")
+    .neq("payment_method", "virtual_account")
     .lt("created_at", cutoff);
+
+  // points_used 컬럼이 아직 없음(034_loyalty_points.sql 미실행) — 그 컬럼 없이 재조회.
+  if (isMissingColumnError(error)) {
+    ({ data: stale, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
+      .eq("status", "입금대기")
+      .neq("payment_method", "virtual_account")
+      .lt("created_at", cutoff));
+  }
 
   if (error) {
     console.error("[auto-cancel] 미입금 주문 조회 실패:", error.message);
@@ -2247,6 +2643,10 @@ async function cancelStalePendingOrders() {
         );
       }
     }
+    // 미입금으로 자동취소된 주문이 포인트를 썼었다면 그대로 돌려준다(관리자 수동 취소와 같은 원칙).
+    if (order.points_used) {
+      reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
+    }
 
     sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
     kakao.sendAlimtalk("ORDER_CANCELLED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no }).catch(() => {});
@@ -2254,8 +2654,69 @@ async function cancelStalePendingOrders() {
   }
 }
 
+/* ---------- 가상계좌 입금기한 만료 자동취소 ----------
+   위 무통장입금 자동취소와 같은 크론에서 같이 돈다. 다른 점은 기준 시각 — 무통장입금은
+   "생성 후 PENDING_CANCEL_HOURS시간"이 고정이지만, 가상계좌는 발급 시 실제로 받은 입금기한
+   (virtual_account_due_at)이 주문마다 다를 수 있어 그 값을 그대로 기준으로 쓴다. 계좌 자체도
+   더 이상 쓰지 못하게 폐쇄한다(closeVirtualAccount — 아직 돈이 안 들어온 상태라 "취소·환불"이
+   아니라 "폐쇄", finalizeVirtualAccountOrder 주석 참고). */
+async function closeExpiredVirtualAccounts() {
+  const now = new Date().toISOString();
+  const { data: expired, error } = await supabaseAdmin
+    .from("orders")
+    .select("id, order_no, payment_id, items, customer, subtotal, shipping, total, points_used, created_at")
+    .eq("status", "입금대기")
+    .eq("payment_method", "virtual_account")
+    .lt("virtual_account_due_at", now);
+
+  if (error) {
+    if (!isMissingColumnError(error)) console.error("[auto-cancel] 만료 가상계좌 조회 실패:", error.message);
+    return; // virtual_account_due_at 컬럼 없음(035 미실행) — 조용히 건너뜀
+  }
+  if (!expired.length) return;
+
+  for (const order of expired) {
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "취소", cancel_reason: "가상계좌 입금기한 만료 자동 취소" })
+      .eq("id", order.id)
+      .eq("status", "입금대기")
+      .select("id");
+    if (updateError) {
+      console.error("[auto-cancel] 가상계좌 만료 취소 실패:", order.order_no, updateError.message);
+      continue;
+    }
+    if (!updated || !updated.length) continue; // 그 사이 입금 확인됨(경쟁 상태 방지) — 정상 케이스
+
+    const restoreItems = restoreItemsFromOrder(order.items);
+    if (restoreItems.length) {
+      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
+      if (restoreError) {
+        console.error("[auto-cancel] 재고 복원 실패:", order.order_no, restoreError.message);
+      } else {
+        logInventoryChange(
+          restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
+        );
+      }
+    }
+    if (order.points_used) {
+      reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
+    }
+    try {
+      await portone.closeVirtualAccount(order.payment_id);
+    } catch (closeErr) {
+      console.error("[auto-cancel] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", order.order_no, closeErr.message);
+    }
+
+    sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
+    kakao.sendAlimtalk("ORDER_CANCELLED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no }).catch(() => {});
+    console.log(`[auto-cancel] ${order.order_no} 가상계좌 입금기한 만료 자동 취소 처리 완료`);
+  }
+}
+
 cron.schedule("0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
+  closeExpiredVirtualAccounts().catch((err) => console.error("[auto-cancel] 가상계좌 만료 처리 실행 실패:", err.message));
 });
 
 /* ---------- 재입고 발주 알림 ----------

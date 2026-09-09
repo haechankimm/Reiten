@@ -20,7 +20,7 @@ const router = express.Router();
 async function computeDashboardStats() {
   let { data, error } = await supabaseAdmin
     .from("orders")
-    .select("items, total, status, created_at, device")
+    .select("items, total, status, created_at, device, payment_method, cancel_reason")
     .order("created_at", { ascending: false })
     .limit(2000);
 
@@ -31,7 +31,7 @@ async function computeDashboardStats() {
     console.warn("[dashboard] orders.device 컬럼 없음(마이그레이션 022 미실행) — device 없이 재조회");
     ({ data, error } = await supabaseAdmin
       .from("orders")
-      .select("items, total, status, created_at")
+      .select("items, total, status, created_at, payment_method, cancel_reason")
       .order("created_at", { ascending: false })
       .limit(2000));
   }
@@ -76,9 +76,20 @@ async function computeDashboardStats() {
      집계한다. 마이그레이션 미실행이거나 그 이전에 만들어진 주문은 device가 없으므로
      "unknown"으로 묶는다. */
   const salesByDevice = new Map();
+  /* 결제수단별 실제 매출 — device 집계와 같은 원칙(취소 제외, 실제 결제 완료 주문만). "card"·
+     "bank_transfer"·"virtual_account" 외의 값(과거 카드결제 붙이기 전 주문 등)은 payment_method
+     자체가 없을 수 있어 "unknown"으로 묶는다. */
+  const salesByPaymentMethod = new Map();
+  /* 취소 사유 통계 — orders.cancel_reason(011_auto_cancel_and_restock.sql, 관리자가 취소 시
+     입력하거나 미입금 자동취소가 남기는 고정 문구)을 반품 사유(return_requests.reason)와 같은
+     방식으로 집계한다. 고객이 먼저 "주문취소 신청"(POST /api/cancel-requests)에 남긴 사유는
+     return_requests에 request_type='cancel'로 쌓이므로 아래에서 따로 합친다. */
+  const cancelReasonCounts = new Map();
   for (const o of data) {
     if (o.status === "입금대기") pendingCount++;
-    if (!isCancelled(o)) {
+    if (isCancelled(o)) {
+      if (o.cancel_reason) cancelReasonCounts.set(o.cancel_reason, (cancelReasonCounts.get(o.cancel_reason) || 0) + 1);
+    } else {
       const dayKey = kstDateKey(o.created_at);
       if (dayKey === todayKey) { todayRevenue += o.total; todayOrders++; }
       if (kstMonthKey(o.created_at) === monthKey) monthRevenue += o.total;
@@ -89,10 +100,33 @@ async function computeDashboardStats() {
       }
 
       const deviceKey = o.device || "unknown";
-      const prev = salesByDevice.get(deviceKey) || { orders: 0, revenue: 0 };
-      salesByDevice.set(deviceKey, { orders: prev.orders + 1, revenue: prev.revenue + o.total });
+      const devicePrev = salesByDevice.get(deviceKey) || { orders: 0, revenue: 0 };
+      salesByDevice.set(deviceKey, { orders: devicePrev.orders + 1, revenue: devicePrev.revenue + o.total });
+
+      const methodKey = o.payment_method || "unknown";
+      const methodPrev = salesByPaymentMethod.get(methodKey) || { orders: 0, revenue: 0 };
+      salesByPaymentMethod.set(methodKey, { orders: methodPrev.orders + 1, revenue: methodPrev.revenue + o.total });
     }
   }
+
+  /* 고객이 직접 신청한 주문취소 사유(위 cancel_reason과 별개 출처, POST /api/cancel-requests가
+     return_requests에 request_type='cancel'로 저장) — 아직 마이그레이션(033) 미실행이면
+     request_type 컬럼 자체가 없어 조회가 실패하는데, 대시보드 전체를 막을 이유는 없어 조용히
+     건너뛴다. reason이 "기타"면 custom_reason(고객이 직접 입력한 텍스트)을 괄호로 붙여 어떤
+     "기타" 사유가 많은지도 한눈에 보이게 한다. */
+  const { data: cancelRequestRows, error: cancelRequestError } = await supabaseAdmin
+    .from("return_requests")
+    .select("reason, custom_reason")
+    .eq("request_type", "cancel");
+  if (cancelRequestError) {
+    if (!isMissingColumnError(cancelRequestError)) console.error("[dashboard] 취소 신청 사유 조회 실패:", cancelRequestError.message);
+  } else {
+    for (const r of cancelRequestRows || []) {
+      const label = r.reason === "기타" && r.custom_reason ? `기타 — ${r.custom_reason}` : r.reason;
+      cancelReasonCounts.set(label, (cancelReasonCounts.get(label) || 0) + 1);
+    }
+  }
+  const cancelReasons = [...cancelReasonCounts.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
 
   const bestsellers = [...qtyByName.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -129,7 +163,11 @@ async function computeDashboardStats() {
     salesByDevice: [...salesByDevice.entries()]
       .map(([device, v]) => ({ device, orders: v.orders, revenue: v.revenue }))
       .sort((a, b) => b.revenue - a.revenue),
+    salesByPaymentMethod: [...salesByPaymentMethod.entries()]
+      .map(([method, v]) => ({ method, orders: v.orders, revenue: v.revenue }))
+      .sort((a, b) => b.revenue - a.revenue),
     returnReasons,
+    cancelReasons,
     firstPurchaseCoupon,
     repeatPurchaseCoupon,
   };

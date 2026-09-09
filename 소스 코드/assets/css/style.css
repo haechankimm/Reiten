@@ -554,6 +554,26 @@ html[data-theme="night"] .thumb {
   background: color-mix(in srgb, var(--paper) 84%, transparent);
   backdrop-filter: blur(6px);
 }
+
+/* 위시리스트 하트 버튼 — 상품 카드 우상단 오버레이(.card__wishlist) 또는 상세 페이지
+   구매 버튼 옆 원형 버튼(.buy-row__wishlist) 두 곳에서 재사용한다. */
+.wishlist-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: transform var(--t-fast), background var(--t-fast);
+}
+.wishlist-btn svg { width: 16px; height: 16px; fill: none; stroke: var(--ink); stroke-width: 1.8; }
+.wishlist-btn:hover { transform: scale(1.06); }
+.wishlist-btn.on svg { fill: var(--danger); stroke: var(--danger); }
+.card__wishlist { position: absolute; top: 12px; right: 12px; z-index: 3; }
+.buy-row__wishlist { flex: 0 0 auto; width: 46px; height: 46px; }
+.buy-row__wishlist svg { width: 19px; height: 19px; }
 .card__body { padding: 14px 2px 0; }
 .card__name { font-size: 14px; font-weight: 620; letter-spacing: -0.02em; }
 .card__sub { font-size: 12px; color: var(--muted); margin-top: 2px; }

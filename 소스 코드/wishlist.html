@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-0GKE5QTQ31');
+</script>
+<!-- Channel Talk -->
+<script>
+(function(){var w=window;if(w.ChannelIO){return w.console.error("ChannelIO script included twice.");}var ch=function(){ch.c(arguments);};ch.q=[];ch.c=function(args){ch.q.push(args);};w.ChannelIO=ch;function l(){if(w.ChannelIOInitialized){return;}w.ChannelIOInitialized=true;var s=document.createElement("script");s.type="text/javascript";s.async=true;s.src="https://cdn.channel.io/plugin/ch-plugin-web.js";var x=document.getElementsByTagName("script")[0];if(x.parentNode){x.parentNode.insertBefore(s,x);}}if(document.readyState==="complete"){l();}else{w.addEventListener("DOMContentLoaded",l);w.addEventListener("load",l);}})();
+ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>위시리스트 — REITEN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Wishlist</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="위시리스트">위시리스트</h1>
+      <p class="lede" style="margin-top:14px;max-width:52ch" data-i18n="담아둔 상품은 이 기기의 브라우저에만 저장됩니다.">
+        담아둔 상품은 이 기기의 브라우저에만 저장됩니다.
+      </p>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <div class="grid" id="grid"></div>
+      <div id="empty" class="empty" hidden>
+        <p class="lede" data-i18n="아직 담은 상품이 없습니다.">아직 담은 상품이 없습니다.</p>
+        <a class="btn" style="margin-top:16px" href="shop.html" data-i18n="상품 보러 가기">상품 보러 가기</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+  applyI18n();
+  renderHeader("");
+
+  (async () => {
+    await Promise.all([loadProducts(), loadColors()]);
+
+    const gridEl = document.getElementById("grid");
+    const emptyEl = document.getElementById("empty");
+
+    function paint() {
+      const ids = Wishlist.read();
+      const list = ids.map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean);
+      gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
+      emptyEl.hidden = list.length > 0;
+      bindWishlistButtons(gridEl);
+      // 이 페이지에서는 하트를 누르면 목록 자체에서 카드가 빠져야 한다(다른 페이지는 배지만
+      // 갱신되면 충분하지만, 여기는 그 상품 자체가 화면의 전부라서) — 클릭 처리(toggle) 다음
+      // 틱에 다시 그린다.
+      gridEl.querySelectorAll(".js-wishlist-btn").forEach((btn) =>
+        btn.addEventListener("click", () => setTimeout(paint, 0))
+      );
+      initReveal();
+      initBeams();
+    }
+
+    paint();
+  })();
+
+  renderFooter();
+</script>
+</body>
+</html>

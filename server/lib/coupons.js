@@ -1,4 +1,5 @@
 const { couponDiscount } = require("./pricing");
+const { isMissingSchemaError } = require("./pgErrors");
 
 /* 쿠폰 유효성 검사 + 할인액 계산 — db는 supabaseAdmin과 같은 인터페이스(.from().select().eq()...)를
    가진 클라이언트를 주입받는다(운영에서는 실제 Supabase, 테스트에서는 가벼운 가짜 클라이언트,
@@ -52,4 +53,42 @@ async function resolveCoupon(db, rawCode, { rawItems, items, subtotal }) {
   return { code: coupon.code, discount };
 }
 
-module.exports = { resolveCoupon };
+/* resolveCoupon()의 usage_limit 확인(SELECT count)은 주문이 실제로 만들어지기 전 미리보기
+   (/api/coupons/validate, /api/payments/prepare)에도 그대로 쓰이기 때문에, 거기서 원자적으로
+   슬롯을 미리 차지해버리면 결제를 끝까지 안 한 손님들 몫으로 자리가 조용히 소진된다. 그래서
+   실제 "차감"은 주문이 실제로 확정되는 시점(무통장입금 /api/order, 카드결제 finalizeCardOrder)
+   에만 이 함수로 한 번 더 호출한다 — 032_coupon_usage_lock.sql의 claim_coupon_usage()가
+   UPDATE ... WHERE used_count < usage_limit 한 문장으로 확인+증가를 원자적으로 처리해서,
+   두 주문이 마지막 1장을 동시에 확정해도 하나만 성공한다(resolveCoupon의 count 기반 확인은
+   이론상 두 요청이 모두 통과할 수 있었음 — 2026-09 코드 감사에서 발견).
+   반환값: true면 정상 차감, false면 이미 소진됨(호출부가 주문을 계속 진행할지 결정). 마이그레이션
+   미실행이거나 DB 오류면 다른 선택 기능과 같은 원칙으로 "조용히 통과"시킨다(쿠폰 자체가
+   막히는 것보다 usage_limit이 살짝 초과되는 게 덜 나쁜 실패라고 판단). */
+async function claimCouponUsage(db, code) {
+  if (!code) return true;
+  const { data, error } = await db.rpc("claim_coupon_usage", { p_code: code });
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("[coupon] claim_coupon_usage 함수 없음(마이그레이션 032 미실행) — 잠금 없이 진행");
+    } else {
+      console.error("[coupon] 사용 횟수 차감 실패:", error.message);
+    }
+    return true;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return !!(row && row.claimed);
+}
+
+/* claimCouponUsage()로 차감한 슬롯을 되돌린다 — 카드결제 웹훅과 프론트엔드 확인 요청이 거의
+   동시에 도착해 finalizeCardOrder가 두 번 실행된 경우(재고를 restore_inventory로 되돌리는 것과
+   같은 지점)에만 쓴다. 실패해도 fire-and-forget으로 로그만 남긴다 — 실제 결제·주문 자체는
+   이미 끝난 뒤라 여기서 막을 이유가 없다(다른 정리 작업들과 같은 원칙). */
+async function releaseCouponUsage(db, code) {
+  if (!code) return;
+  const { error } = await db.rpc("release_coupon_usage", { p_code: code });
+  if (error && !isMissingSchemaError(error)) {
+    console.error("[coupon] 사용 횟수 복원 실패:", error.message);
+  }
+}
+
+module.exports = { resolveCoupon, claimCouponUsage, releaseCouponUsage };

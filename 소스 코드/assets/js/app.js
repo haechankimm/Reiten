@@ -187,6 +187,73 @@ const Cart = {
 };
 
 /* =========================================================
+   위시리스트 — Cart와 같은 원칙(서버 없이도 항상 동작해야 하는 핵심 쇼핑 기능은 아니라서,
+   장바구니·최근 본 상품처럼 기기·브라우저 단위 localStorage로 충분하다고 판단). 상품 id만
+   저장하고, 화면에 그릴 때 그 시점의 PRODUCTS에서 실제 정보를 다시 찾아온다 — 가격·사진이
+   바뀌어도 위시리스트에 옛날 스냅샷이 박제되지 않는다.
+   ========================================================= */
+const WISHLIST_KEY = "reiten_wishlist_v1";
+
+const Wishlist = {
+  read() {
+    try { return JSON.parse(localStorage.getItem(WISHLIST_KEY)) || []; }
+    catch (e) { return []; }
+  },
+  write(ids) {
+    try { localStorage.setItem(WISHLIST_KEY, JSON.stringify(ids)); } catch (e) {}
+    Wishlist.paint();
+  },
+  has(productId) { return Wishlist.read().includes(productId); },
+  toggle(productId) {
+    const ids = Wishlist.read();
+    const i = ids.indexOf(productId);
+    if (i >= 0) ids.splice(i, 1);
+    else ids.unshift(productId);
+    Wishlist.write(ids);
+    return i < 0; // true면 방금 추가됨
+  },
+  remove(productId) {
+    Wishlist.write(Wishlist.read().filter((id) => id !== productId));
+  },
+  count() { return Wishlist.read().length; },
+  paint() {
+    const n = Wishlist.count();
+    $$(".js-wishlist-count").forEach((el) => {
+      el.textContent = n;
+      el.classList.toggle("on", n > 0);
+    });
+    $$(".js-wishlist-btn").forEach((btn) => {
+      const on = Wishlist.has(btn.dataset.productId);
+      btn.setAttribute("aria-pressed", String(on));
+      btn.classList.toggle("on", on);
+    });
+  },
+};
+
+/* 상품 카드·상세 페이지가 공용으로 쓰는 하트 버튼 — 클릭 시 토글하고 이벤트 버블링을 막아서
+   (카드 전체가 상세 페이지로 가는 링크인 경우가 많음) 실수로 상세 페이지로 넘어가지 않게 한다. */
+function wishlistButtonHTML(productId, extraClass = "") {
+  const on = Wishlist.has(productId);
+  return `<button type="button" class="wishlist-btn js-wishlist-btn ${extraClass}" data-product-id="${esc(productId)}"
+      aria-pressed="${on}" aria-label="${esc(t("위시리스트에 담기"))}" title="${esc(t("위시리스트에 담기"))}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.4 2 5 5.4 5c2 0 3.4 1.1 4.3 2.5C10.6 6.1 12 5 14 5c3.4 0 4.9 3.4 3.4 6.7C19.5 16.4 12 21 12 21Z"/></svg>
+  </button>`;
+}
+
+function bindWishlistButtons(root = document) {
+  root.querySelectorAll(".js-wishlist-btn").forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const added = Wishlist.toggle(btn.dataset.productId);
+      toast(added ? t("위시리스트에 담았습니다") : t("위시리스트에서 뺐습니다"));
+    });
+  });
+}
+
+/* =========================================================
    최근 본 상품 — 상품 상세 페이지를 열 때마다 id를 맨 앞에 쌓아두고(중복 제거),
    product.html의 "최근 본 상품" 섹션에서 그대로 읽어 보여준다. 서버 없이 기기별로만
    기억하면 되는 정보라 Cart처럼 localStorage에만 저장한다.
@@ -280,6 +347,10 @@ function renderHeader(active = "") {
       <a class="icon-btn" href="account.html" aria-label="${esc(t("내 계정"))}" title="${esc(t("내 계정"))}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>
       </a>
+      <a class="icon-btn" href="wishlist.html" aria-label="${esc(t("위시리스트"))}" title="${esc(t("위시리스트"))}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.4 2 5 5.4 5c2 0 3.4 1.1 4.3 2.5C10.6 6.1 12 5 14 5c3.4 0 4.9 3.4 3.4 6.7C19.5 16.4 12 21 12 21Z"/></svg>
+        <em class="cart-count js-wishlist-count" aria-hidden="true">0</em>
+      </a>
       <a class="icon-btn" href="cart.html" aria-label="${esc(t("장바구니"))}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16l-1.3 12.1a2 2 0 0 1-2 1.9H7.3a2 2 0 0 1-2-1.9L4 7Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg>
         <em class="cart-count js-cart-count" aria-hidden="true">0</em>
@@ -329,6 +400,7 @@ function renderHeader(active = "") {
   );
 
   Cart.paint();
+  Wishlist.paint();
 }
 
 function renderFooter() {
@@ -496,10 +568,12 @@ function productCard(p, delay = 0) {
     ? `<div class="card__media beamable">
          <img src="${img}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 640px) 45vw, 300px"` : ""} alt="${esc(name)}" loading="lazy">
          ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
+         ${wishlistButtonHTML(p.id, "card__wishlist")}
        </div>`
     : `<div class="card__media ph">
          <span class="ph__label">${t("사진 준비중")}</span>
          ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
+         ${wishlistButtonHTML(p.id, "card__wishlist")}
        </div>`;
 
   // 팔레트에서 이미 지워진 색상 키(옛 상품 데이터, 또는 관리자가 삭제한 색상)는 조용히 건너뛴다 —

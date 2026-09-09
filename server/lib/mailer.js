@@ -224,6 +224,33 @@ async function sendCustomerCardPaid(order) {
   });
 }
 
+/* 가상계좌 발급 안내 메일(고객용) — finalizeVirtualAccountOrder가 계좌를 발급한 직후 1회 발송.
+   sendCustomerOrderReceived(무통장입금 안내)와 달리 우리 고정 계좌가 아니라 이 주문 전용으로
+   새로 발급된 계좌·입금기한을 안내한다 — 이 계좌로 입금하면 관리자 확인 없이 자동으로
+   결제완료 처리된다(sendCustomerPaymentConfirmed가 그 시점에 별도 발송). */
+async function sendCustomerVirtualAccountIssued(order) {
+  if (!resend || !order.customer.email) return;
+
+  await sendTracked("customer_virtual_account_issued", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] 가상계좌가 발급되었습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 가상계좌가 발급되었습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <ul>${itemsHtml(order)}</ul>
+      <p><b>총 결제금액</b> ${won(order.total)}</p>
+      <p style="margin-top:16px">
+        <b>입금 계좌</b><br>
+        ${escHtml(order.virtual_account_bank || "")} ${escHtml(order.virtual_account_number || "")}<br>
+        ${order.virtual_account_due_at ? `입금기한 ${new Date(order.virtual_account_due_at).toLocaleString("ko-KR")}까지<br>` : ""}
+      </p>
+      <p style="margin-top:16px;color:#666">위 계좌로 입금하시면 별도 확인 절차 없이 자동으로 결제완료 처리됩니다.</p>
+    `,
+  });
+}
+
 /* 미입금 자동취소 안내 메일(고객용) — 크론이 24시간 지난 입금대기 주문을 취소하는 순간 1회 발송.
    재입금해서 다시 주문할 수 있다는 것도 함께 안내한다. */
 async function sendCustomerAutoCancelled(order) {
@@ -450,6 +477,7 @@ module.exports = {
   sendAdminRestockAlert,
   sendAdminCardPaid,
   sendCustomerCardPaid,
+  sendCustomerVirtualAccountIssued,
   sendCustomerAutoCancelled,
   sendAdminCardCancelFailed,
   sendAdminOrderFinalizeFailed,

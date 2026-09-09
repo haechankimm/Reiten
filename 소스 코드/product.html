@@ -158,6 +158,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             ${soldAll ? t("품절") : t("장바구니 담기")}
           </button>
           <button class="btn btn--ghost" type="button" id="buy" ${soldAll ? "disabled" : ""}>${t("바로 주문")}</button>
+          ${wishlistButtonHTML(p.id, "buy-row__wishlist")}
         </div>
 
         ${(() => {
@@ -312,6 +313,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       Cart.add(item());
       location.href = "cart.html";
     });
+    bindWishlistButtons(root);
 
     // 품절 알림 신청 — 지금 고른 컬러에 품절 사이즈가 하나라도 있으면 위에서 폼이 그려진다.
     document.getElementById("restock-form")?.addEventListener("submit", async (e) => {
@@ -374,6 +376,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   if (also.length) {
     document.getElementById("also-wrap").hidden = false;
     document.getElementById("also").innerHTML = also.map((x, i) => productCard(x, i * 50)).join("");
+    bindWishlistButtons(document.getElementById("also"));
   }
 
   // 최근 본 상품 — 이 페이지를 기록으로 남기기 전에(자기 자신 제외) 먼저 읽어서 보여준다.
@@ -381,6 +384,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   if (recent.length) {
     document.getElementById("recent-wrap").hidden = false;
     document.getElementById("recent").innerHTML = recent.map((x, i) => productCard(x, i * 50)).join("");
+    bindWishlistButtons(document.getElementById("recent"));
   }
   RecentlyViewed.add(p.id);
 

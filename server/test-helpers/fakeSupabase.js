@@ -275,6 +275,68 @@ function createFakeSupabase(seed = {}) {
         },
       },
     },
+    /* claim_coupon_usage(032_coupon_usage_lock.sql) 흉내 — lib/coupons.js의 claimCouponUsage()가
+       부른다. 실제 Postgres 함수와 같은 원자성 보장(단일 문장 안에서 확인+증가)까지는 흉내낼
+       필요 없다 — 테스트는 순차 실행되므로, 여기서는 "확인 후 증가"만 정확히 재현하면 충분하다. */
+    async rpc(fn, args) {
+      if (fn === "claim_coupon_usage") {
+        const coupon = (store.coupons || []).find((c) => c.code === args.p_code);
+        if (!coupon) return { data: [{ claimed: false }], error: null };
+        if (coupon.usage_limit != null && (coupon.used_count || 0) >= coupon.usage_limit) {
+          return { data: [{ claimed: false }], error: null };
+        }
+        coupon.used_count = (coupon.used_count || 0) + 1;
+        return { data: [{ claimed: true }], error: null };
+      }
+      if (fn === "release_coupon_usage") {
+        const coupon = (store.coupons || []).find((c) => c.code === args.p_code);
+        if (coupon) coupon.used_count = Math.max(0, (coupon.used_count || 0) - 1);
+        return { data: null, error: null };
+      }
+      /* redeem_points/award_points/reverse_points_for_order(034_loyalty_points.sql) 흉내 —
+         lib/loyaltyPoints.js가 부른다. 실제 함수처럼 잔액을 loyalty_points_ledger 행의
+         SUM으로 계산한다(별도 잔액 컬럼 없음, 원본과 같은 원칙). */
+      if (fn === "redeem_points") {
+        if (!store.loyalty_points_ledger) store.loyalty_points_ledger = [];
+        const balance = store.loyalty_points_ledger
+          .filter((r) => r.user_id === args.p_user_id)
+          .reduce((s, r) => s + r.delta, 0);
+        if (args.p_amount <= 0) return { data: [{ ok: true, balance }], error: null };
+        if (balance < args.p_amount) return { data: [{ ok: false, balance }], error: null };
+        store.loyalty_points_ledger.push({
+          id: genId(), user_id: args.p_user_id, order_no: args.p_order_no,
+          delta: -args.p_amount, reason: "redeem_order", created_at: new Date().toISOString(),
+        });
+        return { data: [{ ok: true, balance: balance - args.p_amount }], error: null };
+      }
+      if (fn === "award_points") {
+        if (!store.loyalty_points_ledger) store.loyalty_points_ledger = [];
+        if (args.p_amount <= 0) return { data: null, error: null };
+        const dup = store.loyalty_points_ledger.some(
+          (r) => r.order_no === args.p_order_no && r.reason === args.p_reason && ["earn_purchase", "redeem_order"].includes(r.reason)
+        );
+        if (!dup) {
+          store.loyalty_points_ledger.push({
+            id: genId(), user_id: args.p_user_id, order_no: args.p_order_no,
+            delta: args.p_amount, reason: args.p_reason, created_at: new Date().toISOString(),
+          });
+        }
+        return { data: null, error: null };
+      }
+      if (fn === "reverse_points_for_order") {
+        if (!store.loyalty_points_ledger) store.loyalty_points_ledger = [];
+        store.loyalty_points_ledger
+          .filter((r) => r.order_no === args.p_order_no && ["earn_purchase", "redeem_order"].includes(r.reason))
+          .forEach((r) =>
+            store.loyalty_points_ledger.push({
+              id: genId(), user_id: r.user_id, order_no: args.p_order_no,
+              delta: -r.delta, reason: "refund_reversal", created_at: new Date().toISOString(),
+            })
+          );
+        return { data: null, error: null };
+      }
+      return { data: null, error: { message: `fakeSupabase: unhandled rpc "${fn}"` } };
+    },
     /* 테스트 beforeEach에서 매번 깨끗한 상태로 되돌릴 때 쓴다(server/lib/supabase.js가
        SUPABASE_URL=fake일 때 만드는 단일 인스턴스를 여러 테스트 파일이 공유하므로 필요). */
     __reset: reseed,
