@@ -147,8 +147,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
                 </div>
                 <p class="small" id="coupon-msg" style="margin-top:6px"></p>
               </div>
+              <div class="field" style="margin-bottom:16px" id="points-field" hidden>
+                <label for="f-points" data-i18n="적립금 사용">적립금 사용</label>
+                <div style="display:flex;gap:8px">
+                  <input id="f-points" type="number" min="0" step="1" inputmode="numeric" style="flex:1;min-width:0">
+                  <button type="button" class="btn btn--sm btn--ghost" id="points-max" style="flex-shrink:0" data-i18n="전액사용">전액사용</button>
+                </div>
+                <p class="small" id="points-msg" style="margin-top:6px"></p>
+              </div>
               <div class="summary__row"><span data-i18n="상품 합계">상품 합계</span><span class="tnum" id="sum-sub"></span></div>
               <div class="summary__row" id="sum-discount-row" hidden><span data-i18n="쿠폰 할인">쿠폰 할인</span><span class="tnum" id="sum-discount"></span></div>
+              <div class="summary__row" id="sum-points-row" hidden><span data-i18n="적립금 사용">적립금 사용</span><span class="tnum" id="sum-points"></span></div>
               <div class="summary__row"><span data-i18n="배송비">배송비</span><span class="tnum" id="sum-ship"></span></div>
               <div class="summary__row total"><span data-i18n="총 결제금액">총 결제금액</span><span class="tnum" id="sum-total"></span></div>
 
@@ -187,10 +196,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
      실제 할인은 여기서 계산하지 않고 서버(/api/coupons/validate, 그리고 주문 생성 시 다시 한번)가
      계산한 값만 그대로 표시한다. */
   let appliedCoupon = null; // { code, discount } | null
+  // 로그인한 회원만 쓸 수 있다(비회원은 적립금을 받을 계정이 없음, lib/loyaltyPoints.js 참고).
+  // 최종 사용액은 여기서 계산하지 않고 서버가 잔액·상품합계 기준으로 다시 clamp한다.
+  let pointsBalance = 0;
+  let appliedPoints = 0;
 
   function displayTotal() {
     const discount = appliedCoupon ? appliedCoupon.discount : 0;
-    return Math.max(0, Cart.subtotal() - discount) + Cart.shipping();
+    return Math.max(0, Cart.subtotal() - discount - appliedPoints) + Cart.shipping();
   }
 
   /* 담을 당시 언어로 번역된 문자열을 그대로 저장해두면, 나중에 언어를 바꿔도 장바구니에서는
@@ -277,9 +290,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     );
 
     const ship = Cart.shipping();
+    const discount = appliedCoupon ? appliedCoupon.discount : 0;
+    // 상품을 줄여서 상품 합계가 이미 적용한 포인트보다 작아지면(배송비까지 포인트로 못 내게)
+    // 로컬에서도 미리 clamp한다 — 최종 확정은 어차피 서버가 한 번 더 하지만, 화면 합계가
+    // 마이너스로 보이는 것부터 막는다.
+    appliedPoints = Math.max(0, Math.min(appliedPoints, Math.max(0, Cart.subtotal() - discount)));
+    el("f-points").value = appliedPoints || "";
+
     el("sum-sub").textContent = money(Cart.subtotal());
     el("sum-discount-row").hidden = !appliedCoupon;
     if (appliedCoupon) el("sum-discount").textContent = "−" + money(appliedCoupon.discount);
+    el("sum-points-row").hidden = !appliedPoints;
+    if (appliedPoints) el("sum-points").textContent = "−" + money(appliedPoints);
     el("sum-ship").textContent = ship === 0 ? t("무료") : money(ship);
     el("sum-total").textContent = money(displayTotal());
 
@@ -400,6 +422,33 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   el("coupon-apply").addEventListener("click", applyCoupon);
   el("f-coupon").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } });
 
+  /* 적립금 — 로그인한 회원만 쓸 수 있다(비회원은 잔액을 가질 계정이 없음). 비로그인이거나
+     잔액이 0이면 필드 자체를 숨긴다. */
+  (async () => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch("/api/points/balance", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const body = await res.json();
+      pointsBalance = Number(body.balance) || 0;
+      if (pointsBalance > 0) {
+        el("points-field").hidden = false;
+        el("f-points").max = pointsBalance;
+        el("points-msg").textContent = t("보유 적립금 {balance}", { balance: money(pointsBalance) });
+      }
+    } catch (e) {}
+  })();
+
+  function applyPointsInput(raw) {
+    const requested = Math.max(0, Math.floor(Number(raw)) || 0);
+    const discount = appliedCoupon ? appliedCoupon.discount : 0;
+    appliedPoints = Math.min(requested, pointsBalance, Math.max(0, Cart.subtotal() - discount));
+    paint();
+  }
+  el("f-points").addEventListener("input", () => applyPointsInput(el("f-points").value));
+  el("points-max").addEventListener("click", () => applyPointsInput(pointsBalance));
+
   /* 카드결제(포트원)는 server/가 설정을 마쳤을 때만 켠다 — /api/config가 없거나
      cardPaymentEnabled가 false면 결제 수단 선택란 자체를 안 보여주고 무통장입금만 남긴다
      (server/ 없는 정적 배포와 완전히 동일하게 동작). */
@@ -474,7 +523,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         const prepRes = await fetch("/api/payments/prepare", {
           method: "POST",
           headers,
-          body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, device: detectDeviceType() }),
+          body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, pointsToUse: appliedPoints || undefined, device: detectDeviceType() }),
         });
         if (!prepRes.ok) {
           const body = await prepRes.json().catch(() => ({}));
@@ -547,6 +596,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       shipping: Cart.shipping(),
       discount: appliedCoupon ? appliedCoupon.discount : 0,
       couponCode: appliedCoupon ? appliedCoupon.code : null,
+      pointsUsed: appliedPoints || 0,
       total: displayTotal(),
     };
 
@@ -561,7 +611,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       const res = await fetch("/api/order", {
         method: "POST",
         headers,
-        body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, device: detectDeviceType() }),
+        body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, pointsToUse: appliedPoints || undefined, device: detectDeviceType() }),
       });
 
       if (res.status === 409) {

@@ -34,6 +34,7 @@ const {
 const kakao = require("./lib/kakao");
 const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
 const { resolveCoupon, claimCouponUsage, releaseCouponUsage } = require("./lib/coupons");
+const { getPointsBalance, resolvePointsToUse, claimPointsUsage, previewEarnedPoints, creditPoints, awardPoints, reversePointsForOrder } = require("./lib/loyaltyPoints");
 const { toProductDto } = require("./lib/products");
 const { paginationParams } = require("./lib/pagination");
 const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmtExportDate } = require("./lib/orderExport");
@@ -392,8 +393,8 @@ const ORDER_DEVICE_TYPES = ["mobile", "tablet", "desktop"];
    가격 정책을 바꿀 때 한쪽만 고치고 다른 쪽을 놓치기 쉬운 지점이라 하나로 합친다. 이 함수는
    DB에 아무것도 쓰지 않고(coupon 조회만 함) 검증된 값 또는 에러만 돌려주므로, 호출부가
    재고 차감·저장 같은 각자의 나머지 절차를 이어서 하면 된다. */
-async function validateAndPriceOrder(body, products) {
-  const { customer, items: rawItems, couponCode, device } = body || {};
+async function validateAndPriceOrder(body, products, userId) {
+  const { customer, items: rawItems, couponCode, device, pointsToUse: rawPointsToUse } = body || {};
   if (!customer || typeof customer !== "object") {
     return { error: { status: 400, body: { error: "customer 정보가 없습니다." } } };
   }
@@ -420,13 +421,18 @@ async function validateAndPriceOrder(body, products) {
     return { error: { status: e.status || 400, body: { error: e.message } } };
   }
 
-  const total = subtotal - coupon.discount + shipping;
+  /* 배송비까지 포인트로 낼 수는 없으므로 (상품 합계 - 쿠폰 할인액)을 상한으로 clamp한다
+     (lib/loyaltyPoints.js 참고) — 비회원(userId 없음)이면 항상 0. */
+  const pointsUsed = await resolvePointsToUse(supabaseAdmin, userId, rawPointsToUse, Math.max(0, subtotal - coupon.discount));
+
+  const total = subtotal - coupon.discount - pointsUsed + shipping;
   return {
     rawItems,
     items,
     subtotal,
     shipping,
     coupon,
+    pointsUsed,
     total,
     device: ORDER_DEVICE_TYPES.includes(device) ? device : "unknown",
   };
@@ -437,15 +443,15 @@ async function validateAndPriceOrder(body, products) {
    결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
    서버 계산값이라 소용없다. 결제가 끝나면 /api/order가 paymentId로 다시 포트원에 물어봐서
    실제로 그 금액만큼 결제됐는지 확인한 뒤에만 주문을 만든다(사후검증, 009_card_payments.sql 참고). */
-app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
+app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) => {
   if (!portone.isConfigured()) {
     return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
   }
 
   const products = await getActiveProducts();
-  const priced = await validateAndPriceOrder(req.body, products);
+  const priced = await validateAndPriceOrder(req.body, products, req.user ? req.user.id : null);
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
-  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
 
   /* "reiten-" 접두어를 붙이면 43자가 되는데, NHN KCP V2 라이브 채널로 전환한 뒤 실제 결제를
@@ -474,6 +480,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     total,
     coupon_code: coupon.code,
     discount: coupon.discount,
+    points_used: pointsUsed,
     device,
   });
   if (error) {
@@ -493,6 +500,7 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
     paymentId,
     totalAmount: total,
     orderName,
+    pointsUsed,
     storeId: process.env.PORTONE_STORE_ID,
     channelKey: process.env.PORTONE_CHANNEL_KEY,
     customer: { fullName: normalizedCustomer.name, phoneNumber: normalizedCustomer.tel, email: normalizedCustomer.email },
@@ -503,16 +511,26 @@ app.post("/api/payments/prepare", writeLimiter, async (req, res) => {
    마이그레이션이 아직 안 돌아서 컬럼이 없으면(PGRST204) device 없이 한 번 더 시도한다.
    기기 정보는 부가 통계용일 뿐이라 이것 때문에 주문·결제 생성 자체(핵심 기능)가 막히면
    절대 안 된다 — reviews.order_no와 같은 원칙(위 리뷰 실구매 인증 참고). */
+/* device(022_order_device.sql)에 이어 points_used(034_loyalty_points.sql)도 나중에 추가된
+   선택 컬럼이라 같은 폴백이 필요해졌다 — 컬럼 하나가 없을 때마다 매번 이 함수를 새로 고치지
+   않도록, "있으면 넣고 없으면 빼고 재시도"할 선택 컬럼 목록을 하나로 관리한다. PostgREST가
+   어떤 컬럼이 없는지까지는 구조화해서 안 알려줘서(PGRST204/42703 코드만 옴), 하나씩 빼보며
+   재시도한다(선택 컬럼이 실무에서 한 번에 여러 개 밀려있는 경우는 드물어 이 정도로 충분하다). */
+const OPTIONAL_ORDER_COLUMNS = ["device", "points_used", "points_earned"];
+
 async function insertOrderRow(table, row, { returning = false } = {}) {
   const run = (r) => {
     const q = supabaseAdmin.from(table).insert(r);
     return returning ? q.select().single() : q;
   };
   let result = await run(row);
-  if (isMissingColumnError(result.error) && "device" in row) {
-    console.warn(`[${table}] 'device' 컬럼 없음(마이그레이션 022 미실행) — device 없이 재시도`);
-    const { device, ...rest } = row;
-    result = await run(rest);
+  let current = row;
+  for (const col of OPTIONAL_ORDER_COLUMNS) {
+    if (!isMissingColumnError(result.error) || !(col in current)) continue;
+    console.warn(`[${table}] '${col}' 컬럼 없음(마이그레이션 미실행) — ${col} 없이 재시도`);
+    const { [col]: _omit, ...rest } = current;
+    current = rest;
+    result = await run(current);
   }
   return result;
 }
@@ -586,6 +604,7 @@ async function decrementInventoryForItems(inventoryItems, products, ref) {
 async function finalizeCardOrder({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
+  const pointsUsed = pending.points_used || 0;
   const orderNumber = orderNo(await nextOrderSeq());
 
   /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 카드결제는 이 시점에 이미 결제가
@@ -597,6 +616,18 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     if (!claimed) {
       console.warn("[order] 쿠폰 사용 횟수 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", couponCode, paymentId);
       logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_card_order" });
+    }
+  }
+
+  /* 포인트 사용 원자적 차감(034_loyalty_points.sql) — 쿠폰과 같은 원칙: 카드결제는 이미 결제가
+     끝난 뒤라 잔액 부족으로 판정돼도 주문 생성 자체를 막지 않는다. pending.points_used는
+     /api/payments/prepare 시점에 그때 로그인해 있던 사용자 기준으로 계산된 값이라, 결제 확인
+     요청(userId) 사이에 로그아웃했다면 차감 대상 계정이 없어 조용히 건너뛴다(적립도 같은 문제). */
+  if (pointsUsed && userId) {
+    const claimed = await claimPointsUsage(supabaseAdmin, userId, pointsUsed, orderNumber);
+    if (!claimed) {
+      console.warn("[order] 포인트 잔액 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", userId, paymentId);
+      logSystemError("points_balance_exceeded", { userId, pointsUsed, paymentId, stage: "finalize_card_order" });
     }
   }
 
@@ -630,6 +661,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           logSystemError("card_cancel_failed", { paymentId, productId, size, error: cancelErr.message });
         }
         if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+        if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
       }
       /* 재고부족(위 OUT_OF_STOCK)이 아닌 다른 이유(DB 오류 등)로 재고 차감 자체가 실패한
@@ -642,6 +674,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       );
       logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError, paymentCancelled: cancelled });
       if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
   }
@@ -650,6 +683,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
      한다 — items(name/options/qty/unit/sum)에는 원래 productId가 없어서 나중엔 알 수 없었다.
      rawItems와 순서가 그대로 대응되므로 그대로 붙여서 저장한다. */
   const itemsForStorage = items.map((it, i) => ({ ...it, productId: rawItems[i].productId, size: rawItems[i].size || null, color: rawItems[i].color || null }));
+
+  const pointsEarned = await previewEarnedPoints(supabaseAdmin, userId, total);
 
   const { data: saved, error: saveError } = await insertOrderRow(
     "orders",
@@ -664,6 +699,8 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       total,
       coupon_code: couponCode || null,
       discount: discount || 0,
+      points_used: pointsUsed,
+      points_earned: pointsEarned,
       payment_method: "card",
       payment_id: paymentId,
       status: "입금확인",
@@ -690,8 +727,9 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
         }
       }
-      // 재고와 같은 이유로, 이 중복 실행분이 방금 차감한 쿠폰 사용 횟수도 되돌린다(위 claimCouponUsage 참고).
+      // 재고와 같은 이유로, 이 중복 실행분이 방금 차감한 쿠폰 사용 횟수·포인트도 되돌린다(위 claimCouponUsage 참고).
       if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
       if (existing) return { ok: true, saved: existing };
       /* 유니크 위반인데 아직 다른 트랜잭션의 행이 안 보이는 극히 드문 복제 지연 케이스 —
@@ -721,6 +759,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     );
     logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message, paymentCancelled: cancelled });
     if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
   }
 
@@ -734,6 +773,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     console.error("[push] 알림 발송 실패:", err.message)
   );
   issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
+  creditPoints(supabaseAdmin, userId, pointsEarned, orderNumber).catch((err) => console.error("[points] 적립 실패:", err.message));
 
   return { ok: true, saved };
 }
@@ -934,7 +974,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
         return res.json({
           no: already.order_no, at: already.created_at, customer: already.customer, items: already.items,
           subtotal: already.subtotal, shipping: already.shipping, total: already.total,
-          discount: already.discount, couponCode: already.coupon_code,
+          discount: already.discount, couponCode: already.coupon_code, pointsUsed: already.points_used || 0,
           paymentMethod: already.payment_method, sent: true,
         });
       }
@@ -963,7 +1003,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     return res.json({
       no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
       subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
-      discount: result.saved.discount, couponCode: result.saved.coupon_code,
+      discount: result.saved.discount, couponCode: result.saved.coupon_code, pointsUsed: result.saved.points_used || 0,
       paymentMethod: result.saved.payment_method, sent: true,
     });
   }
@@ -971,9 +1011,10 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   /* 쿠폰이 유효하지 않으면 재고를 건드리기 전에(아래 decrement_inventory 호출 전에) 먼저 실패시킨다 —
      재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
   const products = await getActiveProducts();
-  const priced = await validateAndPriceOrder(req.body, products);
+  const userId = req.user ? req.user.id : null;
+  const priced = await validateAndPriceOrder(req.body, products, userId);
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
-  const { rawItems, items, subtotal, shipping, coupon, total, device } = priced;
+  const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
 
   /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 무통장입금은 아직 돈을 받기 전이라
@@ -985,6 +1026,18 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
   }
 
   const orderNumber = orderNo(await nextOrderSeq());
+
+  /* 포인트 사용 원자적 차감(034_loyalty_points.sql) — 쿠폰과 같은 자리, 같은 이유. 무통장입금은
+     아직 "입금대기"일 뿐 실제로 돈을 받은 게 아니라서(24시간 내 미입금 시 자동취소, 아래
+     PENDING_CANCEL_HOURS 크론 참고), 이 주문이 나중에 취소되면 reversePointsForOrder로 돌려준다. */
+  if (pointsUsed) {
+    const claimed = await claimPointsUsage(supabaseAdmin, userId, pointsUsed, orderNumber);
+    if (!claimed) {
+      // 포인트가 부족해 주문을 못 만든다면, 방금 위에서 먼저 차감한 쿠폰 사용 횟수를 되돌려야 한다.
+      if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+      return res.status(400).json({ error: "포인트 잔액이 부족합니다." });
+    }
+  }
 
   /* 실물 재고가 있는(참/추가아이템이 아닌) 상품·사이즈 조합만 차감 대상으로 뽑는다.
      rawItems와 items는 map()으로 만들어져 인덱스가 그대로 대응된다. */
@@ -1004,6 +1057,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     const decResult = await decrementInventoryForItems(inventoryItems, products, orderNumber);
     if (!decResult.ok) {
       if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+      if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       if (decResult.outOfStock) return res.status(409).json({ error: "OUT_OF_STOCK", ...decResult.outOfStock });
       console.error("[order] 재고 차감 실패:", decResult.dbError);
       return res.status(500).json({ error: "재고 확인 중 오류가 발생했습니다." });
@@ -1029,7 +1083,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     "orders",
     {
       order_no: orderNumber,
-      user_id: req.user ? req.user.id : null,
+      user_id: userId,
       customer: normalizedCustomer,
       items: itemsForStorage,
       device,
@@ -1038,6 +1092,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       total,
       coupon_code: coupon.code,
       discount: coupon.discount,
+      points_used: pointsUsed,
     },
     { returning: true }
   );
@@ -1059,6 +1114,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
       }
     }
     if (coupon.code) await releaseCouponUsage(supabaseAdmin, coupon.code);
+    if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     logSystemError("bank_order_finalize_failed", { orderNo: orderNumber, error: saveError.message });
     return res.status(500).json({ error: "주문 저장에 실패했습니다." });
   }
@@ -1084,6 +1140,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
     total: saved.total,
     discount: saved.discount,
     couponCode: saved.coupon_code,
+    pointsUsed: saved.points_used || 0,
     paymentMethod: "bank_transfer",
     sent: true,
   });
@@ -1540,6 +1597,15 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
     });
     kakao.sendAlimtalk("PAYMENT_CONFIRMED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
     issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
+    /* 카드결제는 finalizeCardOrder가 결제 확정 즉시 적립하므로 여기 다시 안 걸린다(생성 시점에
+       이미 "입금확인"으로 저장됨) — 이 분기는 무통장입금이 관리자 확인으로 처음 "입금확인"이
+       되는 순간만 탄다. points_earned는 생성 시 0으로 저장돼 있었으므로 여기서 실제 적립액으로
+       채워 넣는다(고객이 주문 내역에서 정확한 적립 예정 포인트를 보게 하기 위함). */
+    awardPoints(supabaseAdmin, saved.user_id, saved.total, saved.order_no)
+      .then((amount) => {
+        if (amount) supabaseAdmin.from("orders").update({ points_earned: amount }).eq("order_no", saved.order_no).then(() => {});
+      })
+      .catch((err) => console.error("[points] 적립 실패:", err.message));
   }
   if (!prev?.tracking_no && saved.tracking_no) {
     sendCustomerShipped(saved).catch((err) => {
@@ -1708,6 +1774,10 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
           restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "admin_cancel", ref: saved.order_no }))
         );
       }
+    }
+    // 재고 복원과 같은 원칙 — 이 주문으로 적립된 포인트는 회수하고, 사용한 포인트는 되돌려준다.
+    if (saved.points_used || saved.points_earned) {
+      reversePointsForOrder(supabaseAdmin, saved.order_no).catch((err) => console.error("[points] 취소 시 되돌리기 실패:", err.message));
     }
 
     if (saved.payment_method === "card" && saved.payment_id) {
@@ -2229,6 +2299,14 @@ app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
   }
 });
 
+/* 로그인한 회원의 적립금 잔액 — 장바구니에서 "포인트 사용"을 켜기 전에 얼마나 남았는지 보여주는
+   용도(034_loyalty_points.sql). 실제 사용 금액은 쿠폰과 같은 원칙으로 /api/order·
+   /api/payments/prepare가 다시 clamp해서 재계산하므로, 여기서 조작해도 결제 금액엔 영향 없다. */
+app.get("/api/points/balance", requireAuth, async (req, res) => {
+  const balance = await getPointsBalance(supabaseAdmin, req.user.id);
+  res.json({ balance });
+});
+
 /* 상품 관리자 CRUD(GET/POST/PATCH/DELETE·일괄 처리·사진 업로드) — 결제·재고와 얽히지 않는
    부분만 routes/products.js로 분리했다(공개 목록 GET /api/products는 결제 가격 검증이 쓰는
    캐시를 공유해 여기 그대로 둔다 — 2026-09-01, 라우트 분리 다음 라운드). */
@@ -2272,11 +2350,20 @@ const PENDING_CANCEL_HOURS = 24;
 
 async function cancelStalePendingOrders() {
   const cutoff = new Date(Date.now() - PENDING_CANCEL_HOURS * 3600 * 1000).toISOString();
-  const { data: stale, error } = await supabaseAdmin
+  let { data: stale, error } = await supabaseAdmin
     .from("orders")
-    .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
+    .select("id, order_no, items, customer, subtotal, shipping, total, points_used, created_at")
     .eq("status", "입금대기")
     .lt("created_at", cutoff);
+
+  // points_used 컬럼이 아직 없음(034_loyalty_points.sql 미실행) — 그 컬럼 없이 재조회.
+  if (isMissingColumnError(error)) {
+    ({ data: stale, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_no, items, customer, subtotal, shipping, total, created_at")
+      .eq("status", "입금대기")
+      .lt("created_at", cutoff));
+  }
 
   if (error) {
     console.error("[auto-cancel] 미입금 주문 조회 실패:", error.message);
@@ -2314,6 +2401,10 @@ async function cancelStalePendingOrders() {
           restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "auto_cancel", ref: order.order_no }))
         );
       }
+    }
+    // 미입금으로 자동취소된 주문이 포인트를 썼었다면 그대로 돌려준다(관리자 수동 취소와 같은 원칙).
+    if (order.points_used) {
+      reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
     }
 
     sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));

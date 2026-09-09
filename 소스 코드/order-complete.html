@@ -65,6 +65,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       ``,
       `상품 합계 : ${order.subtotal.toLocaleString("ko-KR")}원`,
       ...(order.discount ? [`쿠폰 할인 (${order.couponCode}) : -${order.discount.toLocaleString("ko-KR")}원`] : []),
+      ...(order.pointsUsed ? [`적립금 사용 : -${order.pointsUsed.toLocaleString("ko-KR")}원`] : []),
       `배송비 : ${order.shipping === 0 ? "무료" : order.shipping.toLocaleString("ko-KR") + "원"}`,
       `총 결제금액 : ${order.total.toLocaleString("ko-KR")}원`,
       ``,
@@ -124,6 +125,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             </tr>`).join("")}
           <tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("상품 합계")}</td><td>${money(order.subtotal)}</td></tr>
           ${order.discount ? `<tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("쿠폰 할인")} (${esc(order.couponCode)})</td><td>−${money(order.discount)}</td></tr>` : ""}
+          ${order.pointsUsed ? `<tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("적립금 사용")}</td><td>−${money(order.pointsUsed)}</td></tr>` : ""}
           <tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("배송비")}</td><td>${order.shipping === 0 ? t("무료") : money(order.shipping)}</td></tr>
           <tr><td colspan="3" style="text-align:right;font-weight:650">${t("총 결제금액")}</td><td style="font-weight:650">${money(order.total)}</td></tr>
         </tbody>
