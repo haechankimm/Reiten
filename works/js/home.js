@@ -32,6 +32,42 @@
       </button>`;
   }
 
+  /* "한눈에 보이는 그래프가 없어 허전하다"는 피드백(2026-09-10)으로 추가 — reports.js의
+     대시보드 탭이 이미 계산해 내려주는 dailyRevenue/bestsellers를 그대로 재사용한다(새 API
+     호출 없이 이 페이지가 이미 받아온 dash 객체만 다시 그림). 전체 대시보드는 여전히 별도
+     탭에 있고, 여기는 로그인 직후 "오늘 상황"만 요약해서 보여주는 축소판이다. */
+  function homeRevenueChartHTML(dailyRevenue) {
+    const max = Math.max(1, ...dailyRevenue.map((r) => r.total));
+    return dailyRevenue
+      .map((r) => {
+        const d = new Date(r.date + "T00:00:00");
+        const label = `${d.getMonth() + 1}/${d.getDate()}`;
+        return `
+        <div class="chart-bar-col" title="${esc(label)} · ${esc(money(r.total))}">
+          <div class="chart-bar" style="height:${Math.max(2, Math.round((r.total / max) * 100))}%"></div>
+          <span class="chart-bar-label">${esc(label)}</span>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function homeBestsellersHTML(bestsellers) {
+    if (!bestsellers.length) return `<p class="small" style="color:var(--text-muted)">${esc(t("아직 주문이 없습니다"))}</p>`;
+    const max = Math.max(1, ...bestsellers.slice(0, 3).map((b) => b.qty));
+    return bestsellers
+      .slice(0, 3)
+      .map(
+        (b, i) => `
+      <div class="best-row">
+        <span class="best-rank">${i + 1}</span>
+        <span>${esc(t(b.name))}</span>
+        <span class="tnum">${esc(t("{n}개", { n: b.qty }))}</span>
+        <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((b.qty / max) * 100)}%"></div></div>
+      </div>`
+      )
+      .join("");
+  }
+
   function goToTab(tab) {
     document.querySelector(`.nav-item[data-tab="${tab}"]`)?.click();
   }
@@ -50,10 +86,14 @@
 
     el("home-tiles").innerHTML = [
       homeTileHTML(t("오늘 매출"), money(dash.todayRevenue), "dashboard"),
+      homeTileHTML(t("이번 달 매출"), money(dash.monthRevenue), "dashboard"),
       homeTileHTML(t("오늘 주문"), t("{n}건", { n: dash.todayOrders }), "orders"),
       homeTileHTML(t("입금 확인 대기"), t("{n}건", { n: dash.pendingCount }), "orders"),
       homeTileHTML(t("확인 필요 총계"), t("확인 필요 {n}건", { n: pendingTotal }), "orders"),
     ].join("");
+
+    el("home-revenue-chart").innerHTML = homeRevenueChartHTML(dash.dailyRevenue || []);
+    el("home-bestsellers").innerHTML = homeBestsellersHTML(dash.bestsellers || []);
 
     el("home-shortcuts").innerHTML = [
       homeShortcutHTML(t("전체 주문"), t("주문 검색·상태 변경·배송 등록"), "orders"),
