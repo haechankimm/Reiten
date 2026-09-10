@@ -8,17 +8,17 @@
     --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
     --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
     --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
-    --danger: #b3261e; --ok: #1f8a4c;
+    --danger: #b3261e; --ok: #15944a;
     --radius: 6px;
     color-scheme: light;
 
     --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
     --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
     --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
-    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
-    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
-    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
-    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-pending-ink: #a26d0a;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #07828d; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #5430b5;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #15944a;      --status-done-bg: #e6f6ec;
     --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
   }
   @media (prefers-color-scheme: dark) {
@@ -59,15 +59,15 @@
     --paper: #ffffff; --paper-2: #f5f6f8; --paper-3: #eceef2;
     --ink: #14161b; --ink-soft: #3a3f4a; --muted: #8b93a1;
     --line: #e3e6eb; --line-soft: #eceef2; --field: #ffffff; --shade: #eceef2;
-    --danger: #b3261e; --ok: #1f8a4c;
+    --danger: #b3261e; --ok: #15944a;
 
     --bg-canvas: #ffffff; --bg-surface: #f5f6f8; --bg-surface-2: #eceef2;
     --text-primary: #14161b; --text-secondary: #565d6b; --text-muted: #8b93a1;
     --border: #e3e6eb; --accent: #3e5dc4; --accent-soft: #eaeefb; --accent-contrast: #ffffff;
-    --status-pending-ink: #9a6b12;   --status-pending-bg: #fbf0dc;
-    --status-confirmed-ink: #0e7c86; --status-confirmed-bg: #e1f5f3;
-    --status-shipping-ink: #6b4fb6;  --status-shipping-bg: #efeafb;
-    --status-done-ink: #1f8a4c;      --status-done-bg: #e6f6ec;
+    --status-pending-ink: #a26d0a;   --status-pending-bg: #fbf0dc;
+    --status-confirmed-ink: #07828d; --status-confirmed-bg: #e1f5f3;
+    --status-shipping-ink: #5430b5;  --status-shipping-bg: #efeafb;
+    --status-done-ink: #15944a;      --status-done-bg: #e6f6ec;
     --status-neutral-ink: #5b6270;   --status-neutral-bg: #eef0f3;
   }
 

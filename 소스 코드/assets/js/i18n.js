@@ -966,6 +966,7 @@ const I18N = {
   "건 — 확인 필요": { de: "zu prüfen" },
   "최근 14일 매출": { de: "Umsatz der letzten 14 Tage" },
   "베스트셀러 (수량 기준)": { de: "Bestseller (nach Menge)" },
+  "베스트셀러 TOP3": { de: "Top 3 Bestseller" },
   "{n}개": { de: "{n} Stk." },
   "{n}건": { de: "{n} Bestellungen" },
   "기기별 실제 매출 (결제 완료 기준)": { de: "Tatsächlicher Umsatz nach Gerät (abgeschlossene Zahlungen)" },
