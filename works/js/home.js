@@ -1,17 +1,36 @@
   /* ---------- 오늘(홈) — 로그인 직후 첫 화면 ----------
      예전엔 로그인하면 곧장 "전체 주문" 목록으로 가서, 오늘 상황을 파악하려면 대시보드 탭을
      따로 눌러야 했다(2026-09, figlo WORKS 벤치마크로 나온 요청) — 이미 있는 대시보드·알림벨
-     데이터를 재활용해 첫 화면에서 바로 보여준다. "OOO님, 오늘도 힘내세요" 같은 고정 인사말은
-     쓰지 말아달라는 요청이 있어서, 시간대(아침/오후/저녁) × 확인할 게 있는지(0건/일부 건)를
-     조합한 6가지 문장 중 하나를 그때그때 고른다(무작위가 아니라 시간·상태 기반이라 같은
+     데이터를 재활용해 첫 화면에서 바로 보여준다.
+     제목(큰 글씨)은 Claude 앱의 새 대화 화면(시간대에 따라 "저녁 단상"처럼 짧고 담백한
+     문구가 뜨는 것)을 참고해 시간대 4구간(아침/오후/저녁/밤)마다 하나씩 고정 문구를 쓴다
+     (2026-09-11, 사용자 요청 — "OOO님, 오늘도 힘내세요" 같은 고정 인사말을 큰 제목에 쓰지
+     말아달라던 것과 같은 맥락). 이름·확인 건수처럼 실제로 쓸모 있는 정보는 사라지지 않고
+     그 아래 작은 부제(subline)로 옮겨서, 시간대(0~4시=밤)×확인할 게 있는지(0건/일부 건)를
+     조합한 8가지 문장 중 하나를 그때그때 고른다(무작위가 아니라 시간·상태 기반이라 같은
      시간대·같은 상태에서 다시 열어도 뜬금없이 안 바뀜). */
-  function homeGreetingKey(hour, pendingTotal) {
-    const bucket = hour < 11 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  function homeTimeBucket(hour) {
+    if (hour < 5) return "night";
+    if (hour < 11) return "morning";
+    if (hour < 18) return "afternoon";
+    if (hour < 22) return "evening";
+    return "night";
+  }
+
+  const HOME_TITLE = {
+    morning: "아침의 시작",
+    afternoon: "오후의 흐름",
+    evening: "저녁 단상",
+    night: "밤의 고요",
+  };
+
+  function homeSublineKey(bucket, pendingTotal) {
     const busy = pendingTotal > 0;
     const keys = {
-      morning: { idle: "{name}님, 좋은 아침이에요 — 오늘은 조용하네요.", busy: "{name}님, 좋은 아침이에요 — 확인할 게 {n}건 있어요." },
-      afternoon: { idle: "{name}님, 순조롭게 흘러가는 오후예요.", busy: "{name}님, 오후에도 확인할 게 {n}건 남아있어요." },
+      morning: { idle: "{name}님, 오늘은 조용하네요.", busy: "{name}님, 확인할 게 {n}건 있어요." },
+      afternoon: { idle: "{name}님, 순조롭게 흘러가고 있어요.", busy: "{name}님, 확인할 게 {n}건 남아있어요." },
       evening: { idle: "{name}님, 오늘 하루도 무사히 마무리되고 있어요.", busy: "{name}님, 마감 전에 {n}건만 더 확인해 주세요." },
+      night: { idle: "{name}님, 늦은 시간까지 고생 많으세요.", busy: "{name}님, {n}건이 아직 남아있어요." },
     };
     return keys[bucket][busy ? "busy" : "idle"];
   }
@@ -81,8 +100,10 @@
 
     const pendingTotal = notif.total || 0;
     const name = profile.name || profile.email;
-    el("home-greeting").textContent = t(homeGreetingKey(new Date().getHours(), pendingTotal), { name, n: pendingTotal });
-    el("home-subline").textContent = new Date().toLocaleDateString(getLang() === "de" ? "de-DE" : "ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    const bucket = homeTimeBucket(new Date().getHours());
+    const dateStr = new Date().toLocaleDateString(getLang() === "de" ? "de-DE" : "ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    el("home-greeting").textContent = t(HOME_TITLE[bucket]);
+    el("home-subline").textContent = `${t(homeSublineKey(bucket, pendingTotal), { name, n: pendingTotal })} · ${dateStr}`;
 
     el("home-tiles").innerHTML = [
       homeTileHTML(t("오늘 매출"), money(dash.todayRevenue), "dashboard"),
