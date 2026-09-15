@@ -1,5 +1,5 @@
   /* ---------- 전체 주문 (리스트 + 디테일 패널) ---------- */
-  const ordersState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
+  const ordersState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "", assignedTo: "" };
   let selectedOrderNo = null;
 
   function orderStatusChip(status) {
@@ -83,6 +83,14 @@
         <label>${esc(t("상태"))}</label>
         <select class="mini-select" id="od-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
       </div>
+      <div class="detail-field" style="margin-top:8px">
+        <label>${esc(t("담당자"))}</label>
+        <select class="mini-select" id="od-assignee">${adminAssigneeOptionsHTML(o.assignedTo)}</select>
+      </div>
+      <div class="detail-field" style="margin-top:8px">
+        <label>${esc(t("내부 메모 (고객에게 보이지 않음)"))}</label>
+        <textarea id="od-internal-note" rows="2" placeholder="${esc(t("예: 전화로 직접 요청함, 예외 처리"))}" maxlength="2000">${esc(o.internalNote || "")}</textarea>
+      </div>
       <div class="detail-field" id="od-cancel-reason-field" ${o.status === "취소" ? "" : "hidden"} style="margin-top:8px">
         <label>${esc(t("취소 사유 (선택)"))}</label>
         <input type="text" id="od-cancel-reason" placeholder="${esc(t("예: 고객 요청, 재고 소진 등"))}" maxlength="300">
@@ -161,16 +169,20 @@
         const courier = el("od-courier").value;
         const trackingNo = el("od-tracking").value.trim();
         const cancelReason = el("od-cancel-reason").value.trim();
+        const assignedTo = el("od-assignee").value;
+        const internalNote = el("od-internal-note").value.trim();
         const isNewCancel = status === "취소" && o.status !== "취소";
         const isUncancel = o.status === "취소" && status !== "취소";
         const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
           method: "PATCH",
-          body: JSON.stringify({ status, courier, trackingNo, cancelReason }),
+          body: JSON.stringify({ status, courier, trackingNo, cancelReason, assignedTo, internalNote }),
         });
         if (!result) return;
         o.status = status;
         o.courier = courier;
         o.trackingNo = trackingNo;
+        o.assignedTo = assignedTo || null;
+        o.internalNote = internalNote || null;
         if (isNewCancel && result.cancel) {
           if (result.cancel.refund === "card" && result.cancel.ok) toast(t("주문을 취소하고 카드 결제도 자동 환불했습니다"));
           else if (result.cancel.refund === "card" && !result.cancel.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
@@ -203,6 +215,7 @@
     if (ordersState.status) params.set("status", ordersState.status);
     if (ordersState.dateFrom) params.set("dateFrom", ordersState.dateFrom);
     if (ordersState.dateTo) params.set("dateTo", ordersState.dateTo);
+    if (ordersState.assignedTo) params.set("assignedTo", ordersState.assignedTo);
     return params;
   }
 
@@ -234,6 +247,7 @@
     ordersState.status = el("ord-status").value;
     ordersState.dateFrom = el("ord-from").value;
     ordersState.dateTo = el("ord-to").value;
+    ordersState.assignedTo = el("ord-mine").checked ? "me" : "";
     paintAdminOrders();
   });
   el("ord-reset").addEventListener("click", () => {
@@ -241,6 +255,7 @@
     el("ord-status").value = "";
     el("ord-from").value = "";
     el("ord-to").value = "";
+    el("ord-mine").checked = false;
     el("ord-search").click();
   });
   el("ord-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("ord-search").click(); });
@@ -346,5 +361,5 @@
     paintAdminOrders();
   });
 
-  const returnsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
+  const returnsState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "", assignedTo: "" };
 

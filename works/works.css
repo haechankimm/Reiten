@@ -454,3 +454,42 @@
     .content { padding: 14px 12px 32px; }
     .detail-grid { grid-template-columns: 1fr; }
   }
+
+  /* ---------- 캘린더 ---------- */
+  .cal-grid { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-surface); }
+  .cal-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }
+  .cal-weekday { padding: 8px 4px; text-align: center; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+  .cal-weekday--sun { color: var(--danger); }
+  .cal-weekday--sat { color: var(--accent); }
+  .cal-grid-body { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .cal-cell {
+    min-height: 76px; border: none; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    background: transparent; cursor: pointer; text-align: left; padding: 6px 4px; display: flex; flex-direction: column; gap: 3px;
+    font-family: inherit; color: var(--text-primary);
+  }
+  .cal-grid-body .cal-cell:nth-child(7n) { border-right: none; }
+  .cal-cell:hover { background: var(--bg-surface-2); }
+  .cal-cell--empty { cursor: default; background: var(--bg-canvas); }
+  .cal-cell--empty:hover { background: var(--bg-canvas); }
+  .cal-cell-num { font-size: 12px; font-weight: 600; padding-left: 2px; }
+  .cal-cell--today .cal-cell-num {
+    display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px;
+    border-radius: 50%; background: var(--accent); color: var(--accent-contrast);
+  }
+  .cal-cell--selected { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal-cell-events { display: flex; flex-direction: column; gap: 2px; }
+  .cal-pill {
+    font-size: 10px; font-weight: 600; color: #fff; padding: 1px 5px; border-radius: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cal-pill-more { font-size: 10px; color: var(--text-muted); padding-left: 2px; }
+  .cal-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .cal-color-picker { display: flex; gap: 8px; padding-top: 4px; }
+  .cal-color-dot {
+    width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0;
+  }
+  .cal-color-dot[aria-pressed="true"] { border-color: var(--text-primary); }
+  @media (max-width: 640px) {
+    .cal-cell { min-height: 56px; }
+    .cal-pill { font-size: 9px; }
+  }

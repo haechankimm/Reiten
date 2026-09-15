@@ -1,4 +1,4 @@
-  const qnaState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "" };
+  const qnaState = { page: 0, pageSize: 20, total: 0, items: [], q: "", status: "", dateFrom: "", dateTo: "", assignedTo: "" };
   let qnaTemplates = [];
 
   /* 문의 본문에 템플릿의 매칭 키워드(대소문자 무시) 중 하나라도 포함되면 그 템플릿을 기본으로
@@ -35,6 +35,11 @@
           </div>
           <button type="button" class="btn btn--sm admin-qna-submit">${esc(t("답변 등록"))}</button>`
         }
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select class="mini-select admin-qna-assignee">${adminAssigneeOptionsHTML(q.assignedTo)}</select>
+          <button type="button" class="btn btn--sm btn--ghost admin-qna-save-meta">${esc(t("담당·메모 저장"))}</button>
+        </div>
+        <textarea class="admin-qna-note" rows="2" style="margin-top:8px" placeholder="${esc(t("내부 메모 (고객에게 보이지 않음)"))}" maxlength="2000">${esc(q.internalNote || "")}</textarea>
       </div>`;
   }
 
@@ -72,6 +77,24 @@
       })
     );
 
+    el("admin-qna-list").querySelectorAll(".admin-qna-save-meta").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-id]");
+        const assignedTo = card.querySelector(".admin-qna-assignee").value;
+        const internalNote = card.querySelector(".admin-qna-note").value.trim();
+        btn.disabled = true;
+        const result = await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ assignedTo, internalNote }),
+        });
+        btn.disabled = false;
+        if (!result) return;
+        const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+        if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], assignedTo: assignedTo || null, internalNote: internalNote || null };
+        toast(t("담당자·메모를 저장했습니다"));
+      })
+    );
+
     el("admin-qna-more")?.addEventListener("click", () => paintAdminQna(true));
   }
 
@@ -81,6 +104,7 @@
     if (qnaState.status) params.set("status", qnaState.status);
     if (qnaState.dateFrom) params.set("dateFrom", qnaState.dateFrom);
     if (qnaState.dateTo) params.set("dateTo", qnaState.dateTo);
+    if (qnaState.assignedTo) params.set("assignedTo", qnaState.assignedTo);
     return params;
   }
 
@@ -98,6 +122,7 @@
     qnaState.status = el("qna-status").value;
     qnaState.dateFrom = el("qna-from").value;
     qnaState.dateTo = el("qna-to").value;
+    qnaState.assignedTo = el("qna-mine").checked ? "me" : "";
     paintAdminQna();
   });
   el("qna-reset").addEventListener("click", () => {
@@ -105,6 +130,7 @@
     el("qna-status").value = "";
     el("qna-from").value = "";
     el("qna-to").value = "";
+    el("qna-mine").checked = false;
     el("qna-search").click();
   });
   el("qna-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("qna-search").click(); });

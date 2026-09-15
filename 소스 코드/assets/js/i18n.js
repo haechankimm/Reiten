@@ -1299,6 +1299,36 @@ const I18N = {
   "적립금 {amount} 사용": { de: "{amount} Bonuspunkte eingelöst" },
   "적립금 {amount} 적립": { de: "{amount} Bonuspunkte gutgeschrieben" },
   "입금 계좌": { de: "Einzahlungskonto" },
+
+  /* ---------- Works: 담당자 지정 · 내부 메모 · 인수인계 · 캘린더 ---------- */
+  "담당자": { de: "Zuständig" },
+  "담당자 없음": { de: "Niemand zugewiesen" },
+  "내 담당만": { de: "Nur meine" },
+  "내부 메모 (고객에게 보이지 않음)": { de: "Interne Notiz (für Kunden nicht sichtbar)" },
+  "예: 전화로 직접 요청함, 예외 처리": { de: "z. B. Kunde hat telefonisch gebeten, Ausnahme" },
+  "담당·메모 저장": { de: "Zuständigkeit/Notiz speichern" },
+  "담당자·메모를 저장했습니다": { de: "Zuständigkeit und Notiz gespeichert" },
+
+  /* ---------- Works: 캘린더 ---------- */
+  "캘린더": { de: "Kalender" },
+  "발매일·행사·휴무 같은 일정을 색으로 구분해 한 화면에서 봅니다.": { de: "Termine wie Launches, Events oder freie Tage farblich unterschieden auf einen Blick." },
+  "+ 새 일정": { de: "+ Neuer Termin" },
+  "+ 일정 추가": { de: "+ Termin hinzufügen" },
+  "날짜": { de: "Datum" },
+  "색상": { de: "Farbe" },
+  "메모 (선택)": { de: "Notiz (optional)" },
+  "이 날은 일정이 없습니다.": { de: "An diesem Tag gibt es keine Termine." },
+  "제목을 입력해 주세요.": { de: "Bitte einen Titel eingeben." },
+  "날짜를 선택해 주세요.": { de: "Bitte ein Datum auswählen." },
+  "일정을 저장했습니다": { de: "Termin gespeichert" },
+  "일정을 삭제했습니다": { de: "Termin gelöscht" },
+  "이 일정을 삭제할까요?": { de: "Diesen Termin löschen?" },
+
+  /* ---------- Works: 인수인계 노트 ---------- */
+  "인수인계 노트": { de: "Übergabenotizen" },
+  "오늘 특이사항을 다음 확인자에게 남겨두세요.": { de: "Hinterlasse Besonderheiten von heute für die nächste Person." },
+  "남기기": { de: "Hinzufügen" },
+  "아직 남긴 노트가 없습니다": { de: "Noch keine Notizen" },
 };
 
 /**

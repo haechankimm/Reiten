@@ -91,6 +91,52 @@
     document.querySelector(`.nav-item[data-tab="${tab}"]`)?.click();
   }
 
+  /* ---------- 인수인계 노트 ----------
+     "오늘 특이사항을 다음 근무자에게 남기고 싶다"는 요청(2026-09) — 대화형이 아니라 짧은
+     메모를 시간순으로 쌓아두는 게시판. 037_handoff_notes_and_calendar.sql 미실행이면 서버가
+     빈 목록만 내려줘 조용히 비어 보인다(다른 선택 기능과 같은 원칙). */
+  function handoffNoteRowHTML(n) {
+    return `
+      <div class="panel" data-id="${esc(n.id)}" style="padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div style="min-width:0">
+          <div style="word-break:break-word">${esc(n.content)}</div>
+          <div class="small" style="color:var(--text-muted);margin-top:4px">${esc(emailName(n.adminEmail))} · ${fmtDateTime(n.at)}</div>
+        </div>
+        <button type="button" class="btn btn--sm btn--ghost handoff-delete" aria-label="${esc(t("삭제"))}">✕</button>
+      </div>`;
+  }
+
+  async function paintHandoffNotes() {
+    const result = await adminFetch("/api/admin/handoff-notes");
+    if (!result) return;
+    el("handoff-list").innerHTML = result.items.length
+      ? result.items.map(handoffNoteRowHTML).join("")
+      : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 남긴 노트가 없습니다"))}</p>`;
+    el("handoff-list").querySelectorAll(".handoff-delete").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        btn.disabled = true;
+        const ok = await adminFetch(`/api/admin/handoff-notes/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!ok) { btn.disabled = false; return; }
+        paintHandoffNotes();
+      })
+    );
+  }
+
+  el("handoff-submit").addEventListener("click", async () => {
+    const input = el("handoff-input");
+    const content = input.value.trim();
+    if (!content) return;
+    const btn = el("handoff-submit");
+    btn.disabled = true;
+    const result = await adminFetch("/api/admin/handoff-notes", { method: "POST", body: JSON.stringify({ content }) });
+    btn.disabled = false;
+    if (!result) return;
+    input.value = "";
+    paintHandoffNotes();
+  });
+  el("handoff-input").addEventListener("keydown", (e) => { if (e.key === "Enter") el("handoff-submit").click(); });
+
   async function paintAdminHome(profile) {
     const [dash, notif] = await Promise.all([
       adminFetch("/api/admin/dashboard"),
@@ -123,9 +169,12 @@
       homeShortcutHTML(t("회원 계정 관리"), t("회원 검색, 차단·삭제, 관리자 승격"), "members"),
       homeShortcutHTML(t("발송 실패 아웃박스"), t("이메일·알림 발송 실패 확인"), "outbox"),
       homeShortcutHTML(t("대시보드"), t("매출·베스트셀러·기기별 통계"), "dashboard"),
+      homeShortcutHTML(t("캘린더"), t("발매일·행사·휴무 일정 확인"), "calendar"),
     ].join("");
 
     document.querySelectorAll("[data-tab-link]").forEach((btn) =>
       btn.addEventListener("click", () => goToTab(btn.dataset.tabLink))
     );
+
+    paintHandoffNotes();
   }

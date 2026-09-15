@@ -8,6 +8,7 @@ const { paginationParams } = require("../lib/pagination");
 const { applyKstDateRangeFilter } = require("../lib/kst");
 const { getAllProductIds } = require("../lib/productIds");
 const { isMissingColumnError } = require("../lib/pgErrors");
+const { updateWithOptionalColumnFallback } = require("../lib/dbUpdate");
 
 const router = express.Router();
 
@@ -23,6 +24,8 @@ function toQnaDto(q, { redact } = {}) {
     status: q.status,
     at: q.created_at,
     answeredAt: q.answered_at,
+    assignedTo: q.assigned_to || null,
+    internalNote: q.internal_note || null,
   };
 }
 
@@ -74,13 +77,15 @@ router.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
 });
 
 /* 문의 목록 필터 — q는 작성자명·문의내용·상품ID 부분 일치, status는 "답변대기"/"답변완료". */
-function applyQnaFilters(query, reqQuery) {
-  const { q, status, dateFrom, dateTo } = reqQuery;
+function applyQnaFilters(query, reqQuery, requestUserId) {
+  const { q, status, dateFrom, dateTo, assignedTo } = reqQuery;
   if (q) {
     const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
     if (v) query = query.or(`name.ilike.%${v}%,question.ilike.%${v}%,product_id.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
+  if (assignedTo === "me" && requestUserId) query = query.eq("assigned_to", requestUserId);
+  else if (assignedTo) query = query.eq("assigned_to", assignedTo);
   query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
@@ -91,28 +96,35 @@ router.get("/api/admin/qna", requireAdmin, async (req, res) => {
     .from("qna")
     .select("*", { count: "exact" })
     .order("created_at", { ascending: false });
-  query = applyQnaFilters(query, req.query);
+  query = applyQnaFilters(query, req.query, req.user.id);
   const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
   res.json({ items: data.map((q) => toQnaDto(q, { redact: false })), page, pageSize, total: count ?? data.length });
 });
 
+/* 답변 등록(answer)과 담당자·내부 메모 저장을 하나의 PATCH로 합쳤다 — answer가 없어도
+   assignedTo/internalNote만 보내면 그 값만 저장된다(담당자만 먼저 지정해두고 답변은 나중에
+   다는 흐름을 지원). */
 router.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
-  const { answer } = req.body || {};
-  const answerStr = String(answer || "").trim().slice(0, 2000);
-  if (!answerStr) {
-    return res.status(400).json({ error: "답변 내용을 입력해 주세요." });
+  const { answer, assignedTo, internalNote } = req.body || {};
+  const patch = {};
+  if (answer !== undefined) {
+    const answerStr = String(answer || "").trim().slice(0, 2000);
+    if (!answerStr) return res.status(400).json({ error: "답변 내용을 입력해 주세요." });
+    patch.answer = answerStr;
+    patch.status = "답변완료";
+    patch.answered_at = new Date().toISOString();
   }
+  if (assignedTo !== undefined) patch.assigned_to = assignedTo || null;
+  if (internalNote !== undefined) patch.internal_note = String(internalNote || "").trim().slice(0, 2000) || null;
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
 
-  const { error } = await supabaseAdmin
-    .from("qna")
-    .update({ answer: answerStr, status: "답변완료", answered_at: new Date().toISOString() })
-    .eq("id", req.params.id);
-
-  if (error) return res.status(500).json({ error: "답변 저장에 실패했습니다." });
-  logAdminAction(req, "qna.answer", "qna", req.params.id);
-  res.json({ ok: true });
+  const { data, error } = await updateWithOptionalColumnFallback("qna", "id", req.params.id, patch);
+  if (error || !data) return res.status(500).json({ error: "저장에 실패했습니다." });
+  if (answer !== undefined) logAdminAction(req, "qna.answer", "qna", req.params.id);
+  else logAdminAction(req, "qna.update", "qna", req.params.id, patch);
+  res.json({ ok: true, item: toQnaDto(data, { redact: false }) });
 });
 
 /* ---------- CS 빠른 답변 템플릿 (023_qna_templates.sql, 024_qna_template_keywords.sql) ----------

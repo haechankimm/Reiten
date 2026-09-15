@@ -8,10 +8,12 @@ const { requireAdmin } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { PROTECTED_SETTING_LABELS: THANKS_COUPON_PROTECTED_LABELS } = require("../lib/thanksCoupons");
 const { LOYALTY_POINTS_RATE_SETTING_LABEL } = require("../lib/loyaltyPoints");
+const { ADMIN_ALERT_WEBHOOK_SETTING_LABEL } = require("../lib/adminWebhook");
 
-// 감사쿠폰 라벨 + 적립금 적립률 라벨 — 둘 다 admin_settings의 자유 텍스트 label을 정확히 문자열
-// 매칭해서 읽는 서버 로직이 있어(server.js/lib/loyaltyPoints.js), 이름만 보호한다(값은 자유).
-const PROTECTED_SETTING_LABELS = [...THANKS_COUPON_PROTECTED_LABELS, LOYALTY_POINTS_RATE_SETTING_LABEL];
+// 감사쿠폰 라벨 + 적립금 적립률 라벨 + 긴급 알림 웹훅 URL 라벨 — 전부 admin_settings의 자유
+// 텍스트 label을 정확히 문자열 매칭해서 읽는 서버 로직이 있어(server.js/lib/loyaltyPoints.js/
+// lib/adminWebhook.js), 이름만 보호한다(값은 자유).
+const PROTECTED_SETTING_LABELS = [...THANKS_COUPON_PROTECTED_LABELS, LOYALTY_POINTS_RATE_SETTING_LABEL, ADMIN_ALERT_WEBHOOK_SETTING_LABEL];
 
 const router = express.Router();
 

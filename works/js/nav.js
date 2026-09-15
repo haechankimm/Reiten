@@ -12,7 +12,7 @@
     orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
     paymentlog: "admin-paymentlog",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
-    members: "admin-members", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
+    members: "admin-members", calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
     dashboard: "admin-dashboard",
   });
 

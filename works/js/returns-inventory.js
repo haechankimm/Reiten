@@ -17,6 +17,7 @@
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
           <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+          <select class="mini-select admin-return-assignee">${adminAssigneeOptionsHTML(r.assignedTo)}</select>
           <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
           ${
             r.restocked
@@ -25,6 +26,7 @@
           }
           ${r.refunded ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
         </div>
+        <textarea class="admin-return-note" rows="2" style="margin-top:8px" placeholder="${esc(t("내부 메모 (고객에게 보이지 않음)"))}" maxlength="2000">${esc(r.internalNote || "")}</textarea>
       </div>`;
   }
 
@@ -42,10 +44,12 @@
         const card = btn.closest("[data-id]");
         const id = card.dataset.id;
         const status = card.querySelector(".admin-return-status").value;
+        const assignedTo = card.querySelector(".admin-return-assignee").value;
+        const internalNote = card.querySelector(".admin-return-note").value.trim();
         btn.disabled = true;
         const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ status, assignedTo, internalNote }),
         });
         btn.disabled = false;
         if (!result) return;
@@ -54,7 +58,7 @@
            문구만 다르고 정작 카드의 상태 뱃지(item.status)는 갱신 안 하던 버그였다. 환불 결과와
            무관하게 상태는 항상 저장된 것이므로, 네 분기 전부 item.status를 갱신하고 다시 그린다. */
         const item = returnsState.items.find((x) => x.id === id);
-        if (item) item.status = status;
+        if (item) { item.status = status; item.assignedTo = assignedTo || null; item.internalNote = internalNote || null; }
 
         if (result.refund?.method === "card" && result.refund.ok) {
           if (item) item.refunded = true;
@@ -100,6 +104,7 @@
     if (returnsState.status) params.set("status", returnsState.status);
     if (returnsState.dateFrom) params.set("dateFrom", returnsState.dateFrom);
     if (returnsState.dateTo) params.set("dateTo", returnsState.dateTo);
+    if (returnsState.assignedTo) params.set("assignedTo", returnsState.assignedTo);
     return params;
   }
 
@@ -130,6 +135,7 @@
     returnsState.status = el("ret-status").value;
     returnsState.dateFrom = el("ret-from").value;
     returnsState.dateTo = el("ret-to").value;
+    returnsState.assignedTo = el("ret-mine").checked ? "me" : "";
     paintAdminReturns();
   });
   el("ret-reset").addEventListener("click", () => {
@@ -137,6 +143,7 @@
     el("ret-status").value = "";
     el("ret-from").value = "";
     el("ret-to").value = "";
+    el("ret-mine").checked = false;
     el("ret-search").click();
   });
   el("ret-q").addEventListener("keydown", (e) => { if (e.key === "Enter") el("ret-search").click(); });

@@ -42,7 +42,7 @@ const { toCsv, toXlsxBuffer, toPdfBuffer, toCsvGeneric, toXlsxBufferGeneric, fmt
 const portone = require("./lib/portone");
 const { kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
-const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt } = require("./lib/adminLog");
+const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL } = require("./lib/adminLog");
 const { writeLimiter } = require("./lib/rateLimiters");
 const {
   FIRST_PURCHASE_COUPON_CODE_PREFIX,
@@ -52,6 +52,7 @@ const {
   REPEAT_PURCHASE_COUPON_PERCENT_LABEL,
 } = require("./lib/thanksCoupons");
 const { isMissingSchemaError, isMissingColumnError, extractMissingColumnName } = require("./lib/pgErrors");
+const { updateWithOptionalColumnFallback, selectWithOptionalColumnFallback } = require("./lib/dbUpdate");
 const { normalizeTel } = require("./lib/phone");
 /* 아래는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
    각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1·2단계). 결제·주문·재고·
@@ -72,6 +73,8 @@ const pushRoutes = require("./routes/push");
 const paymentsRoutes = require("./routes/payments");
 const noticesRoutes = require("./routes/notices");
 const outboxRoutes = require("./routes/outbox");
+const handoffNotesRoutes = require("./routes/handoffNotes");
+const calendarRoutes = require("./routes/calendar");
 const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -1695,23 +1698,6 @@ app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
 });
 
-const SYSTEM_ERROR_LABEL = {
-  card_cancel_failed: "카드결제 취소 실패(이중실패)",
-  refund_failed: "환불 실패",
-  virtual_account_close_failed: "가상계좌 폐쇄 실패",
-  order_finalize_failed: "카드결제 후 주문 확정 실패",
-  bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
-  notification_failed: "알림 발송 실패",
-  coupon_usage_exceeded: "쿠폰 사용 한도 초과(결제 후 확정 단계)",
-  points_balance_exceeded: "적립금 잔액 초과(결제 후 확정 단계)",
-  order_finalize_duplicate_not_found: "결제 확정 시 기존 주문을 찾지 못함(중복 확정 의심)",
-  first_purchase_coupon_failed: "첫구매 감사쿠폰 발급 실패",
-  repeat_purchase_coupon_failed: "재구매 감사쿠폰 발급 실패",
-  thanks_coupon_failed: "감사쿠폰 처리 실패",
-  order_uncancel_inventory_conflict: "취소 되돌리기 시 재고 재차감 실패",
-  order_uncancelled_card_payment_not_restored: "취소 되돌리기 시 카드 환불 복원 불가(수동 확인 필요)",
-};
-
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
    해결 처리는 DB에서 지우지 않고 resolved=true로만 표시한다(감사 로그와 같은 원칙 — 무슨 일이
    있었는지는 남겨둔다). */
@@ -1749,13 +1735,16 @@ app.use(membersRoutes);
    추가 — "회원 계정 관리" 탭에서 특정 회원의 주문 내역으로 바로 넘어올 수 있게 하려면 이메일로도
    찾아져야 했다(works/js/members.js의 "주문 보기" 참고).
    목록(GET /api/admin/orders)과 내보내기(GET /api/admin/orders/export)가 이 로직을 공유한다. */
-function applyOrderFilters(query, reqQuery) {
-  const { q, status, dateFrom, dateTo } = reqQuery;
+function applyOrderFilters(query, reqQuery, requestUserId) {
+  const { q, status, dateFrom, dateTo, assignedTo } = reqQuery;
   if (q) {
     const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
     if (v) query = query.or(`order_no.ilike.%${v}%,customer->>name.ilike.%${v}%,customer->>tel.ilike.%${v}%,customer->>email.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
+  // "내 담당 건만 보기" — assignedTo=me면 지금 로그인한 관리자 id로, 그 외 값이면 그 id로 정확히 일치.
+  if (assignedTo === "me" && requestUserId) query = query.eq("assigned_to", requestUserId);
+  else if (assignedTo) query = query.eq("assigned_to", assignedTo);
   query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
@@ -1771,6 +1760,7 @@ const ADMIN_ORDER_LIST_BASE_COLUMNS =
 const ADMIN_ORDER_LIST_OPTIONAL_COLUMNS = [
   "points_used", "points_earned",
   "virtual_account_bank", "virtual_account_number", "virtual_account_holder", "virtual_account_due_at",
+  "assigned_to", "internal_note",
 ];
 
 async function selectOrdersWithFallback(buildQuery) {
@@ -1812,6 +1802,8 @@ function mapAdminOrderRow(o) {
           dueAt: o.virtual_account_due_at,
         }
       : null,
+    assignedTo: o.assigned_to || null,
+    internalNote: o.internal_note || null,
   };
 }
 
@@ -1823,7 +1815,7 @@ app.get("/api/admin/orders", requireAdmin, async (req, res) => {
       .from("orders")
       .select(columns.join(", "), { count: "exact" })
       .order("created_at", { ascending: false });
-    query = applyOrderFilters(query, req.query);
+    query = applyOrderFilters(query, req.query, req.user.id);
     return query.range(from, to);
   });
 
@@ -1852,7 +1844,7 @@ app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
       .select(columns.join(", "))
       .order("created_at", { ascending: false })
       .limit(EXPORT_MAX_ROWS);
-    query = applyOrderFilters(query, req.query);
+    query = applyOrderFilters(query, req.query, req.user.id);
     return query;
   });
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
@@ -1997,7 +1989,7 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
    ① 재고 복원 ② 카드결제 건이면 포트원 환불 자동 시도 ③ 고객 안내 메일까지 한 번에 처리한다
    (cancelReason은 선택 — 입력하면 사유가 저장되고 고객 메일에도 그대로 노출됨). */
 app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
-  const { status, courier, trackingNo, cancelReason } = req.body || {};
+  const { status, courier, trackingNo, cancelReason, assignedTo, internalNote } = req.body || {};
 
   const patch = {};
   if (status !== undefined) {
@@ -2014,6 +2006,12 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   }
   if (trackingNo !== undefined) {
     patch.tracking_no = String(trackingNo || "").trim().slice(0, 60) || null;
+  }
+  if (assignedTo !== undefined) {
+    patch.assigned_to = assignedTo || null;
+  }
+  if (internalNote !== undefined) {
+    patch.internal_note = String(internalNote || "").trim().slice(0, 2000) || null;
   }
   if (!Object.keys(patch).length) {
     return res.status(400).json({ error: "변경할 값이 없습니다." });
@@ -2045,14 +2043,9 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   if (isNewCancel) patch.cancel_reason = cancelReasonStr || null;
   if (isUncancel) patch.cancel_reason = null;
 
-  const { data: saved, error } = await supabaseAdmin
-    .from("orders")
-    .update(patch)
-    .eq("order_no", req.params.no)
-    .select()
-    .single();
+  const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", req.params.no, patch);
 
-  if (error) return res.status(500).json({ error: "저장에 실패했습니다." });
+  if (error || !saved) return res.status(500).json({ error: "저장에 실패했습니다." });
 
   await notifyOrderStatusSideEffects(prev, saved, patch);
 
@@ -2158,32 +2151,29 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 });
 
 /* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
-function applyReturnFilters(query, reqQuery) {
-  const { q, status, dateFrom, dateTo } = reqQuery;
+function applyReturnFilters(query, reqQuery, requestUserId) {
+  const { q, status, dateFrom, dateTo, assignedTo } = reqQuery;
   if (q) {
     const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
     if (v) query = query.or(`order_no.ilike.%${v}%,contact_name.ilike.%${v}%,contact_tel.ilike.%${v}%`);
   }
   if (status) query = query.eq("status", status);
+  if (assignedTo === "me" && requestUserId) query = query.eq("assigned_to", requestUserId);
+  else if (assignedTo) query = query.eq("assigned_to", assignedTo);
   query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
   return query;
 }
 
-const RETURN_REQUEST_SELECT_FULL = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, request_type, custom_reason, created_at";
-const RETURN_REQUEST_SELECT_FALLBACK = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at";
+const RETURN_REQUEST_BASE_COLUMNS = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at";
+const RETURN_REQUEST_OPTIONAL_COLUMNS = ["request_type", "custom_reason", "assigned_to", "internal_note"];
 
 app.get("/api/admin/returns", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
-  let query = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FULL, { count: "exact" }).order("created_at", { ascending: false });
-  query = applyReturnFilters(query, req.query);
-  let { data, error, count } = await query.range(from, to);
-
-  // request_type/custom_reason 컬럼이 아직 없음(033_cancel_requests.sql 미실행) — 그 두 값 없이 재조회.
-  if (isMissingColumnError(error)) {
-    let fallbackQuery = supabaseAdmin.from("return_requests").select(RETURN_REQUEST_SELECT_FALLBACK, { count: "exact" }).order("created_at", { ascending: false });
-    fallbackQuery = applyReturnFilters(fallbackQuery, req.query);
-    ({ data, error, count } = await fallbackQuery.range(from, to));
-  }
+  const { data, error, count } = await selectWithOptionalColumnFallback(RETURN_REQUEST_BASE_COLUMNS, RETURN_REQUEST_OPTIONAL_COLUMNS, (columns) => {
+    let query = supabaseAdmin.from("return_requests").select(columns.join(", "), { count: "exact" }).order("created_at", { ascending: false });
+    query = applyReturnFilters(query, req.query, req.user.id);
+    return query.range(from, to);
+  });
 
   if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
 
@@ -2201,6 +2191,8 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
       requestType: r.request_type || "return",
       customReason: r.custom_reason || null,
       at: r.created_at,
+      assignedTo: r.assigned_to || null,
+      internalNote: r.internal_note || null,
     })),
     page,
     pageSize,
@@ -2214,10 +2206,17 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
    자동환불도 실패) 관리자가 놓치기 쉬운 상황이라 즉시 긴급 메일을 보낸다(카드결제 이중실패 알림과
    같은 원칙). refunded 플래그로 같은 반품을 두 번 환불 시도하지 않게 막는다. */
 app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
-  const statusStr = String((req.body || {}).status || "").trim();
-  if (!statusStr) {
+  const { status, assignedTo, internalNote } = req.body || {};
+  const statusStr = status !== undefined ? String(status || "").trim() : undefined;
+  if (status !== undefined && !statusStr) {
     return res.status(400).json({ error: "status가 필요합니다." });
   }
+
+  const patch = {};
+  if (statusStr !== undefined) patch.status = statusStr;
+  if (assignedTo !== undefined) patch.assigned_to = assignedTo || null;
+  if (internalNote !== undefined) patch.internal_note = String(internalNote || "").trim().slice(0, 2000) || null;
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
 
   const { data: prev, error: prevError } = await supabaseAdmin
     .from("return_requests")
@@ -2226,9 +2225,9 @@ app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
     .single();
   if (prevError || !prev) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
 
-  const { error } = await supabaseAdmin.from("return_requests").update({ status: statusStr }).eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "상태 변경에 실패했습니다." });
-  logAdminAction(req, "return.update", "return", req.params.id, { status: statusStr });
+  const { data: savedReturn, error } = await updateWithOptionalColumnFallback("return_requests", "id", req.params.id, patch);
+  if (error || !savedReturn) return res.status(500).json({ error: "저장에 실패했습니다." });
+  logAdminAction(req, "return.update", "return", req.params.id, patch);
 
   let refund = null;
   if (statusStr === "완료" && prev.status !== "완료" && !prev.refunded) {
@@ -2664,6 +2663,8 @@ app.use(qnaRoutes);
 app.use(paymentsRoutes);
 app.use(noticesRoutes);
 app.use(outboxRoutes);
+app.use(handoffNotesRoutes);
+app.use(calendarRoutes);
 
 
 /* ---------- 미입금 주문 자동취소 ----------

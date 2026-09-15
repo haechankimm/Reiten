@@ -95,10 +95,22 @@
       </div>`;
   }
 
+  /* 담당자 지정(주문·반품·QnA 상세)이 관리자 목록을 각자 또 불러오지 않고 이걸 재사용한다 —
+     "정보" 탭보다 먼저 로그인 시점에 한 번 채워지므로(tryShowAdminPanel) 다른 탭이 먼저
+     그려져도 대개 값이 있고, 혹시 비어 있으면 그 탭이 직접 한 번 더 불러오면 된다. */
+  let adminListCache = [];
+  function adminAssigneeOptionsHTML(selectedId) {
+    const options = adminListCache
+      .map((a) => `<option value="${esc(a.id)}" ${a.id === selectedId ? "selected" : ""}>${esc(a.name || a.email)}</option>`)
+      .join("");
+    return `<option value="">${esc(t("담당자 없음"))}</option>${options}`;
+  }
+
   async function paintAdminAccounts() {
     el("admin-invite-form").hidden = !isMasterAdmin;
     const result = await adminFetch("/api/admin/admins");
     if (!result) return;
+    adminListCache = result.items;
     el("admin-list").innerHTML = result.items.map(adminRowHTML).join("");
     el("admin-list").querySelectorAll(".admin-revoke").forEach((btn) =>
       btn.addEventListener("click", async () => {
