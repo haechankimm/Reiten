@@ -1681,12 +1681,16 @@ app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     supabaseAdmin.from("system_error_log").select("id", { count: "exact", head: true }).eq("resolved", false),
   ]);
 
+  /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불
+     사고)이 묻힌다는 지적(2026-09)으로 3단계를 나눈다. "critical"(빨강)은 실제로 돈·데이터가
+     어긋난 시스템 오류에만 쓰고, 나머지는 "warning"(주황 — 고객이 기다리는 처리)과
+     "info"(중립 — 급하진 않지만 확인은 필요한 것)로 나눠 빨강의 신호력을 지킨다. */
   const items = [
-    { key: "pendingOrders", label: "입금 확인 대기 주문", count: orders.count || 0, tab: "orders" },
-    { key: "outOfStock", label: "품절된 재고 조합", count: inventory.count || 0, tab: "inventory" },
-    { key: "unansweredQna", label: "답변 대기 Q&A", count: qna.count || 0, tab: "qna" },
-    { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns" },
-    { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors" },
+    { key: "pendingOrders", label: "입금 확인 대기 주문", count: orders.count || 0, tab: "orders", severity: "warning" },
+    { key: "outOfStock", label: "품절된 재고 조합", count: inventory.count || 0, tab: "inventory", severity: "info" },
+    { key: "unansweredQna", label: "답변 대기 Q&A", count: qna.count || 0, tab: "qna", severity: "info" },
+    { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns", severity: "warning" },
+    { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors", severity: "critical" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
 });
@@ -1694,9 +1698,18 @@ app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
 const SYSTEM_ERROR_LABEL = {
   card_cancel_failed: "카드결제 취소 실패(이중실패)",
   refund_failed: "환불 실패",
+  virtual_account_close_failed: "가상계좌 폐쇄 실패",
   order_finalize_failed: "카드결제 후 주문 확정 실패",
   bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
   notification_failed: "알림 발송 실패",
+  coupon_usage_exceeded: "쿠폰 사용 한도 초과(결제 후 확정 단계)",
+  points_balance_exceeded: "적립금 잔액 초과(결제 후 확정 단계)",
+  order_finalize_duplicate_not_found: "결제 확정 시 기존 주문을 찾지 못함(중복 확정 의심)",
+  first_purchase_coupon_failed: "첫구매 감사쿠폰 발급 실패",
+  repeat_purchase_coupon_failed: "재구매 감사쿠폰 발급 실패",
+  thanks_coupon_failed: "감사쿠폰 처리 실패",
+  order_uncancel_inventory_conflict: "취소 되돌리기 시 재고 재차감 실패",
+  order_uncancelled_card_payment_not_restored: "취소 되돌리기 시 카드 환불 복원 불가(수동 확인 필요)",
 };
 
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
