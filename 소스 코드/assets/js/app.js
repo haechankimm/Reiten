@@ -85,9 +85,11 @@ async function loadColors() {
    테마 (오프화이트 / 나이트)
    ========================================================= */
 const THEME_KEY = "reiten_theme";
-function applyTheme(t) {
+function applyTheme(t, { persist = true } = {}) {
   document.documentElement.dataset.theme = t;
-  try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+  if (persist) {
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+  }
   $$(".js-theme").forEach((b) => b.setAttribute("aria-pressed", String(t === "night")));
 }
 
@@ -119,10 +121,20 @@ function kickEngine() {
   if (!document.documentElement.animate) return;
   document.documentElement.animate(ENGINE_KICK_FRAMES, { duration: 560, easing: "linear" });
 }
+/* 사용자가 토글을 눌러 직접 고른 적이 없으면(THEME_KEY 저장 안 됨) 지금까지 무조건
+   라이트모드로 시작했다 — OS/브라우저가 이미 다크모드여도 사이트만 항상 밝게 뜨는 셈이라
+   (2026-09 코드 감사에서 발견). 직접 고른 값이 없을 때는 매번 prefers-color-scheme을 다시
+   확인해서 반영한다(persist:false — 여기서는 localStorage에 안 남기므로, OS 다크모드가
+   자정에 자동으로 켜지는 등 나중에 바뀌어도 다음 방문에 그대로 따라간다). 토글을 한 번이라도
+   누르면 그 순간부터는 applyTheme(기본 persist:true)가 THEME_KEY를 저장해 사용자가 고른
+   값이 시스템 설정보다 항상 우선한다. */
 function initTheme() {
-  let t = "light";
-  try { t = localStorage.getItem(THEME_KEY) || "light"; } catch (e) {}
-  applyTheme(t);
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+  if (stored) { applyTheme(stored); return; }
+  let prefersDark = false;
+  try { prefersDark = matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) {}
+  applyTheme(prefersDark ? "night" : "light", { persist: false });
 }
 initTheme();
 
@@ -560,7 +572,18 @@ function productName(p) {
    ========================================================= */
 const CARD_IMG_WIDTHS = [400, 600, 900];
 
-function productCard(p, delay = 0) {
+/* 모든 사이즈 × 컬러 조합이 다 품절인지 — product.html의 구조화 데이터(OutOfStock 표시)와
+   똑같은 계산이라 여기로 옮겨서 위시리스트(재입고 알림 CTA)와 같이 쓴다. soldOut(관리자가
+   손으로 체크한 전체 품절)과 outOfStockByColor(서버가 계산한 컬러별 실재고)를 합쳐서 확인. */
+function isProductFullyOutOfStock(p) {
+  return p.sizes.every(
+    (size) =>
+      p.soldOut.includes(size) ||
+      p.colors.every((c) => ((p.outOfStockByColor && p.outOfStockByColor[c]) || []).includes(size))
+  );
+}
+
+function productCard(p, delay = 0, extraBodyHTML = "") {
   const img = p.images.find(Boolean);
   const name = productName(p);
   const srcset = cloudinarySrcset(img, CARD_IMG_WIDTHS);
@@ -591,6 +614,7 @@ function productCard(p, delay = 0) {
     <div class="card__sub">${esc(t(p.short))}</div>
     <div class="card__price tnum">${money(p.price)}</div>
     <div class="swatches">${dots}</div>
+    ${extraBodyHTML}
   </div>
 </a>`;
 }

@@ -139,6 +139,7 @@ const I18N = {
   "재입고되면 이메일로 알려드릴게요.": { en: "We'll email you when it's back in stock.", ja: "再入荷時にメールでお知らせします。" },
   "이메일 주소": { en: "Email address", ja: "メールアドレス" },
   "알림 신청": { en: "Notify me", ja: "通知を申し込む" },
+  "재입고 알림 신청": { en: "Notify me when restocked", ja: "再入荷通知を申し込む" },
   "신청 완료! 재입고되면 알려드릴게요.": { en: "Done! We'll email you when it's restocked.", ja: "申し込み完了！再入荷時にメールでお知らせします。" },
   "신청에 실패했습니다": { en: "Failed to submit", ja: "申し込みに失敗しました" },
   "제품 정보": { en: "Product Info", ja: "商品情報" },
@@ -313,7 +314,7 @@ const I18N = {
     ja: "{name} {size}サイズの在庫が不足しているため、決済は自動的にキャンセルされました",
   },
   "결제 중 오류가 발생했습니다": { en: "An error occurred during payment", ja: "決済中にエラーが発生しました" },
-  "예금주": { en: "Account holder", ja: "口座名義" },
+  "예금주": { en: "Account holder", ja: "口座名義", de: "Kontoinhaber" },
   "주문서 제출 후 24시간 내 미입금 시 자동 취소됩니다.": { en: "If payment isn't received within 24 hours of submitting, the order is automatically cancelled.", ja: "注文送信後24時間以内にご入金がない場合、自動的にキャンセルされます。" },
   "무료": { en: "Free", ja: "無料" },
   "{amount} 더 담으면 배송비가 무료입니다.": { en: "Add {amount} more for free shipping.", ja: "あと{amount}で送料無料になります。" },
@@ -905,8 +906,8 @@ const I18N = {
   "데이터가 아직 없습니다": { de: "Noch keine Daten" },
   "취소 사유 (선택)": { de: "Stornogrund (optional)" },
   "예: 고객 요청, 재고 소진 등": { de: "z. B. Kundenwunsch, ausverkauft" },
-  "취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제 건은 환불도 자동 시도됩니다. 취소를 다시 다른 상태로 되돌리면 재고는 자동으로 다시 차감되지만, 카드 환불은 자동으로 되돌릴 수 없어 수동 확인이 필요합니다.": {
-    de: "Beim Speichern als storniert wird der Lagerbestand automatisch wiederhergestellt; bei Kartenzahlung wird auch automatisch eine Rückerstattung versucht. Wird die Stornierung später wieder rückgängig gemacht, wird der Lagerbestand automatisch erneut abgezogen — eine bereits erfolgte Kartenrückerstattung kann jedoch nicht automatisch rückgängig gemacht werden und muss manuell geprüft werden.",
+  "취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제·가상계좌 건은 환불(또는 계좌 폐쇄)도 자동 시도됩니다. 취소를 다시 다른 상태로 되돌리면 재고는 자동으로 다시 차감되지만, 환불은 자동으로 되돌릴 수 없어 수동 확인이 필요합니다.": {
+    de: "Beim Speichern als storniert wird der Lagerbestand automatisch wiederhergestellt; bei Kartenzahlung oder virtuellem Konto wird auch automatisch eine Rückerstattung (bzw. Kontoschließung) versucht. Wird die Stornierung später wieder rückgängig gemacht, wird der Lagerbestand automatisch erneut abgezogen — eine bereits erfolgte Rückerstattung kann jedoch nicht automatisch rückgängig gemacht werden und muss manuell geprüft werden.",
   },
   "주문을 취소하고 카드 결제도 자동 환불했습니다": { de: "Bestellung storniert und Kartenzahlung automatisch erstattet" },
   "주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요": {
@@ -914,6 +915,18 @@ const I18N = {
   },
   "주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요": {
     de: "Bestellung storniert — bei Banküberweisung bitte manuell aufs Konto erstatten",
+  },
+  "주문을 취소하고 가상계좌도 폐쇄했습니다 — 아직 입금 전이라 환불할 금액은 없습니다": {
+    de: "Bestellung storniert und virtuelles Konto geschlossen — da noch keine Einzahlung erfolgt ist, gibt es nichts zu erstatten",
+  },
+  "주문은 취소됐지만 가상계좌 폐쇄에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요": {
+    de: "Bestellung storniert, aber das Schließen des virtuellen Kontos ist fehlgeschlagen — bitte die Admin-E-Mail prüfen und manuell bearbeiten",
+  },
+  "주문을 취소하고 입금된 금액도 자동 환불했습니다": {
+    de: "Bestellung storniert und der eingezahlte Betrag automatisch erstattet",
+  },
+  "주문은 취소됐지만 가상계좌 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요": {
+    de: "Bestellung storniert, aber die Rückerstattung ist fehlgeschlagen — bitte die Admin-E-Mail prüfen und manuell bearbeiten",
   },
   "주문을 취소했습니다": { de: "Bestellung storniert" },
   "주문 상태를 되돌렸습니다 — 재고를 다시 차감했습니다": { de: "Bestellstatus zurückgesetzt — Lagerbestand erneut abgezogen" },
@@ -1243,7 +1256,7 @@ const I18N = {
   "보유 적립금 {balance}": { en: "Points balance: {balance}", ja: "保有ポイント {balance}" },
 
   /* ---------- 가상계좌 ---------- */
-  "가상계좌": { en: "Virtual account", ja: "仮想口座" },
+  "가상계좌": { en: "Virtual account", ja: "仮想口座", de: "Virtuelles Konto" },
   "계좌 발급받기": { en: "Issue account", ja: "口座を発行する" },
   "신청하면 이 주문 전용 계좌가 발급됩니다. 그 계좌로 입금하면 확인 절차 없이 자동으로 결제완료 처리됩니다.": {
     en: "A dedicated account for this order will be issued. Once you deposit into it, payment is confirmed automatically — no manual check needed.",
@@ -1257,6 +1270,15 @@ const I18N = {
     en: "Once you deposit into this account, payment is confirmed automatically — no manual check needed.",
     ja: "この口座に入金すると、確認手続きなしで自動的に決済完了となります。",
   },
+
+  /* ---------- Works: 관리자 주문 상세 — 결제수단/쿠폰/적립금/가상계좌 ---------- */
+  "카드결제": { de: "Kartenzahlung" },
+  "무통장입금": { de: "Banküberweisung" },
+  "결제": { de: "Zahlung" },
+  "쿠폰 {code} (−{amount})": { de: "Gutschein {code} (−{amount})" },
+  "적립금 {amount} 사용": { de: "{amount} Bonuspunkte eingelöst" },
+  "적립금 {amount} 적립": { de: "{amount} Bonuspunkte gutgeschrieben" },
+  "입금 계좌": { de: "Einzahlungskonto" },
 };
 
 /**

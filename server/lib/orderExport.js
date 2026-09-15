@@ -5,6 +5,8 @@ const PDFDocument = require("pdfkit");
 const path = require("path");
 const { kstDateTimeLabel } = require("./kst");
 
+const PAYMENT_METHOD_LABEL_KO = { card: "카드결제", bank_transfer: "무통장입금", virtual_account: "가상계좌" };
+
 const EXPORT_COLUMNS = [
   { key: "orderNo", label: "주문번호" },
   { key: "at", label: "주문일시" },
@@ -22,6 +24,12 @@ const EXPORT_COLUMNS = [
   { key: "status", label: "상태" },
   { key: "courier", label: "택배사" },
   { key: "trackingNo", label: "운송장번호" },
+  { key: "paymentMethod", label: "결제수단" },
+  { key: "couponCode", label: "쿠폰코드" },
+  { key: "discount", label: "쿠폰할인" },
+  { key: "pointsUsed", label: "적립금사용" },
+  { key: "pointsEarned", label: "적립금적립" },
+  { key: "virtualAccount", label: "가상계좌" },
 ];
 
 /* Supabase orders row(snake_case) → 내보내기용 평평한 객체(camelCase) */
@@ -51,6 +59,12 @@ function toExportRow(o) {
     status: o.status,
     courier: o.courier || "",
     trackingNo: o.tracking_no || "",
+    paymentMethod: PAYMENT_METHOD_LABEL_KO[o.payment_method] || o.payment_method || "",
+    couponCode: o.coupon_code || "",
+    discount: o.discount || 0,
+    pointsUsed: o.points_used || 0,
+    pointsEarned: o.points_earned || 0,
+    virtualAccount: o.virtual_account_bank ? `${o.virtual_account_bank} ${o.virtual_account_number || ""}` : "",
   };
 }
 

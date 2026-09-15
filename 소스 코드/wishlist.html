@@ -57,12 +57,28 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const gridEl = document.getElementById("grid");
     const emptyEl = document.getElementById("empty");
 
+    /* 위시리스트에 담아둔 상품이 품절되면, 예전엔 상품 페이지에 따로 들어가야만 재입고
+       알림을 신청할 수 있었다("위시리스트와 재입고 알림이 따로 논다"는 2026-09 코드 감사
+       지적) — 품절 상품 카드엔 재입고 알림 신청 버튼을 바로 붙여, 상품 페이지의 재입고
+       알림 폼(#restock-notify-box)으로 곧장 이동하게 한다. */
+    function restockLinkHTML(p) {
+      if (!isProductFullyOutOfStock(p)) return "";
+      return `<button type="button" class="btn btn--sm btn--ghost js-restock-link" data-product-id="${esc(p.id)}" style="margin-top:10px;width:100%">${esc(t("재입고 알림 신청"))}</button>`;
+    }
+
     function paint() {
       const ids = Wishlist.read();
       const list = ids.map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean);
-      gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50)).join("");
+      gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50, restockLinkHTML(p))).join("");
       emptyEl.hidden = list.length > 0;
       bindWishlistButtons(gridEl);
+      gridEl.querySelectorAll(".js-restock-link").forEach((btn) =>
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          location.href = `product.html?id=${encodeURIComponent(btn.dataset.productId)}#restock-notify-box`;
+        })
+      );
       // 이 페이지에서는 하트를 누르면 목록 자체에서 카드가 빠져야 한다(다른 페이지는 배지만
       // 갱신되면 충분하지만, 여기는 그 상품 자체가 화면의 전부라서) — 클릭 처리(toggle) 다음
       // 틱에 다시 그린다.

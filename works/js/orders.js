@@ -6,6 +6,32 @@
     return `<span class="status-chip ${ORDER_STATUS_CLASS[status] || "st-neutral"}">${esc(t(status))}</span>`;
   }
 
+  /* 결제수단·쿠폰·적립금·가상계좌 정보가 주문 목록/상세 어디에도 안 보여서 이 주문이
+     카드/가상계좌/무통장 중 뭔지 목록만 봐서는 알 수 없다던 감사 지적(2026-09) — 목록에는
+     결제수단만 짧게, 상세 패널에는 쿠폰·적립금·가상계좌 입금 정보까지 전부 보여준다. */
+  const ORDER_PAYMENT_METHOD_LABEL = { card: "카드결제", bank_transfer: "무통장입금", virtual_account: "가상계좌" };
+  function orderPaymentMethodLabel(o) {
+    return t(ORDER_PAYMENT_METHOD_LABEL[o.paymentMethod] || "확인 안 됨");
+  }
+
+  function orderPaymentDetailHTML(o) {
+    const parts = [orderPaymentMethodLabel(o)];
+    if (o.couponCode) parts.push(t("쿠폰 {code} (−{amount})", { code: o.couponCode, amount: money(o.discount || 0) }));
+    if (o.pointsUsed) parts.push(t("적립금 {amount} 사용", { amount: money(o.pointsUsed) }));
+    if (o.pointsEarned) parts.push(t("적립금 {amount} 적립", { amount: money(o.pointsEarned) }));
+    return parts.map(esc).join(" · ");
+  }
+
+  function orderVirtualAccountHTML(o) {
+    if (!o.virtualAccount) return "";
+    const va = o.virtualAccount;
+    return `
+      <div class="detail-field" style="margin-top:8px">
+        <label>${esc(t("입금 계좌"))}</label>
+        <div>${esc(va.bank)} ${esc(va.number)} (${esc(t("예금주"))} ${esc(va.holder)})${va.dueAt ? ` · ${esc(t("입금기한"))} ${esc(fmtDate(va.dueAt))}` : ""}</div>
+      </div>`;
+  }
+
   /* 서버(server.js)가 미입금 주문을 24시간(PENDING_CANCEL_HOURS) 뒤 자동 취소하기까지 그
      사이 며칠씩 방치돼도 목록만 봐서는 몰랐다는 피드백 — 아직 자동취소 크론이 안 도는
      순간에도 "이미 24시간이 지났다"를 바로 알 수 있게 뱃지를 따로 붙인다. */
@@ -26,6 +52,7 @@
         </span>
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
+          <div class="small" style="color:var(--text-muted);margin-top:2px">${esc(orderPaymentMethodLabel(o))}</div>
           <div style="margin-top:3px;display:flex;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
         </span>
       </button>`;
@@ -45,7 +72,9 @@
         <div class="detail-field"><label>${esc(t("배송지"))}</label><div>[${esc(o.customer.zip)}] ${esc(o.customer.addr)} ${esc(o.customer.addr2 || "")}</div></div>
         <div class="detail-field"><label>${esc(t("입금자명"))}</label><div>${esc(o.customer.payer)}</div></div>
         <div class="detail-field"><label>${esc(t("메모"))}</label><div>${esc(o.customer.memo || "-")}</div></div>
+        <div class="detail-field"><label>${esc(t("결제"))}</label><div>${orderPaymentDetailHTML(o)}</div></div>
       </div>
+      ${orderVirtualAccountHTML(o)}
       <div class="detail-items">
         ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)} (${esc(it.options)}) × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
@@ -57,7 +86,7 @@
       <div class="detail-field" id="od-cancel-reason-field" ${o.status === "취소" ? "" : "hidden"} style="margin-top:8px">
         <label>${esc(t("취소 사유 (선택)"))}</label>
         <input type="text" id="od-cancel-reason" placeholder="${esc(t("예: 고객 요청, 재고 소진 등"))}" maxlength="300">
-        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제 건은 환불도 자동 시도됩니다. 취소를 다시 다른 상태로 되돌리면 재고는 자동으로 다시 차감되지만, 카드 환불은 자동으로 되돌릴 수 없어 수동 확인이 필요합니다."))}</p>
+        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("취소로 바꿔 저장하면 재고가 자동으로 복원되고, 카드결제·가상계좌 건은 환불(또는 계좌 폐쇄)도 자동 시도됩니다. 취소를 다시 다른 상태로 되돌리면 재고는 자동으로 다시 차감되지만, 환불은 자동으로 되돌릴 수 없어 수동 확인이 필요합니다."))}</p>
       </div>
       <div class="detail-ship">
         <select id="od-courier">
@@ -145,6 +174,10 @@
         if (isNewCancel && result.cancel) {
           if (result.cancel.refund === "card" && result.cancel.ok) toast(t("주문을 취소하고 카드 결제도 자동 환불했습니다"));
           else if (result.cancel.refund === "card" && !result.cancel.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (result.cancel.refund === "virtual_account_closed" && result.cancel.ok) toast(t("주문을 취소하고 가상계좌도 폐쇄했습니다 — 아직 입금 전이라 환불할 금액은 없습니다"));
+          else if (result.cancel.refund === "virtual_account_closed" && !result.cancel.ok) toast(t("주문은 취소됐지만 가상계좌 폐쇄에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (result.cancel.refund === "virtual_account" && result.cancel.ok) toast(t("주문을 취소하고 입금된 금액도 자동 환불했습니다"));
+          else if (result.cancel.refund === "virtual_account" && !result.cancel.ok) toast(t("주문은 취소됐지만 가상계좌 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
           else if (result.cancel.refund === "bank_manual") toast(t("주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요"));
           else toast(t("주문을 취소했습니다"));
         } else if (isUncancel && result.uncancel) {

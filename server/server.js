@@ -1747,32 +1747,77 @@ function applyOrderFilters(query, reqQuery) {
   return query;
 }
 
+/* 목록/내보내기 둘 다 결제수단·쿠폰·적립금·가상계좌 정보를 같이 보여줘야 하는데, 적립금·
+   가상계좌 컬럼(034/035)은 그 마이그레이션을 아직 안 돌린 배포엔 없을 수 있다 —
+   insertOrderRow와 같은 원칙으로, 없는 컬럼만 하나씩 빼며 재조회한다("주문 목록 자체가
+   결제수단도 안 보여준다"던 감사 지적을 고치면서, 마이그레이션 미실행 배포에서 주문 목록
+   자체가 통째로 죽는 새 사고를 만들면 안 되므로). payment_method/coupon_code/discount는
+   013 이후 오래전부터 있던 기본 컬럼이라 폴백 대상에 넣지 않는다. */
+const ADMIN_ORDER_LIST_BASE_COLUMNS =
+  "order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at, payment_method, coupon_code, discount";
+const ADMIN_ORDER_LIST_OPTIONAL_COLUMNS = [
+  "points_used", "points_earned",
+  "virtual_account_bank", "virtual_account_number", "virtual_account_holder", "virtual_account_due_at",
+];
+
+async function selectOrdersWithFallback(buildQuery) {
+  let columns = [ADMIN_ORDER_LIST_BASE_COLUMNS, ...ADMIN_ORDER_LIST_OPTIONAL_COLUMNS];
+  let result = await buildQuery(columns);
+  for (let i = 0; i < ADMIN_ORDER_LIST_OPTIONAL_COLUMNS.length && isMissingColumnError(result.error); i++) {
+    const named = extractMissingColumnName(result.error);
+    const col = named && columns.includes(named) ? named : ADMIN_ORDER_LIST_OPTIONAL_COLUMNS.find((c) => columns.includes(c));
+    if (!col) break;
+    console.warn(`[admin/orders] '${col}' 컬럼 없음(마이그레이션 미실행) — ${col} 없이 재조회`);
+    columns = columns.filter((c) => c !== col);
+    result = await buildQuery(columns);
+  }
+  return result;
+}
+
+function mapAdminOrderRow(o) {
+  return {
+    no: o.order_no,
+    at: o.created_at,
+    customer: o.customer,
+    items: o.items,
+    subtotal: o.subtotal,
+    shipping: o.shipping,
+    total: o.total,
+    status: o.status,
+    courier: o.courier || null,
+    trackingNo: o.tracking_no || null,
+    paymentMethod: o.payment_method || null,
+    couponCode: o.coupon_code || null,
+    discount: o.discount || 0,
+    pointsUsed: o.points_used || 0,
+    pointsEarned: o.points_earned || 0,
+    virtualAccount: o.virtual_account_bank
+      ? {
+          bank: o.virtual_account_bank,
+          number: o.virtual_account_number,
+          holder: o.virtual_account_holder,
+          dueAt: o.virtual_account_due_at,
+        }
+      : null,
+  };
+}
+
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query);
 
-  let query = supabaseAdmin
-    .from("orders")
-    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at", { count: "exact" })
-    .order("created_at", { ascending: false });
-  query = applyOrderFilters(query, req.query);
-
-  const { data, error, count } = await query.range(from, to);
+  const { data, error, count } = await selectOrdersWithFallback((columns) => {
+    let query = supabaseAdmin
+      .from("orders")
+      .select(columns.join(", "), { count: "exact" })
+      .order("created_at", { ascending: false });
+    query = applyOrderFilters(query, req.query);
+    return query.range(from, to);
+  });
 
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
 
   res.json({
-    items: data.map((o) => ({
-      no: o.order_no,
-      at: o.created_at,
-      customer: o.customer,
-      items: o.items,
-      subtotal: o.subtotal,
-      shipping: o.shipping,
-      total: o.total,
-      status: o.status,
-      courier: o.courier || null,
-      trackingNo: o.tracking_no || null,
-    })),
+    items: data.map(mapAdminOrderRow),
     page,
     pageSize,
     total: count ?? data.length,
@@ -1788,14 +1833,15 @@ app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "format은 csv, xlsx, pdf 중 하나여야 합니다." });
   }
 
-  let query = supabaseAdmin
-    .from("orders")
-    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at")
-    .order("created_at", { ascending: false })
-    .limit(EXPORT_MAX_ROWS);
-  query = applyOrderFilters(query, req.query);
-
-  const { data, error } = await query;
+  const { data, error } = await selectOrdersWithFallback((columns) => {
+    let query = supabaseAdmin
+      .from("orders")
+      .select(columns.join(", "))
+      .order("created_at", { ascending: false })
+      .limit(EXPORT_MAX_ROWS);
+    query = applyOrderFilters(query, req.query);
+    return query;
+  });
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
 
   const filename = `reiten-orders-${new Date().toISOString().slice(0, 10)}`;
@@ -2026,6 +2072,35 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
         );
         logSystemError("refund_failed", { orderNo: saved.order_no, amount: saved.total, error: refundErr.message, source: "order_cancel" });
         cancelResult = { refund: "card", ok: false };
+      }
+    } else if (saved.payment_method === "virtual_account" && saved.payment_id && prev.status === "입금대기") {
+      /* 아직 입금 전(입금대기)이었다면 돈이 오간 적이 없으므로 계좌를 "폐쇄"만 하면 된다.
+         이미 입금 확인된(입금확인) 뒤의 취소는 실제로 받은 돈을 환불해야 하므로, 카드결제와
+         똑같이 cancelPayment로 처리한다 — 포트원 취소 API는 결제수단과 무관하게 이미 결제
+         완료된 건이면 동일하게 동작한다(closeVirtualAccount를 여기서 잘못 쓰면 계좌만 닫히고
+         환불은 안 나가는, 오히려 더 위험한 상태가 된다). */
+      try {
+        await portone.closeVirtualAccount(saved.payment_id);
+        cancelResult = { refund: "virtual_account_closed", ok: true };
+      } catch (closeErr) {
+        console.error("[admin/orders] ⚠️ 취소 시 가상계좌 폐쇄 실패 — 수동 확인 필요:", saved.order_no, closeErr.message);
+        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: closeErr.message }).catch((err) =>
+          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
+        );
+        logSystemError("virtual_account_close_failed", { orderNo: saved.order_no, amount: saved.total, error: closeErr.message, source: "order_cancel" });
+        cancelResult = { refund: "virtual_account_closed", ok: false };
+      }
+    } else if (saved.payment_method === "virtual_account" && saved.payment_id) {
+      try {
+        await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소");
+        cancelResult = { refund: "virtual_account", ok: true };
+      } catch (refundErr) {
+        console.error("[admin/orders] ⚠️ 취소 시 환불 실패 — 수동 확인 필요:", saved.order_no, refundErr.message);
+        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: refundErr.message }).catch((err) =>
+          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
+        );
+        logSystemError("refund_failed", { orderNo: saved.order_no, amount: saved.total, error: refundErr.message, source: "order_cancel" });
+        cancelResult = { refund: "virtual_account", ok: false };
       }
     } else if (saved.payment_method === "bank_transfer") {
       cancelResult = { refund: "bank_manual", ok: false };
