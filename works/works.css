@@ -86,7 +86,12 @@
   .sidebar {
     width: 208px; flex-shrink: 0;
     background: var(--bg-surface); border-right: 1px solid var(--border);
-    padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;
+    padding: 14px 10px calc(14px + env(safe-area-inset-bottom)) 10px; display: flex; flex-direction: column; gap: 2px;
+    /* 메뉴 항목이 늘어나며(캘린더 추가 등) 화면이 낮은 기기(iPhone SE 등)에서는 사이드바
+       세로 길이가 뷰포트를 넘는데, 스크롤 수단이 없어 "발송 실패 아웃박스"·"정보"·"활동
+       로그"·"대시보드"가 통째로 안 보이고 눌리지도 않았다(2026-09 코드 감사에서 재현
+       확인). 자체 스크롤을 열어 항상 끝까지 닿을 수 있게 한다. */
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   /* ---------- 사이드바 카테고리 아코디언(2026-09) ----------
      figlo WORKS를 참고해 평면 목록이던 사이드바를 펼침/접힘 가능한 카테고리 그룹으로 바꿨다.
@@ -232,7 +237,7 @@
   .btn--danger:hover { background: var(--danger); color: var(--accent-contrast); opacity: 1; }
   .btn[disabled] { opacity: .35; }
 
-  .content { flex: 1; overflow: auto; padding: 18px 20px 40px; }
+  .content { flex: 1; overflow: auto; overscroll-behavior-y: contain; padding: 18px 20px calc(40px + env(safe-area-inset-bottom)); }
   .content-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .content-title { font-size: 15px; font-weight: 700; }
   .content-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
@@ -447,11 +452,15 @@
       height: auto; min-height: 48px; flex-wrap: wrap; row-gap: 8px;
     }
     .topbar-right { flex-wrap: wrap; row-gap: 8px; }
+    /* 28px 아이콘 버튼(테마 전환·알림 벨)은 마우스 기준 크기라 손가락 탭에는 작다(애플 HIG
+       권장 44pt에 못 미침) — 모바일/터치 폭에서만 36px로 살짝 키운다. */
+    .icon-btn { width: 36px; height: 36px; }
+    .icon-btn svg { width: 17px; height: 17px; }
     .brand-word { display: none; }
     .brand-badge { display: none; }
     .admin-chip .admin-name, .admin-chip .admin-role { display: none; }
     #logout { white-space: nowrap; }
-    .content { padding: 14px 12px 32px; }
+    .content { padding: 14px 12px calc(32px + env(safe-area-inset-bottom)); }
     .detail-grid { grid-template-columns: 1fr; }
   }
 

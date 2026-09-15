@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>REITEN WORKS</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -12,7 +12,13 @@
      홈 화면 아이콘 아래 이름도 URL 대신 "REITEN WORKS"로 뜨게 한다. -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="REITEN WORKS">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- black-translucent은 상태 표시줄을 화면 위에 그대로 덮어씌워서(오버레이), 그 안의
+     시계·배터리 아이콘이 항상 흰색으로 고정된다 — 라이트 테마의 옅은 회색 상단바
+     (--bg-surface) 위에서는 흰 아이콘이 거의 안 보이고, safe-area 여백 처리도 없어 로고·
+     버튼이 노치 밑에 깔릴 수 있었다(2026-09 코드 감사에서 발견, 실제 사용 전에 미리 수정).
+     default는 iOS가 자체적으로 불투명한 상태 표시줄 공간을 확보해주고 아이콘도 항상 어두운
+     색으로 고정돼, 테마와 무관하게 항상 잘 보인다. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/assets/css/style.css">
 <link rel="stylesheet" href="works.css">
 </head>
