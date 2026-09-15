@@ -170,6 +170,7 @@
   });
 
   el("mb-export").addEventListener("click", () => {
+    trackUsage("feature:export:mb-export");
     const params = new URLSearchParams();
     if (membersState.q) params.set("q", membersState.q);
     downloadExportFile(`/api/admin/members/export?${params.toString()}`, "reiten-members", "csv");

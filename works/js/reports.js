@@ -236,6 +236,9 @@
     currentAdminId = profile.id;
     currentAdminEmail = profile.email || "";
     isMasterAdmin = (profile.email || "").toLowerCase() === "haechankimm@gmail.com";
+    // "오늘" 탭은 로그인 직후 클릭 없이 바로 열리므로, 사이드바 클릭에 묻어가는 다른 탭들과
+    // 달리 여기서 따로 한 번 기록해야 실제 조회 빈도가 통계에서 누락되지 않는다.
+    trackUsage("tab:home");
     paintNotifications();
     /* 로그인 시점 조회만으로는 Works를 계속 켜둔 사이 들어온 신규 알림을 새로고침 전까지
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */

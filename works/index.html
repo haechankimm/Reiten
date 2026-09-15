@@ -141,6 +141,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20V11M11 20V4M18 20v-7"/></svg>
           <span data-i18n="대시보드">대시보드</span>
         </button>
+        <button type="button" class="nav-item" data-tab="usagestats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>
+          <span data-i18n="사용 통계">사용 통계</span>
+        </button>
       </div>
     </div>
   </aside>
@@ -1009,6 +1013,32 @@
           </div>
         </div>
 
+        <div id="admin-usagestats" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="사용 통계">사용 통계</div>
+              <div class="content-sub" data-i18n="어떤 탭·기능을 자주 쓰고 안 쓰는지 확인해, 중장기로 화면 배치를 조정할 때 참고합니다.">어떤 탭·기능을 자주 쓰고 안 쓰는지 확인해, 중장기로 화면 배치를 조정할 때 참고합니다.</div>
+            </div>
+            <div class="seg" id="usage-period-switch">
+              <button type="button" data-days="7" aria-pressed="false">7<span data-i18n="일">일</span></button>
+              <button type="button" data-days="30" aria-pressed="true">30<span data-i18n="일">일</span></button>
+              <button type="button" data-days="90" aria-pressed="false">3<span data-i18n="개월">개월</span></button>
+              <button type="button" data-days="365" aria-pressed="false" data-i18n="누적">누적</button>
+            </div>
+          </div>
+          <p class="small" style="color:var(--text-muted);margin-bottom:14px" id="usage-summary"></p>
+          <div class="panel">
+            <b data-i18n="탭별 조회 횟수">탭별 조회 횟수</b>
+            <p class="small" style="color:var(--text-muted);margin-top:2px" data-i18n="한 번도 안 뜬 탭은 0건으로 표시됩니다.">한 번도 안 뜬 탭은 0건으로 표시됩니다.</p>
+            <div id="usage-tabs" style="margin-top:10px"></div>
+          </div>
+          <div class="panel" style="margin-top:14px">
+            <b data-i18n="개별 기능 사용 횟수">개별 기능 사용 횟수</b>
+            <p class="small" style="color:var(--text-muted);margin-top:2px" data-i18n="탭 이동과 별개로, 여러 탭에 흩어진 기능(내보내기 등)을 얼마나 쓰는지 보여줍니다.">탭 이동과 별개로, 여러 탭에 흩어진 기능(내보내기 등)을 얼마나 쓰는지 보여줍니다.</p>
+            <div id="usage-features" style="margin-top:10px"></div>
+          </div>
+        </div>
+
         <div id="admin-auditlog" style="display:grid;gap:12px" hidden>
           <div class="panel">
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
@@ -1094,6 +1124,7 @@
 <script src="js/outbox.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/calendar.js"></script>
+<script src="js/usageStats.js"></script>
 <script src="js/push.js"></script>
 <script src="js/home.js"></script>
 <script src="js/reports.js"></script>

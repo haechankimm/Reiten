@@ -1329,6 +1329,21 @@ const I18N = {
   "오늘 특이사항을 다음 확인자에게 남겨두세요.": { de: "Hinterlasse Besonderheiten von heute für die nächste Person." },
   "남기기": { de: "Hinzufügen" },
   "아직 남긴 노트가 없습니다": { de: "Noch keine Notizen" },
+
+  /* ---------- Works: 사용 통계 ---------- */
+  "사용 통계": { de: "Nutzungsstatistik" },
+  "어떤 탭·기능을 자주 쓰고 안 쓰는지 확인해, 중장기로 화면 배치를 조정할 때 참고합니다.": {
+    de: "Zeigt, welche Tabs/Funktionen oft oder selten genutzt werden — als Grundlage für spätere Layout-Anpassungen.",
+  },
+  "탭별 조회 횟수": { de: "Aufrufe pro Tab" },
+  "한 번도 안 뜬 탭은 0건으로 표시됩니다.": { de: "Nie geöffnete Tabs werden mit 0 angezeigt." },
+  "개별 기능 사용 횟수": { de: "Nutzung einzelner Funktionen" },
+  "탭 이동과 별개로, 여러 탭에 흩어진 기능(내보내기 등)을 얼마나 쓰는지 보여줍니다.": {
+    de: "Zeigt zusätzlich zu Tab-Aufrufen, wie oft über mehrere Tabs verteilte Funktionen (z. B. Export) genutzt werden.",
+  },
+  "{n}회": { de: "{n} Mal" },
+  "최근": { de: "Zuletzt" },
+  "최근 {days}일간 총 {n}건의 사용 기록": { de: "Insgesamt {n} Ereignisse in den letzten {days} Tagen" },
 };
 
 /**

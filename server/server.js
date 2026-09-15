@@ -75,6 +75,7 @@ const noticesRoutes = require("./routes/notices");
 const outboxRoutes = require("./routes/outbox");
 const handoffNotesRoutes = require("./routes/handoffNotes");
 const calendarRoutes = require("./routes/calendar");
+const usageLogRoutes = require("./routes/usageLog");
 const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -2665,6 +2666,7 @@ app.use(noticesRoutes);
 app.use(outboxRoutes);
 app.use(handoffNotesRoutes);
 app.use(calendarRoutes);
+app.use(usageLogRoutes);
 
 
 /* ---------- 미입금 주문 자동취소 ----------

@@ -1,9 +1,29 @@
+  /* ---------- 사용 통계 ----------
+     "어떤 탭·기능을 자주/안 쓰는지 보고 싶다"는 요청(2026-09, 038_admin_usage_log.sql) —
+     기록(POST) 자체는 화면 동작과 완전히 무관해야 하므로 adminFetch(실패 시 토스트를 띄움)를
+     안 쓰고 이 조용한 버전을 쓴다. 매 탭 전환·내보내기 클릭마다 부르는데 실패했다고 매번
+     토스트가 뜨면 오히려 방해가 된다 — 실패는 그냥 콘솔에만 남기고 화면엔 아무 티도 안 낸다. */
+  async function trackUsage(key) {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await fetch("/api/admin/usage-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ key }),
+      });
+    } catch (e) {
+      console.warn("[usage-log] 기록 실패(무시):", e.message);
+    }
+  }
+
   /* ---------- 사이드바 탭 전환 ---------- */
   function switchTabs(navSelector, panelIds) {
     document.querySelectorAll(navSelector).forEach((b) =>
       b.addEventListener("click", () => {
         document.querySelectorAll(navSelector).forEach((x) => x.classList.toggle("is-active", x === b));
         Object.keys(panelIds).forEach((key) => (el(panelIds[key]).hidden = key !== b.dataset.tab));
+        trackUsage(`tab:${b.dataset.tab}`);
       })
     );
   }
@@ -13,7 +33,7 @@
     paymentlog: "admin-paymentlog",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
     members: "admin-members", calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
-    dashboard: "admin-dashboard",
+    dashboard: "admin-dashboard", usagestats: "admin-usagestats",
   });
 
   /* ---------- 사이드바 카테고리 아코디언 ----------

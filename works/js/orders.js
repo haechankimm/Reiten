@@ -298,6 +298,7 @@
     el(menuId).querySelectorAll("[data-format]").forEach((b) =>
       b.addEventListener("click", () => {
         el(menuId).hidden = true;
+        trackUsage(`feature:export:${btnId}`);
         onFormat(b.dataset.format);
       })
     );
