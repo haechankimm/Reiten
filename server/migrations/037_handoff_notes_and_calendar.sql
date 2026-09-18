@@ -16,6 +16,8 @@ create table if not exists admin_handoff_notes (
   admin_email text not null,
   created_at timestamptz not null default now()
 );
+alter table admin_handoff_notes enable row level security;
+-- 정책 없음 = anon/authenticated 키로는 접근 불가. 서버(server/)만 service role key로 접근한다.
 create index if not exists admin_handoff_notes_created_at_idx on admin_handoff_notes (created_at desc);
 
 create table if not exists calendar_events (
@@ -27,4 +29,5 @@ create table if not exists calendar_events (
   created_by text,
   created_at timestamptz not null default now()
 );
+alter table calendar_events enable row level security;
 create index if not exists calendar_events_date_idx on calendar_events (event_date);

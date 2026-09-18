@@ -202,18 +202,17 @@
     각 로그에 정말 남는지는 아직 확인 전. `payment_log`·`notices` 마이그레이션은 **사용자가
     직접 실행 완료(2026-09-03) — 다음 세션이 REST API로 두 테이블 존재 직접 확인**했으니
     이제 남은 건 실제 로그인 UI 검증뿐.
-22. **🚨 마이그레이션 `032`~`038` 실행 필요(2026-09-15 기준)** — `032`~`035`(2026-09-04, 쿠폰
-    사용횟수 경쟁 상태·상품 검색·위시리스트·주문취소 사유 통계·적립금·가상계좌 결제)에 이어
-    `036`(담당자 지정·내부 메모)·`037`(인수인계 노트·사내 캘린더)·`038`(Works 사용 통계,
-    2026-09-15)도 추가됐음. 전부 `node --test` 159개 통과까지 확인했지만, 이 세션엔 실제
-    Supabase 접근 권한이 없어 **일곱 마이그레이션 전부 미실행 상태**. Supabase SQL Editor에서
-    순서대로(032→038) 실행 필요 — 아래 "Supabase 마이그레이션" 표 참고. 실행 전에도 코드
-    자체는 "미실행 시 조용히 저하" 원칙대로 만들어서 사이트가 죽지는 않지만, 쿠폰·포인트·
-    주문취소 사유 통계·담당자 지정·내부 메모·인수인계 노트·캘린더·사용 통계 기능은
-    마이그레이션이 돌기 전까진 사실상 비어 있음.
+22. ~~마이그레이션 `032`~`037` 실행 필요~~ — **사용자가 직접 실행 완료로 보고(2026-09-18)**,
+    이 세션은 Supabase 접근 권한이 없어 REST API로 재확인은 못 함. **다만 `037`을 만들 때
+    이 세션의 실수로 `enable row level security` 두 줄이 빠져 있었던 게 뒤늦게 발견돼
+    (2026-09-18) 파일은 고쳤지만, 이미 실행된 DB에는 반영이 안 됐을 수 있음** — 위
+    "Supabase 마이그레이션" 표의 "RLS 보정" 안내 참고, `admin_handoff_notes`·`calendar_events`
+    두 테이블에 RLS를 다시 한번 켜는 명령을 실행해야 함(서버 동작엔 영향 없는 안전한 명령).
+    `038`(Works 사용 통계)은 실행 중 — Supabase가 "RLS 없이 테이블 생성" 경고를 띄운 건
+    정상이니 **"Run and enable RLS"**를 눌러 진행하면 됨.
 23. **적립금 적립률 설정값 확인 필요** — Works "정보" 탭에 "적립금 적립률(%)" 항목이 아직
-    없어서(034 실행 전) 자동으로 기본값 1%로 동작 중. 실제 운영할 요율이 정해지면 그 탭에서
-    항목을 하나 만들어 값을 넣으면 다음 적립부터 바로 반영됨(첫 구매/재구매 감사쿠폰과 같은 패턴).
+    없으면 자동으로 기본값 1%로 동작 중. 실제 운영할 요율이 정해지면 그 탭에서 항목을 하나
+    만들어 값을 넣으면 다음 적립부터 바로 반영됨(첫 구매/재구매 감사쿠폰과 같은 패턴).
 24. **가상계좌 결제 — 코드는 준비됐지만 PG사 승인 전까지는 꺼져 있음** — 카드결제와 별개로
     NHN KCP(또는 현재 쓰는 PG사)에 가상계좌 결제수단을 추가로 심사받아야 실제로 켤 수 있음
     (README "가상계좌 결제" 섹션 참고). 승인 후 Render 환경변수
@@ -333,13 +332,25 @@
 | `028_coupon_milestones.sql` | 첫 구매/재구매 감사 쿠폰 중복 발급 방지용 `coupon_milestones` 테이블 | ✅ 실행 확인 완료(2026-09-03, 사용자가 직접 실행 → 다음 세션이 REST API로 테이블 존재 직접 확인) |
 | `030_payment_log.sql` | 결제 트랜잭션 로그(신규 기능) 저장용 `payment_log` 테이블 | ✅ 실행 확인 완료(2026-09-03, 사용자가 직접 실행 → 다음 세션이 REST API로 테이블 존재 직접 확인, `curl`로 200 응답) |
 | `031_notices.sql` | 공지·게시판(신규 기능) 저장용 `notices` 테이블 | ✅ 실행 확인 완료(2026-09-03, 사용자가 직접 실행 → 다음 세션이 REST API로 테이블 존재 직접 확인, `curl`로 200 응답) |
-| `032_coupon_usage_lock.sql` | 쿠폰 사용횟수(`usage_limit`) 원자적 차감용 `coupons.used_count` + `claim_coupon_usage()`/`release_coupon_usage()` | ⚠️ 실행 필요 — 아직 이 세션에서 로컬 검증(단위 테스트)만 함, 실제 Supabase 미실행 |
-| `033_cancel_requests.sql` | 반품/교환/주문취소 신청을 구분하는 `return_requests.request_type`·`custom_reason` 컬럼 | ⚠️ 실행 필요 |
-| `034_loyalty_points.sql` | 적립금(포인트) — `loyalty_points_ledger` 테이블 + `redeem_points()`/`award_points()`/`reverse_points_for_order()`, `orders`/`pending_payments`에 `points_used`·`points_earned` 컬럼 | ⚠️ 실행 필요 |
-| `035_virtual_account.sql` | 가상계좌 결제 — `orders`에 계좌정보 컬럼 4종, `pending_payments.user_id` | ⚠️ 실행 필요 |
-| `036_assignee_and_notes.sql` | 담당자 지정·내부 메모 — `orders`/`return_requests`/`qna`에 `assigned_to`·`internal_note` 컬럼 | ⚠️ 실행 필요 |
-| `037_handoff_notes_and_calendar.sql` | 인수인계 노트 `admin_handoff_notes` 테이블 + 사내 캘린더 `calendar_events` 테이블 | ⚠️ 실행 필요 |
-| `038_admin_usage_log.sql` | Works 탭·기능 사용 통계 `admin_usage_log` 테이블 | ⚠️ 실행 필요 |
+| `032_coupon_usage_lock.sql` | 쿠폰 사용횟수(`usage_limit`) 원자적 차감용 `coupons.used_count` + `claim_coupon_usage()`/`release_coupon_usage()` | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) — 이 세션은 Supabase 접근 권한이 없어 REST API로 재확인은 못 함 |
+| `033_cancel_requests.sql` | 반품/교환/주문취소 신청을 구분하는 `return_requests.request_type`·`custom_reason` 컬럼 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
+| `034_loyalty_points.sql` | 적립금(포인트) — `loyalty_points_ledger` 테이블 + `redeem_points()`/`award_points()`/`reverse_points_for_order()`, `orders`/`pending_payments`에 `points_used`·`points_earned` 컬럼 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
+| `035_virtual_account.sql` | 가상계좌 결제 — `orders`에 계좌정보 컬럼 4종, `pending_payments.user_id` | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
+| `036_assignee_and_notes.sql` | 담당자 지정·내부 메모 — `orders`/`return_requests`/`qna`에 `assigned_to`·`internal_note` 컬럼 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
+| `037_handoff_notes_and_calendar.sql` | 인수인계 노트 `admin_handoff_notes` 테이블 + 사내 캘린더 `calendar_events` 테이블 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) — ⚠️ 이 파일에 원래 있어야 할 `enable row level security` 두 줄이 이 세션의 실수로 빠져 있었음(2026-09-18에 발견·수정). 이미 실행했다면 아래 "RLS 보정" 참고해 추가로 한 번 더 실행 필요 |
+| `038_admin_usage_log.sql` | Works 탭·기능 사용 통계 `admin_usage_log` 테이블 | ⚠️ 실행 중(2026-09-18) — Supabase가 "RLS 없이 생성하는 새 테이블" 경고를 띄운 게 정상 동작이니 **"Run and enable RLS"**를 눌러 실행할 것(037과 같은 실수가 있었던 파일이라 최신 버전 SQL을 다시 복사해 실행 권장) |
+
+> **⚠️ RLS 보정(2026-09-18)**: `037_handoff_notes_and_calendar.sql`을 이미 실행했다면(위 표 참고),
+> 이 세션이 나중에 RLS 두 줄을 추가했을 뿐 실제 실행은 그 전에 끝나 있어 반영이 안 됐을 수
+> 있습니다. Supabase SQL Editor에서 아래 두 줄만 한 번 더 실행해 주세요(이미 켜져 있으면
+> 아무 영향 없는 안전한 명령):
+> ```sql
+> alter table admin_handoff_notes enable row level security;
+> alter table calendar_events enable row level security;
+> ```
+> RLS를 안 켜면 익명(anon) 키로 이 두 테이블에 직접 접근할 수 있게 열려 있는 상태입니다 —
+> 서버(service role key)는 RLS 여부와 무관하게 항상 접근 가능하므로 이 명령을 실행해도
+> 사이트 동작에는 전혀 영향이 없습니다.
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 가장 급한 항목들은 위 "다음 세션이 가장 먼저 할 일"에 이미 뽑아뒀습니다. 나머지는 그룹별로 정리했습니다.
@@ -443,6 +454,18 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-09-18 — 사용자가 마이그레이션 `032`~`037` 실행 완료 + RLS 누락 발견·수정.** Supabase
+SQL Editor에서 `038_admin_usage_log.sql`을 실행하려는데 "RLS 없이 테이블을 만든다"는 경고
+창이 뜬다는 문의 — 이 프로젝트는 로그성 테이블에 전부 RLS를 켜서(정책 없음 = anon/authenticated
+키 접근 차단, 서버는 service role key라 RLS와 무관하게 항상 접근) 지키는 게 원칙인데,
+확인해보니 **`037_handoff_notes_and_calendar.sql`(인수인계 노트·캘린더)에 이 세션의 실수로
+그 두 줄이 빠져 있었음**(2026-09-15에 급하게 만들면서 놓침 — `034_loyalty_points.sql`
+등 다른 파일은 정상). 037/038 두 파일 모두 `alter table ... enable row level security;`를
+추가해 고쳤고, 037은 이미 실행된 상태라 파일만 고쳐서는 반영이 안 되므로 위 0번 섹션 22번에
+"RLS 보정" 안내(`admin_handoff_notes`·`calendar_events`에 RLS를 다시 켜는 명령, 서버 동작엔
+영향 없음)를 남겨뒀음 — 사용자가 그 두 줄을 추가로 실행해야 완전히 끝남. 038은 정상적인
+Supabase 경고였다는 것과 "Run and enable RLS"를 눌러야 한다는 것 안내.
 
 **2026-09-15(4차) — Works 사용 통계 탭 신규(`038_admin_usage_log.sql`).** "어떤 탭·기능을
 자주/안 쓰는지 중장기로 보고 화면 배치를 조정하고 싶다"는 요청 — 사이드바 탭을 전환할

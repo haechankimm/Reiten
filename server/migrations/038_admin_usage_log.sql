@@ -13,5 +13,7 @@ create table if not exists admin_usage_log (
   key text not null,
   created_at timestamptz not null default now()
 );
+alter table admin_usage_log enable row level security;
+-- 정책 없음 = anon/authenticated 키로는 접근 불가. 서버(server/)만 service role key로 접근한다.
 create index if not exists admin_usage_log_key_idx on admin_usage_log (key);
 create index if not exists admin_usage_log_created_at_idx on admin_usage_log (created_at);
