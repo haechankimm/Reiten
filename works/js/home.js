@@ -138,11 +138,14 @@
   el("handoff-input").addEventListener("keydown", (e) => { if (e.key === "Enter") el("handoff-submit").click(); });
 
   async function paintAdminHome(profile) {
-    const [dash, notif] = await Promise.all([
-      adminFetch("/api/admin/dashboard"),
+    const [dashResult, notif] = await Promise.all([
+      canView("dashboard") ? adminFetch("/api/admin/dashboard") : Promise.resolve(null),
       adminFetch("/api/admin/notifications"),
     ]);
-    if (!dash || !notif) return;
+    if (!notif || (canView("dashboard") && !dashResult)) return;
+    const dash = dashResult || {};
+    notif.items = (notif.items || []).filter((it) => !it.tab || canView(it.tab));
+    notif.total = notif.items.reduce((sum, it) => sum + (it.count || 0), 0);
 
     const pendingTotal = notif.total || 0;
     const name = profile.name || profile.email;
@@ -152,29 +155,29 @@
     el("home-subline").textContent = `${t(homeSublineKey(bucket, pendingTotal), { name, n: pendingTotal })} · ${dateStr}`;
 
     el("home-tiles").innerHTML = [
-      homeTileHTML(t("오늘 매출"), money(dash.todayRevenue), "dashboard"),
-      homeTileHTML(t("이번 달 매출"), money(dash.monthRevenue), "dashboard"),
-      homeTileHTML(t("오늘 주문"), t("{n}건", { n: dash.todayOrders }), "orders"),
-      homeTileHTML(t("입금 확인 대기"), t("{n}건", { n: dash.pendingCount }), "orders"),
-      homeTileHTML(t("확인 필요 총계"), t("확인 필요 {n}건", { n: pendingTotal }), "orders"),
-    ].join("");
+      canView("dashboard") && homeTileHTML(t("오늘 매출"), money(dash.todayRevenue), "dashboard"),
+      canView("dashboard") && homeTileHTML(t("이번 달 매출"), money(dash.monthRevenue), "dashboard"),
+      canView("dashboard") && homeTileHTML(t("오늘 주문"), t("{n}건", { n: dash.todayOrders }), "orders"),
+      canView("dashboard") && homeTileHTML(t("입금 확인 대기"), t("{n}건", { n: dash.pendingCount }), "orders"),
+      homeTileHTML(t("확인 필요 총계"), t("확인 필요 {n}건", { n: pendingTotal }), canView("orders") ? "orders" : "home"),
+    ].filter(Boolean).join("");
 
-    el("home-revenue-chart").innerHTML = homeRevenueChartHTML(dash.dailyRevenue || []);
-    el("home-bestsellers").innerHTML = homeBestsellersHTML(dash.bestsellers || []);
+    el("home-revenue-chart").innerHTML = canView("dashboard") ? homeRevenueChartHTML(dash.dailyRevenue || []) : "";
+    el("home-bestsellers").innerHTML = canView("dashboard") ? homeBestsellersHTML(dash.bestsellers || []) : "";
 
     el("home-shortcuts").innerHTML = [
-      homeShortcutHTML(t("전체 주문"), t("주문 검색·상태 변경·배송 등록"), "orders"),
-      homeShortcutHTML(t("재고"), t("색상·사이즈별 수량 확인·수정"), "inventory"),
-      homeShortcutHTML(t("결제 트랜잭션"), t("실패·불일치한 결제 시도 확인"), "paymentlog"),
-      homeShortcutHTML(t("회원 계정 관리"), t("회원 검색, 차단·삭제, 관리자 승격"), "members"),
-      homeShortcutHTML(t("발송 실패 아웃박스"), t("이메일·알림 발송 실패 확인"), "outbox"),
-      homeShortcutHTML(t("대시보드"), t("매출·베스트셀러·기기별 통계"), "dashboard"),
-      homeShortcutHTML(t("캘린더"), t("발매일·행사·휴무 일정 확인"), "calendar"),
-    ].join("");
+      ["orders", t("전체 주문"), t("주문 검색·상태 변경·배송 등록")],
+      ["inventory", t("재고"), t("색상·사이즈별 수량 확인·수정")],
+      ["paymentlog", t("결제 트랜잭션"), t("실패·불일치한 결제 시도 확인")],
+      ["members", t("회원 계정 관리"), t("회원 검색, 차단·삭제, 관리자 승격")],
+      ["outbox", t("발송 실패 아웃박스"), t("이메일·알림 발송 실패 확인")],
+      ["dashboard", t("대시보드"), t("매출·베스트셀러·기기별 통계")],
+      ["calendar", t("캘린더"), t("발매일·행사·휴무 일정 확인")],
+    ].filter(([tab]) => canView(tab)).map(([tab, title, sub]) => homeShortcutHTML(title, sub, tab)).join("");
 
     document.querySelectorAll("[data-tab-link]").forEach((btn) =>
       btn.addEventListener("click", () => goToTab(btn.dataset.tabLink))
     );
 
-    paintHandoffNotes();
+    if (canView("calendar")) paintHandoffNotes();
   }

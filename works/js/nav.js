@@ -33,7 +33,7 @@
     paymentlog: "admin-paymentlog",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
     members: "admin-members", calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
-    dashboard: "admin-dashboard", usagestats: "admin-usagestats",
+    dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff",
   });
 
   /* ---------- 사이드바 카테고리 아코디언 ----------
@@ -110,6 +110,8 @@
     el("notif-panel").classList.remove("notif-panel--wide");
     const result = await adminFetch("/api/admin/notifications");
     if (!result) return;
+    result.items = result.items.filter((it) => !it.tab || canView(it.tab));
+    result.total = result.items.reduce((sum, it) => sum + (it.count || 0), 0);
     const rows = result.items.map(notifRowHTML).join("");
     el("notif-list").innerHTML = rows || `<div class="notif-empty">${esc(t("확인할 알림이 없습니다"))}</div>`;
     el("notif-badge").hidden = result.total === 0;
@@ -251,8 +253,14 @@
         toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       } else {
         let message = "";
-        try { message = (await res.json()).error || ""; } catch (e) {}
+        let code = "";
+        try { const body = await res.json(); message = body.error || ""; code = body.code || ""; } catch (e) {}
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
+        // PIN 토큰이 만료·무효가 되면 새로고침해서 PIN 입력 창부터 다시 띄운다.
+        if (res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) {
+          clearPinToken();
+          setTimeout(() => location.reload(), 900);
+        }
       }
       return null;
     }

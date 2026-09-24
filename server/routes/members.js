@@ -18,6 +18,7 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
+const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
 const { toCsvGeneric } = require("../lib/orderExport");
 
@@ -168,6 +169,13 @@ router.patch("/api/admin/members/:id/promote", requireMasterAdmin, async (req, r
 
   const { error } = await supabaseAdmin.from("profiles").update({ role: "admin" }).eq("id", id);
   if (error) return res.status(500).json({ error: "관리자 승격에 실패했습니다." });
+
+  // 승격된 직원은 기본 권한으로 시작(이미 설정된 권한이 있으면 유지). 테이블이 없으면 조용히 건너뜀.
+  const { data: existingPerm } = await supabaseAdmin.from("admin_permissions").select("user_id").eq("user_id", id).maybeSingle();
+  if (!existingPerm) {
+    await supabaseAdmin.from("admin_permissions").insert({ user_id: id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS) });
+    invalidateAdminCache(id);
+  }
 
   logAdminAction(req, "member.promote", "member", id);
   res.json({ ok: true });

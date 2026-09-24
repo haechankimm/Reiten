@@ -468,7 +468,32 @@ async function sendCustomerRestockNotice({ email, productId, productName, color,
   });
 }
 
+/* 결제 이탈 리마인드(고객용) — 결제창까지 갔다가 끝내지 않은 고객에게 1회. 광고성 메일이 아니라
+   "진행하던 주문 안내" 성격이라 상품 홍보 문구 없이 담아둔 내역과 재개 링크만 담는다. */
+async function sendCustomerAbandonedCart({ customer, items, total }) {
+  if (!resend || !customer || !customer.email) return;
+
+  const list = (items || [])
+    .map((it) => `<li>${escHtml(it.name)} (${escHtml(it.options)}) × ${it.qty}</li>`)
+    .join("");
+  await sendTracked("customer_abandoned_cart", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: customer.email,
+    replyTo: SITE.order.email,
+    subject: "[REITEN] 결제를 마치지 못한 주문이 있어요",
+    html: `
+      <h2>${escHtml(customer.name)}님, 진행하시던 주문이 있어요</h2>
+      <p>결제가 완료되지 않아 주문이 접수되지 않았습니다. 아래 상품은 재고 상황에 따라 품절될 수 있어요.</p>
+      <ul>${list}</ul>
+      <p><b>결제 예정 금액</b> ${won(total)}</p>
+      <p style="margin-top:16px"><a href="https://reiten.kr/cart.html">장바구니에서 이어서 결제하기</a></p>
+      <p style="margin-top:16px;color:#666">이미 결제를 마치셨거나 구매 의사가 없으시면 이 메일은 무시하셔도 됩니다. 이 안내는 주문 진행 중인 고객께 1회만 발송됩니다.</p>
+    `,
+  });
+}
+
 module.exports = {
+  sendCustomerAbandonedCart,
   sendOrderNotification,
   sendCustomerOrderReceived,
   sendCustomerPaymentConfirmed,

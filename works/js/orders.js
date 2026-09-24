@@ -175,7 +175,7 @@
         const isUncancel = o.status === "취소" && status !== "취소";
         const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
           method: "PATCH",
-          body: JSON.stringify({ status, courier, trackingNo, cancelReason, assignedTo, internalNote }),
+          body: JSON.stringify({ status, courier, trackingNo, cancelReason, assignedTo, internalNote, expected: { status: o.status, trackingNo: o.trackingNo || "" } }),
         });
         if (!result) return;
         o.status = status;

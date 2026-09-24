@@ -44,6 +44,7 @@ const { kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
 const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL } = require("./lib/adminLog");
 const { writeLimiter } = require("./lib/rateLimiters");
+const { remindAbandonedCarts } = require("./lib/abandonedCart");
 const {
   FIRST_PURCHASE_COUPON_CODE_PREFIX,
   REPEAT_PURCHASE_COUPON_CODE_PREFIX,
@@ -76,6 +77,8 @@ const outboxRoutes = require("./routes/outbox");
 const handoffNotesRoutes = require("./routes/handoffNotes");
 const calendarRoutes = require("./routes/calendar");
 const usageLogRoutes = require("./routes/usageLog");
+const staffRoutes = require("./routes/staff");
+const { adminGuard } = require("./lib/adminGuard");
 const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -252,6 +255,9 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
 });
 
 app.use(express.json());
+
+/* 모든 /api/admin/* 요청의 관문 — 로그인·관리자 확인, PIN(2단계), 직원별 영역 권한(lib/adminGuard.js) */
+app.use("/api/admin", adminGuard);
 
 /* works.reiten.kr로 들어온 요청은 관리자 전용 정적 사이트(works/)를 먼저 찾는다.
    express.static은 파일을 못 찾으면 그냥 next()로 넘어가므로, works/에 없는 assets/*
@@ -1724,6 +1730,7 @@ app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) 
 /* 관리자 계정 관리(GET/POST /api/admin/admins, DELETE /api/admin/admins/:id) — 돈·재고를
    건드리지 않는 순수 CRUD라 routes/admins.js로 분리했다(2026-09-01, 라우트 분리 다음 라운드). */
 app.use(adminsRoutes);
+app.use(staffRoutes);
 
 /* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
    이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */
@@ -1990,7 +1997,7 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
    ① 재고 복원 ② 카드결제 건이면 포트원 환불 자동 시도 ③ 고객 안내 메일까지 한 번에 처리한다
    (cancelReason은 선택 — 입력하면 사유가 저장되고 고객 메일에도 그대로 노출됨). */
 app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
-  const { status, courier, trackingNo, cancelReason, assignedTo, internalNote } = req.body || {};
+  const { status, courier, trackingNo, cancelReason, assignedTo, internalNote, expected } = req.body || {};
 
   const patch = {};
   if (status !== undefined) {
@@ -2029,6 +2036,16 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
     .eq("order_no", req.params.no)
     .single();
   if (prevError || !prev) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
+
+  /* 낙관적 잠금 — 화면이 열려 있던 사이 다른 관리자가 같은 주문의 상태·운송장을 바꿨다면
+     조용히 덮어쓰지 않고 409로 막는다(expected는 저장 직전 화면이 알고 있던 값). */
+  if (expected && typeof expected === "object") {
+    const changedStatus = expected.status !== undefined && String(expected.status) !== String(prev.status);
+    const changedTracking = expected.trackingNo !== undefined && String(expected.trackingNo || "") !== String(prev.tracking_no || "");
+    if (changedStatus || changedTracking) {
+      return res.status(409).json({ error: "다른 관리자가 이 주문을 방금 수정했습니다. 목록을 새로고침해서 최신 내용을 확인한 뒤 다시 저장해 주세요.", code: "STALE", current: { status: prev.status, trackingNo: prev.tracking_no || "" } });
+    }
+  }
 
   const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
   const isNewCancel = patch.status === "취소" && prev.status !== "취소";
@@ -2207,7 +2224,7 @@ app.get("/api/admin/returns", requireAdmin, async (req, res) => {
    자동환불도 실패) 관리자가 놓치기 쉬운 상황이라 즉시 긴급 메일을 보낸다(카드결제 이중실패 알림과
    같은 원칙). refunded 플래그로 같은 반품을 두 번 환불 시도하지 않게 막는다. */
 app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
-  const { status, assignedTo, internalNote } = req.body || {};
+  const { status, assignedTo, internalNote, expectedStatus } = req.body || {};
   const statusStr = status !== undefined ? String(status || "").trim() : undefined;
   if (status !== undefined && !statusStr) {
     return res.status(400).json({ error: "status가 필요합니다." });
@@ -2225,6 +2242,9 @@ app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
     .eq("id", req.params.id)
     .single();
   if (prevError || !prev) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
+  if (expectedStatus !== undefined && String(expectedStatus) !== String(prev.status)) {
+    return res.status(409).json({ error: "다른 관리자가 이 신청을 방금 수정했습니다. 목록을 새로고침해서 최신 내용을 확인한 뒤 다시 저장해 주세요.", code: "STALE", current: { status: prev.status } });
+  }
 
   const { data: savedReturn, error } = await updateWithOptionalColumnFallback("return_requests", "id", req.params.id, patch);
   if (error || !savedReturn) return res.status(500).json({ error: "저장에 실패했습니다." });
@@ -2805,6 +2825,10 @@ async function closeExpiredVirtualAccounts() {
   }
 }
 
+cron.schedule("30 * * * *", () => {
+  remindAbandonedCarts().catch((err) => console.error("[abandoned-cart] 실행 실패:", err.message));
+});
+
 cron.schedule("0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
   closeExpiredVirtualAccounts().catch((err) => console.error("[auto-cancel] 가상계좌 만료 처리 실행 실패:", err.message));
@@ -3072,9 +3096,24 @@ function assertNoRouteShadowing(expressApp) {
 }
 assertNoRouteShadowing(app);
 
+/* 404 — /api/*는 JSON, 그 외 페이지 요청은 브랜드 404 페이지 */
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) return res.status(404).json({ error: "존재하지 않는 API입니다." });
+  res.status(404).sendFile(path.join(SITE_DIR, "404.html"));
+});
+
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
+
+/* 500 — 처리 안 된 예외는 스택을 고객에게 노출하지 않고 브랜드 오류 페이지(또는 JSON)로 응답 */
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error("[unhandled]", err);
+  if (res.headersSent) return next(err);
+  if (req.path.startsWith("/api/")) return res.status(500).json({ error: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요." });
+  res.status(500).sendFile(path.join(SITE_DIR, "500.html"));
+});
 
 app.listen(PORT, () => {
   console.log(`REITEN server running at http://localhost:${PORT}`);

@@ -426,6 +426,18 @@
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
+  /* ---------- PIN·비밀번호 입력 대화상자, 직원 권한 표 ---------- */
+  .dlg-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1100; padding: 20px; }
+  .dlg-card { background: var(--bg-canvas); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: min(92vw, 360px); }
+  .dlg-card h3 { margin: 0 0 6px; font-size: 16px; }
+  .dlg-card .small { margin: 0 0 14px; }
+  .dlg-card .field { margin-bottom: 12px; }
+  .dlg-card .pin-input { letter-spacing: .5em; text-align: center; font-size: 20px; }
+  .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px; margin-top: 12px; }
+  .perm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+  .perm-row select { height: 30px; padding: 0 8px; }
+
   /* ---------- 모바일 화면 대응 ----------
      사이드바가 폭 고정(208px)이라 좁은 화면에서는 서랍(drawer)처럼 평소엔 화면 밖에 숨겨두고,
      햄버거 버튼으로 열고 닫는다. 데스크톱(넓은 화면)에서는 이 규칙들이 전혀 적용되지 않는다. */

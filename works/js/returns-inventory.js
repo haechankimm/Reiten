@@ -46,10 +46,11 @@
         const status = card.querySelector(".admin-return-status").value;
         const assignedTo = card.querySelector(".admin-return-assignee").value;
         const internalNote = card.querySelector(".admin-return-note").value.trim();
+        const prevItem = returnsState.items.find((x) => x.id === id);
         btn.disabled = true;
         const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
-          body: JSON.stringify({ status, assignedTo, internalNote }),
+          body: JSON.stringify({ status, assignedTo, internalNote, expectedStatus: prevItem ? prevItem.status : undefined }),
         });
         btn.disabled = false;
         if (!result) return;

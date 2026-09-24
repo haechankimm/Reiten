@@ -124,6 +124,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z"/></svg>
           <span data-i18n="정보">정보</span>
         </button>
+        <button type="button" class="nav-item" data-tab="staff" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8 7.5 9.5 4.4-1.5 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="m9 12 2.2 2.2L15.2 10"/></svg>
+          <span data-i18n="직원·권한">직원·권한</span>
+        </button>
         <button type="button" class="nav-item" data-tab="auditlog">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6"/></svg>
           <span data-i18n="활동 로그">활동 로그</span>
@@ -183,6 +187,7 @@
           <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
           <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"/></svg>
         </button>
+        <button type="button" class="btn btn--sm btn--ghost" id="change-pin" hidden data-i18n="PIN 변경">PIN 변경</button>
         <button type="button" class="btn btn--sm" id="logout" hidden data-i18n="로그아웃">로그아웃</button>
       </div>
     </header>
@@ -1013,6 +1018,17 @@
           </div>
         </div>
 
+        <div id="admin-staff" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="직원·권한">직원·권한</div>
+              <div class="content-sub" data-i18n="직원마다 Works에서 볼 수 있는 화면과 수정할 수 있는 범위를 정하고, PIN·비밀번호를 관리합니다. 마스터 관리자만 볼 수 있습니다.">직원마다 Works에서 볼 수 있는 화면과 수정할 수 있는 범위를 정하고, PIN·비밀번호를 관리합니다. 마스터 관리자만 볼 수 있습니다.</div>
+            </div>
+          </div>
+          <p class="small" id="staff-migration-note" style="color:var(--danger);margin-bottom:12px" hidden data-i18n="권한·PIN 기능용 DB 마이그레이션(040)이 아직 실행되지 않아 저장이 되지 않습니다.">권한·PIN 기능용 DB 마이그레이션(040)이 아직 실행되지 않아 저장이 되지 않습니다.</p>
+          <div id="staff-list" style="display:grid;gap:14px"></div>
+        </div>
+
         <div id="admin-usagestats" hidden>
           <div class="content-head">
             <div>
@@ -1112,6 +1128,7 @@
 <script src="/assets/js/auth-client.js"></script>
 <script src="js/core.js"></script>
 <script src="js/nav.js"></script>
+<script src="js/pin.js"></script>
 <script src="js/orders.js"></script>
 <script src="js/paymentlog.js"></script>
 <script src="js/returns-inventory.js"></script>
@@ -1125,6 +1142,7 @@
 <script src="js/settings.js"></script>
 <script src="js/calendar.js"></script>
 <script src="js/usageStats.js"></script>
+<script src="js/staff.js"></script>
 <script src="js/push.js"></script>
 <script src="js/home.js"></script>
 <script src="js/reports.js"></script>

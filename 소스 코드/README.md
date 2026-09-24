@@ -223,6 +223,18 @@
     (`order-lookup.html`)까지는 서버 없이도 눈으로 확인 가능. 포인트 적립·사용·가상계좌는
     위 마이그레이션 실행 + 실제 로그인/결제까지 있어야 끝까지 확인됨.
 
+26. **2026-09-24 작업분 배포 전 필수: 마이그레이션 `039`·`040` 실행 + 마스터 PIN 최초 설정** —
+    아래 "최근 작업 이력" 2026-09-24 항목 참고. ① `039_abandoned_cart_reminder.sql`(결제 이탈
+    메일용 컬럼) ② `040_admin_pin_and_permissions.sql`(PIN·직원 권한 테이블) 둘 다 Supabase SQL
+    Editor에서 실행(안 해도 사이트는 안 죽고 해당 기능만 꺼진 채 동작). ③ 배포 후 마스터
+    관리자(`haechankimm@gmail.com`)가 Works에 로그인하면 **PIN 설정 창이 뜸 — 숫자 6자리를 정하면 됨**
+    (이후 로그인마다 PIN 입력). PIN을 잊으면 마스터가 Supabase SQL Editor에서
+    `delete from admin_pins where user_id = (select id from auth.users where email='haechankimm@gmail.com');`
+    실행 → 다음 로그인 때 새로 설정. ④ 결제 이탈 메일은 Render 환경변수 `ABANDONED_CART_EMAIL=on`을
+    추가해야 켜짐(기본 꺼짐 — 광고성 정보 수신동의 문제를 사업자가 확인한 뒤 켜도록). ⑤ 실제 직원
+    계정으로 로그인해 권한 제한이 화면·서버 양쪽에서 걸리는지 한 번 확인 필요(로컬은 자동 테스트 +
+    가짜 데이터 화면 렌더링까지만 확인함).
+
 그 아래는 전부 위 항목들이 끝난 뒤에 순서 상관없이 골라서 진행하면 되는 항목들입니다.
 
 | 항목 | 상태 |
@@ -338,6 +350,8 @@
 | `036_assignee_and_notes.sql` | 담당자 지정·내부 메모 — `orders`/`return_requests`/`qna`에 `assigned_to`·`internal_note` 컬럼 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
 | `037_handoff_notes_and_calendar.sql` | 인수인계 노트 `admin_handoff_notes` 테이블 + 사내 캘린더 `calendar_events` 테이블 | ✅ 실행 완료 + RLS 보정 완료(2026-09-18) — 마이그레이션 실행 시 이 세션의 실수로 빠져 있던 `enable row level security`를, 사용자가 `alter table admin_handoff_notes enable row level security;`·`alter table calendar_events enable row level security;`를 직접 실행해 확정(`Success. No rows returned` 확인) |
 | `038_admin_usage_log.sql` | Works 탭·기능 사용 통계 `admin_usage_log` 테이블 | ✅ 실행 완료, RLS 포함(2026-09-18) — Supabase가 띄운 "RLS 없이 생성" 경고에서 "Run and enable RLS"로 정상 실행 |
+| `039_abandoned_cart_reminder.sql` | 결제 이탈 리마인드 메일용 `pending_payments.reminder_sent_at` | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — 리마인드만 꺼짐) |
+| `040_admin_pin_and_permissions.sql` | 관리자 PIN(`admin_pins`) + 직원별 영역 권한(`admin_permissions`), RLS 포함 | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — PIN·권한 제한만 꺼짐) |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 가장 급한 항목들은 위 "다음 세션이 가장 먼저 할 일"에 이미 뽑아뒀습니다. 나머지는 그룹별로 정리했습니다.
@@ -441,6 +455,32 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-09-24 — README 개선 제안 6건 중 5건 구현(개인정보처리방침·직원 권한/PIN·이탈 메일·404/500·동시수정 충돌 방지), 1건은 이미 돼 있어 확인만.**
+- **개인정보처리방침(`privacy.html`)**: 제5조 위탁 표에 Google LLC(GA4)·Channel Corp.(채널톡) 추가, 제7조를
+  "localStorage만 쓴다"에서 "GA4·채널톡이 자체 쿠키를 쓰고 각 사 서버로 전송된다 + 브라우저에서 거부 가능"으로 교체.
+  Claude 초안이라 법률 자문은 아님.
+- **`trust proxy`(3번)**: 조사 결과 `server.js`에 이미 `app.set("trust proxy", 1)`가 있어 **수정 없음**(제안 당시
+  서버 코드를 못 봐서 "확인 필요"로 적었던 것).
+- **관리자 PIN(2단계 인증) + 직원별 권한(마스터 전용 "직원·권한" 탭)**:
+  - 관문: `server/lib/adminGuard.js`가 `/api/admin/*` 전체를 한 곳에서 검사 — ① 로그인·관리자 ② PIN 토큰(`X-Admin-Pin`
+    헤더, 12시간, PIN 바뀌면 즉시 무효) ③ 영역 권한. **새 관리자 API를 만들면 `adminGuard.js`의 `AREAS` 표에 경로를
+    꼭 추가할 것 — 표에 없으면 마스터만 쓸 수 있는 "기본 거부"라 직원이 못 씀.** 개별 라우트의 `requireAdmin`은
+    그대로(관문이 통과시키면 재검증 생략, `req.adminVerified`).
+  - 권한 레벨은 영역(주문·반품·재고·문의·결제·상품·쿠폰·리뷰·룩북·회원·협업·아웃박스·정보·활동로그·대시보드)마다
+    `none/view/edit`. GET=보기, 나머지 메서드=수정. 행이 없는 기존 관리자는 전체 허용(기존 동작 유지), 새로 초대·승격한
+    직원은 기본 권한(주문·반품·재고·문의·협업 수정)으로 시작. 마스터는 항상 전체.
+  - PIN: 숫자 6자리, scrypt 해시 저장, 5회 실패 시 15분 잠금. 마스터가 직원 PIN 지정·초기화·비밀번호 변경 가능
+    (`server/routes/staff.js`, Works `works/js/staff.js`·`pin.js`). 본인은 상단 "PIN 변경"으로 직접 변경. PIN은
+    비밀번호와 같은 "아는 것"이라 TOTP(구글 OTP 앱)보다 약함 — 필요하면 Supabase MFA(TOTP)를 추가 가능.
+  - 화면: 권한 없는 탭은 사이드바에서 숨기고 데이터도 안 불러옴, "오늘" 화면·알림 벨도 권한 기준으로 걸러짐. "보기만"
+    권한이어도 수정 버튼은 보이며 눌러도 서버가 403(다음 개선 후보).
+  - 테스트: `test/adminGuard.test.js`(순수 함수), `test/routesStaff.test.js`(관문+PIN+권한 통합) — 전체 172건 통과.
+- **결제 이탈 리마인드 메일**(`server/lib/abandonedCart.js` + 매시 30분 크론): `pending_payments`에서 2시간~23시간 된
+  미완료 결제에 1회만 발송(이미 같은 이메일로 주문했으면 제외). **기본 꺼짐 — `ABANDONED_CART_EMAIL=on`**.
+- **404/500 페이지**: `소스 코드/404.html`·`500.html` + `server.js` 맨 아래 핸들러(`/api/*`는 JSON). 스택은 고객에게 노출 안 함.
+- **동시 수정 충돌 방지**: 주문·반품 저장 시 화면이 본 상태(`expected`/`expectedStatus`)를 같이 보내 그 사이 바뀌었으면
+  409("다른 관리자가 방금 수정했습니다"). 마이그레이션 불필요. 일괄 처리(bulk)는 대상 아님.
 
 **2026-09-18 — 마이그레이션 `032`~`038` 전부 실행 완료 + RLS 누락 발견·보정까지 완료.**
 Supabase SQL Editor에서 `038_admin_usage_log.sql`을 실행하려는데 "RLS 없이 테이블을 만든다"는

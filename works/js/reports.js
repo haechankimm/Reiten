@@ -220,22 +220,30 @@
   }
   wireExportMenu("dash-export", "dash-export-menu", downloadDashboardExport);
 
-  /* /api/admin/orders 호출이 실제로 성공했을 때(=서버가 관리자로 인정했을 때)만 패널을 연다 —
-     profile.role만 믿지 않는다(계정 페이지 관리자 판단 로직과 동일한 원칙). */
+  /* 서버의 /api/admin/me가 성공했을 때(=서버가 관리자로 인정하고 PIN까지 통과했을 때)만 패널을 연다 —
+     profile.role만 믿지 않는다(계정 페이지 관리자 판단 로직과 동일한 원칙). 내 권한에 없는 탭은 사이드바에서
+     숨기고 그 탭 데이터는 아예 불러오지 않는다(불러오면 서버가 403을 내 토스트만 쌓임). */
   async function tryShowAdminPanel(profile) {
-    const orders = await adminFetch("/api/admin/orders");
-    if (!orders) return false;
+    const me = await loadAdminAccess();
+    if (!me) return false;
     el("admin-panel").hidden = false;
     el("sidebar").hidden = false;
     el("admin-chip").hidden = false;
     el("notif-wrap").hidden = false;
     el("logout").hidden = false;
+    el("change-pin").hidden = !me.pin.enabled;
     const name = profile.name || profile.email;
     el("admin-name").textContent = name;
     el("admin-avatar").textContent = name.slice(0, 1).toUpperCase();
     currentAdminId = profile.id;
     currentAdminEmail = profile.email || "";
-    isMasterAdmin = (profile.email || "").toLowerCase() === "haechankimm@gmail.com";
+    isMasterAdmin = !!me.isMaster;
+
+    document.querySelectorAll("#sidebar .nav-item[data-tab]").forEach((b) => { b.hidden = !canView(b.dataset.tab); });
+    document.querySelectorAll("#sidebar .nav-group").forEach((g) => {
+      g.hidden = !g.querySelector(".nav-item[data-tab]:not([hidden])");
+    });
+
     // "오늘" 탭은 로그인 직후 클릭 없이 바로 열리므로, 사이드바 클릭에 묻어가는 다른 탭들과
     // 달리 여기서 따로 한 번 기록해야 실제 조회 빈도가 통계에서 누락되지 않는다.
     trackUsage("tab:home");
@@ -244,21 +252,21 @@
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */
     if (!notifPollTimer) notifPollTimer = setInterval(paintNotifications, 60000);
     paintAdminAccounts();
-    paintAdminMembers();
-    paintAdminOrders();
-    paintAdminReturns();
-    paintAdminInventory();
-    paintQnaTemplates().then(() => paintAdminQna());
-    paintAdminProducts();
-    paintAdminCoupons();
-    paintAdminReviews();
-    paintAdminLookbook();
-    paintAdminSettings();
-    paintAdminAuditLog();
-    paintAdminDashboard();
-    paintAdminPaymentLog();
-    paintAdminNotices();
-    paintAdminOutbox();
+    if (canView("members")) paintAdminMembers();
+    if (canView("orders")) paintAdminOrders();
+    if (canView("returns")) paintAdminReturns();
+    if (canView("inventory")) paintAdminInventory();
+    if (canView("qna")) paintQnaTemplates().then(() => paintAdminQna());
+    if (canView("products")) paintAdminProducts();
+    if (canView("coupons")) paintAdminCoupons();
+    if (canView("reviews")) paintAdminReviews();
+    if (canView("lookbook")) paintAdminLookbook();
+    if (canView("settings")) paintAdminSettings();
+    if (canView("auditlog")) paintAdminAuditLog();
+    if (canView("dashboard")) paintAdminDashboard();
+    if (canView("paymentlog")) paintAdminPaymentLog();
+    if (canView("notices")) paintAdminNotices();
+    if (canView("outbox")) paintAdminOutbox();
     paintAdminHome(profile);
     initPush();
     return true;

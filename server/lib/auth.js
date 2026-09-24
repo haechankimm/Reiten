@@ -34,6 +34,7 @@ async function optionalAuth(req, res, next) {
 }
 
 async function requireAdmin(req, res, next) {
+  if (req.adminVerified) return next(); // lib/adminGuard가 이미 로그인·관리자 여부를 확인함
   requireAuth(req, res, async () => {
     const { data, error } = await supabaseAdmin
       .from("profiles")

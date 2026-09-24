@@ -13,6 +13,7 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
+const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 
 const router = express.Router();
 
@@ -79,6 +80,14 @@ router.post("/api/admin/admins", requireMasterAdmin, async (req, res) => {
   if (roleError) {
     return res.status(500).json({ error: "계정은 만들어졌지만 관리자 권한 부여에 실패했습니다 — Supabase에서 수동으로 처리해 주세요." });
   }
+
+  /* 새 직원은 기본 권한(주문·반품·재고·문의·협업만)으로 시작 — 마스터가 "직원·권한" 탭에서 조정.
+     테이블(마이그레이션 040)이 없으면 조용히 건너뛴다(기존처럼 전체 허용으로 동작). */
+  const { error: permError } = await supabaseAdmin
+    .from("admin_permissions")
+    .upsert({ user_id: data.user.id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (permError) console.warn("[admins] 기본 권한 저장 생략:", permError.message);
+  invalidateAdminCache(data.user.id);
 
   logAdminAction(req, "admin.invite", "admin", data.user.id, { email });
   res.json({ ok: true });
