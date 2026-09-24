@@ -476,6 +476,26 @@
     .detail-grid { grid-template-columns: 1fr; }
   }
 
+  /* ---------- 모바일 UI 보정(2026-09-25, 실제 아이폰 캡처 기준) ----------
+     ① iOS의 date input은 자체 최소 폭이 있어 grid/flex 안에서 칸을 오른쪽으로 밀어냈다 → min-width:0
+     ② 알림 패널이 벨 아이콘 기준 right:0 으로 열려 왼쪽 화면 밖으로 잘렸다 → 상단바 기준 전폭 고정
+     ③ 체크박스가 .field input 규칙(높이 46px·폭 100%)을 상속받아 검은 원으로 찌그러졌다 → 크기 복구
+     ④ 활동 로그 머리글 행이 세로로 쌓였다 → 모바일에선 숨김 */
+  input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; min-width: 18px; padding: 0; flex: none; accent-color: var(--accent); }
+  .field input[type="checkbox"], .field input[type="radio"] { width: 18px; height: 18px; padding: 0; }
+  .checkbox input { accent-color: var(--accent); }
+  input[type="date"] { min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; }
+  .content, .panel, .field { min-width: 0; }
+  .content { overflow-x: hidden; }
+  @media (max-width: 860px) {
+    .topbar { position: relative; }
+    .notif-wrap { position: static; }
+    .notif-panel, .notif-panel--wide { position: absolute; top: calc(100% + 4px); left: 8px; right: 8px; width: auto; max-height: 70vh; overflow-y: auto; }
+    .field input, .field select, .field textarea { min-width: 0; max-width: 100%; }
+    .field[style*="grid-column:span 2"] { grid-column: 1 / -1 !important; }
+    .logrow-head { display: none; }
+  }
+
   /* ---------- 캘린더 ---------- */
   .cal-grid { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-surface); }
   .cal-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }

@@ -925,6 +925,7 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+.field .upload-input { width: 1px; height: 1px; min-width: 0; padding: 0; } /* .field input의 width:100%가 숨김 input을 폭 100%로 만들어 모바일에서 가로 스크롤을 유발하던 문제 */
 .upload-filename { color: var(--muted); }
 .upload-preview { margin-top: 12px; max-width: 160px; border-radius: var(--radius); display: block; }
 
