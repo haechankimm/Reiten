@@ -15,3 +15,6 @@ node_modules/
 # 비밀값 (Supabase/Resend/Cloudinary 키 등)
 .env
 .env.local
+
+# 디자인 시안(로컬 검토용, 저장소에 올리지 않음)
+디자인 시안/
