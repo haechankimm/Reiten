@@ -47,6 +47,7 @@ const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/in
 const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL } = require("./lib/adminLog");
 const { writeLimiter } = require("./lib/rateLimiters");
 const { remindAbandonedCarts } = require("./lib/abandonedCart");
+const { sendReviewRequests } = require("./lib/reviewRequest");
 const {
   FIRST_PURCHASE_COUPON_CODE_PREFIX,
   REPEAT_PURCHASE_COUPON_CODE_PREFIX,
@@ -55,7 +56,7 @@ const {
   REPEAT_PURCHASE_COUPON_PERCENT_LABEL,
 } = require("./lib/thanksCoupons");
 const { isMissingSchemaError, isMissingColumnError, extractMissingColumnName } = require("./lib/pgErrors");
-const { updateWithOptionalColumnFallback, selectWithOptionalColumnFallback } = require("./lib/dbUpdate");
+const { updateWithOptionalColumnFallback, selectWithOptionalColumnFallback, ASSIGNEE_NOTE_OPTIONAL_COLUMNS } = require("./lib/dbUpdate");
 const { normalizeTel } = require("./lib/phone");
 /* 아래는 돈·재고를 건드리지 않는 순수 CRUD 라우트 그룹 — server.js 본체에서 분리해
    각자 독립된 Express Router로 관리한다(2026-09-01, 코드 크기 정리 1·2단계). 결제·주문·재고·
@@ -161,7 +162,7 @@ app.use(
           "https://t1.daumcdn.net",
         ],
         frameSrc: ["https://*.channel.io"],
-        mediaSrc: ["'self'", "https://*.channel.io"],
+        mediaSrc: ["'self'", "https://*.channel.io", "https://res.cloudinary.com"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
@@ -445,7 +446,12 @@ async function withRealSoldOut(products) {
       });
       if (outSizes.length) outOfStockByColor[color] = outSizes;
     }
-    return { ...p, outOfStockByColor };
+    /* 품절은 실재고 하나로만 판단한다(2026-09 통합) — 관리자가 손으로 체크하던 soldOut은 재고가 10개
+       있는데도 품절로 막는 사고가 있어 무시하고, "모든 컬러에서 재고 0인 사이즈"로 다시 계산한다.
+       (재고 조회가 실패한 degraded 상태에서만 예전 수동 값이 비상용으로 남는다.) */
+    const colors = p.colors || [];
+    const soldOut = colors.length ? (p.sizes || []).filter((size) => colors.every((c) => (outOfStockByColor[c] || []).includes(size))) : [];
+    return { ...p, soldOut, outOfStockByColor };
   });
   return { products: withStock, degraded: false };
 }
@@ -2000,8 +2006,11 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
       continue;
     }
 
-    const { data: saved, error } = await supabaseAdmin.from("orders").update(patch).eq("order_no", orderNo).select().single();
-    if (error) {
+    if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
+      patch.shipped_at = new Date().toISOString();
+    }
+    const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", orderNo, patch, ["shipped_at"]);
+    if (error || !saved) {
       results.push({ orderNo, ok: false, error: "저장에 실패했습니다." });
       continue;
     }
@@ -2085,7 +2094,11 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   if (isNewCancel) patch.cancel_reason = cancelReasonStr || null;
   if (isUncancel) patch.cancel_reason = null;
 
-  const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", req.params.no, patch);
+  // 처음 배송이 시작되는 순간(배송중 전환 또는 첫 운송장 입력)을 기록 — 며칠 뒤 리뷰 요청 메일 기준(041)
+  if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
+    patch.shipped_at = new Date().toISOString();
+  }
+  const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", req.params.no, patch, [...ASSIGNEE_NOTE_OPTIONAL_COLUMNS, "shipped_at"]);
 
   if (error || !saved) return res.status(500).json({ error: "저장에 실패했습니다." });
 
@@ -2848,6 +2861,10 @@ async function closeExpiredVirtualAccounts() {
     console.log(`[auto-cancel] ${order.order_no} 가상계좌 입금기한 만료 자동 취소 처리 완료`);
   }
 }
+
+cron.schedule("0 11 * * *", () => {
+  sendReviewRequests().catch((err) => console.error("[review-request] 실행 실패:", err.message));
+}, { timezone: "Asia/Seoul" });
 
 cron.schedule("30 * * * *", () => {
   remindAbandonedCarts().catch((err) => console.error("[abandoned-cart] 실행 실패:", err.message));

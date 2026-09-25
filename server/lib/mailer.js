@@ -497,7 +497,30 @@ async function sendCustomerAbandonedCart({ customer, items, total }) {
   });
 }
 
+/* 리뷰 요청(고객용) — 배송 시작 며칠 뒤 1회. 보상·홍보 문구 없이 구매한 상품의 후기만 요청한다. */
+async function sendCustomerReviewRequest({ customer, orderNo, items }) {
+  if (!resend || !customer || !customer.email) return;
+  const first = (items || [])[0] || {};
+  const link = `https://reiten.kr/reviews.html?order=${encodeURIComponent(orderNo)}${first.productId ? `&product=${encodeURIComponent(first.productId)}` : ""}#write`;
+  const list = (items || []).map((it) => `<li>${escHtml(it.name)} (${escHtml(it.options)})</li>`).join("");
+  await sendTracked("customer_review_request", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: customer.email,
+    replyTo: SITE.order.email,
+    subject: "[REITEN] 받아보신 옷은 어떠셨나요?",
+    html: `
+      <h2>${escHtml(customer.name)}님, 잘 받으셨나요?</h2>
+      <p>주문번호 <b>${escHtml(orderNo)}</b></p>
+      <ul>${list}</ul>
+      <p>입어보신 느낌·사이즈·야간 반사 후기를 남겨주시면 다른 라이더분들께 큰 도움이 됩니다.</p>
+      <p style="margin-top:16px"><a href="${link}">후기 남기기</a></p>
+      <p style="margin-top:16px;color:#666">이 안내는 주문 1건당 1회만 발송됩니다. 불편한 점이 있으셨다면 이 메일에 바로 답장해 주세요.</p>
+    `,
+  });
+}
+
 module.exports = {
+  sendCustomerReviewRequest,
   sendCustomerAbandonedCart,
   sendOrderNotification,
   sendCustomerOrderReceived,

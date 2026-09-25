@@ -651,18 +651,13 @@
                 <div id="pf-color-manage" style="margin-top:10px"></div>
               </div>
               <div class="field" style="grid-column:1/-1">
-                <label data-i18n="사이즈 재고 (체크 해제 시 품절로 표시)">사이즈 재고 (체크 해제 시 품절로 표시)</label>
-                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XS" checked><span>XS</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="S" checked><span>S</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="M" checked><span>M</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="L" checked><span>L</span></label>
-                  <label class="checkbox"><input type="checkbox" class="pf-size" value="XL" checked><span>XL</span></label>
-                </div>
+                <label for="pf-modelinfo" data-i18n="모델 정보 (선택)">모델 정보 (선택)</label>
+                <input id="pf-modelinfo" maxlength="120" placeholder="예: 178cm · 70kg / L 착용" data-i18n-attr="placeholder:예: 178cm · 70kg / L 착용">
+                <p class="small" style="margin-top:6px;color:var(--text-muted)" data-i18n="품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).">품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).</p>
               </div>
               <div class="field" style="grid-column:1/-1">
-                <label data-i18n="사진 (최대 4장)">사진 (최대 4장)</label>
-                <div id="pf-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px"></div>
+                <label data-i18n="사진 · 상세 콘텐츠 (컬러별)">사진 · 상세 콘텐츠 (컬러별)</label>
+                <div id="pf-photos"></div>
               </div>
               <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>

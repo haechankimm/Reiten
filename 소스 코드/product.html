@@ -83,6 +83,21 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     return (p.outOfStockByColor && p.outOfStockByColor[color]) || [];
   }
 
+  /* 사진·상세 콘텐츠(media) — 고른 컬러의 항목 + 공통(컬러 없음) 항목만 보여준다. 서버가 없거나 예전 상품이면
+     images(+imageColors)로 갤러리를 만든다. */
+  const MEDIA = (p.media && p.media.length)
+    ? p.media
+    : p.images.filter(Boolean).map((src, i) => ({ kind: "gallery", src, color: (p.imageColors || [])[i] || null }));
+  const forColor = (m, color) => !m.color || m.color === color;
+  function galleryFor(color) {
+    const all = MEDIA.filter((m) => m.kind === "gallery");
+    const mine = all.filter((m) => forColor(m, color));
+    return mine.length ? mine : all; // 그 컬러 사진이 아직 하나도 없으면 빈 화면 대신 전체를 보여준다
+  }
+  function detailFor(color) {
+    return MEDIA.filter((m) => m.kind !== "gallery" && forColor(m, color));
+  }
+
   const initialColor = p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
   let state = {
     color: initialColor,
@@ -109,6 +124,9 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const outForColor = outSizesForColor(state.color);
     const soldAll = p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s));
     const name = productName(p);
+    const gallery = galleryFor(state.color);
+    if (state.img >= gallery.length) state.img = 0;
+    const details = detailFor(state.color);
 
     root.innerHTML = `
     <nav class="small" style="margin-bottom:26px">
@@ -119,10 +137,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     <div class="pdp">
       <div class="pdp__gallery">
-        <div id="main-media">${mediaHTML(p.images[state.img], name)}</div>
-        ${p.images.length > 1 ? `<div class="pdp__thumbs">${p.images.map((src, i) => `
+        <div id="main-media">${mediaHTML((gallery[state.img] || {}).src, name)}</div>
+        ${gallery.length > 1 ? `<div class="pdp__thumbs">${gallery.map((m, i) => `
           <button class="thumb" type="button" data-i="${i}" aria-selected="${i === state.img}" aria-label="${esc(t("이미지 {n}", { n: i + 1 }))}">
-            ${src ? `<img src="${src}" ${cloudinarySrcset(src, [100, 160]) ? `srcset="${cloudinarySrcset(src, [100, 160])}" sizes="80px"` : ""} alt="" loading="lazy">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}
+            <img src="${m.src}" ${cloudinarySrcset(m.src, [100, 160]) ? `srcset="${cloudinarySrcset(m.src, [100, 160])}" sizes="80px"` : ""} alt="" loading="lazy">
           </button>`).join("")}</div>` : ""}
       </div>
 
@@ -148,6 +166,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         <div class="opt">
           <div class="opt__label"><span>Size</span><b>${t("남녀공용 오버핏")}</b></div>
           <div class="chips" id="sizes"></div>
+          ${p.modelInfo ? `<p class="small" style="margin-top:10px;color:var(--muted)">${esc(t("모델"))} · ${esc(p.modelInfo)}</p>` : ""}
         </div>
 
         <div class="opt">
@@ -238,7 +257,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           </div>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${details.length ? `
+    <section class="pdp-detail" aria-label="${esc(t("상세 정보"))}">
+      <p class="eyebrow">Details</p>
+      ${details.map((m) => {
+        if (m.kind === "text") return `<p class="lede">${esc(m.text)}</p>`;
+        if (m.kind === "video") return `<figure><video src="${esc(m.src)}" muted autoplay loop playsinline controls preload="metadata"></video>${m.caption ? `<figcaption class="small">${esc(m.caption)}</figcaption>` : ""}</figure>`;
+        const srcset = cloudinarySrcset(m.src, [600, 900, 1400]);
+        return `<figure><img src="${esc(m.src)}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 900px) 100vw, 900px"` : ""} alt="${esc(m.caption || name)}" loading="lazy">${m.caption ? `<figcaption class="small">${esc(m.caption)}</figcaption>` : ""}</figure>`;
+      }).join("")}
+    </section>` : ""}`;
 
     bind();
   }
@@ -264,8 +293,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
            예전엔 컬러 순서와 사진 순서가 그냥 같다고 가정했다가 순서가 안 맞으면 엉뚱한
            사진으로 바뀌는 문제가 있어서 뺐던 기능인데, 이번엔 명시적으로 태그된 경우에만
            바꾸는 방식이라 그 문제가 없다. */
-        const taggedIndex = (p.imageColors || []).findIndex((c) => c === state.color);
-        if (taggedIndex >= 0 && p.images[taggedIndex]) state.img = taggedIndex;
+        state.img = 0; // 컬러를 바꾸면 그 컬러의 첫 사진부터
         render();
       }));
 
@@ -308,7 +336,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       productId: p.id,
       name: productName(p),
       // 고른 컬러로 태그된 사진이 있으면 그 사진을 장바구니에 담는다(없으면 첫 사진)
-      image: p.images[(p.imageColors || []).findIndex((c) => c === state.color)] || p.images.find(Boolean) || null,
+      image: (galleryFor(state.color)[0] || {}).src || p.images.find(Boolean) || null,
       color: state.color,
       size: state.size,
       unit: p.price,

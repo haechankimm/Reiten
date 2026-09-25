@@ -1434,6 +1434,38 @@ const I18N = {
   ["사유를 입력해 주세요", {"en": "Please enter a reason", "ja": "理由を入力してください"}]
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* 2026-09-26(4차) 컬러별 사진·상세 콘텐츠 번역 */
+[  ["모델 정보 (선택)", {"de": "Model-Info (optional)"}],
+  ["품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).", {"de": "Ausverkauft wird automatisch aus dem Bestand-Tab angezeigt (0 Stück je Farbe/Größe = ausverkauft)."}],
+  ["사진 · 상세 콘텐츠 (컬러별)", {"de": "Fotos & Detailinhalte (je Farbe)"}],
+  ["예: 178cm · 70kg / L 착용", {"de": "z. B.: 178 cm · 70 kg / trägt L"}],
+  ["공통", {"de": "Alle Farben"}],
+  ["공통 (모든 컬러)", {"de": "Alle Farben (gemeinsam)"}],
+  ["예: 480g 헤비 기모 원단, 목 립은 2중 봉제", {"de": "z. B.: 480 g schwerer Fleece, doppelt vernähter Halsbund"}],
+  ["앞으로", {"de": "Nach vorne"}],
+  ["뒤로", {"de": "Nach hinten"}],
+  ["상단 상품 사진 (4:5)", {"de": "Produktfotos oben (4:5)"}],
+  ["상세 페이지 (디테일 사진 · 영상 · 문구)", {"de": "Detailseite (Detailfotos · Video · Text)"}],
+  ["고객이 컬러를 고르면 그 컬러 항목과 공통 항목만 보입니다. 컬러를 먼저 고른 뒤 추가하면 그 컬러로 등록됩니다.", {"de": "Kunden sehen nur Einträge der gewählten Farbe und gemeinsame Einträge. Erst Farbe wählen, dann hinzufügen – der Eintrag wird dieser Farbe zugeordnet."}],
+  ["+ 상품 사진", {"de": "+ Produktfoto"}],
+  ["+ 상세 사진", {"de": "+ Detailfoto"}],
+  ["+ 상세 영상", {"de": "+ Detailvideo"}],
+  ["+ 상세 문구", {"de": "+ Detailtext"}],
+  ["아직 없습니다", {"de": "Noch keine"}],
+  ["영상은 60MB 이하만 올릴 수 있습니다", {"de": "Videos nur bis 60 MB"}],
+  ["영상 업로드 중… (용량에 따라 1분 이상 걸릴 수 있어요)", {"de": "Video wird hochgeladen… (kann je nach Größe über 1 Minute dauern)"}],
+  ["사진 업로드 중…", {"de": "Foto wird hochgeladen…"}],
+  ["업로드에 실패했습니다", {"de": "Upload fehlgeschlagen"}],
+  ["올렸습니다 — 상품 저장을 눌러야 반영됩니다", {"de": "Hochgeladen – zum Übernehmen „Produkt speichern“ klicken"}],
+  ["저장했지만 DB 마이그레이션 041 전이라 상세 콘텐츠·모델 정보는 빠졌습니다(상품 사진 앞 6장만 저장)", {"de": "Gespeichert, aber ohne Detailinhalte/Model-Info, da DB-Migration 041 fehlt (nur die ersten 6 Produktfotos)"}],
+  ["상품 사진", {"de": "Produktfoto"}],
+  ["상세 사진", {"de": "Detailfoto"}],
+  ["상세 영상", {"de": "Detailvideo"}],
+  ["상세 문구", {"de": "Detailtext"}],
+  ["모델", {"en": "Model", "ja": "モデル"}],
+  ["상세 정보", {"en": "Details", "ja": "詳細情報"}]
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 
 /**
  * t("한국어 원문", { name: "값" })

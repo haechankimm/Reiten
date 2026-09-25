@@ -1,6 +1,41 @@
 /* 상품 DTO 변환 · 관리자 입력값 검증 — 순수 함수만 모아둔다(테스트하기 쉽도록 Supabase에 의존하지 않음). */
 const { COLORS, SIZE_TABLES } = require("../../소스 코드/assets/js/data.js");
 
+const MEDIA_KINDS = ["gallery", "detail", "video", "text"];
+const MAX_MEDIA = 60;
+
+/* media가 비어 있는 예전 상품은 images(최대 4칸)+image_colors를 갤러리 항목으로 바꿔서 내려준다 —
+   상품 페이지·Works가 media 하나만 보면 되게 하기 위함(DB는 건드리지 않음). */
+function mediaFromRow(row) {
+  if (Array.isArray(row.media) && row.media.length) return row.media;
+  const colors = row.image_colors || [];
+  return (row.images || [])
+    .map((src, i) => (src ? { kind: "gallery", src, color: colors[i] || null } : null))
+    .filter(Boolean);
+}
+
+/* 관리자 입력 검증 — 모르는 kind·잘못된 주소·없는 컬러는 걸러낸다. */
+function sanitizeMedia(input, validColors) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const m of input.slice(0, MAX_MEDIA)) {
+    if (!m || !MEDIA_KINDS.includes(m.kind)) continue;
+    const color = m.color && validColors[m.color] ? m.color : null;
+    if (m.kind === "text") {
+      const text = String(m.text || "").trim().slice(0, 2000);
+      if (text) out.push({ kind: "text", text, color });
+      continue;
+    }
+    const src = String(m.src || "").trim();
+    if (!/^https:\/\/res\.cloudinary\.com\//.test(src) && !/^\/assets\//.test(src)) continue;
+    const item = { kind: m.kind, src: src.slice(0, 500), color };
+    const caption = String(m.caption || "").trim().slice(0, 300);
+    if (caption) item.caption = caption;
+    out.push(item);
+  }
+  return out;
+}
+
 function toProductDto(row) {
   return {
     id: row.id,
@@ -12,6 +47,8 @@ function toProductDto(row) {
     badge: row.badge || undefined,
     images: row.images || [],
     imageColors: row.image_colors || [],
+    media: mediaFromRow(row),
+    modelInfo: row.model_info || "",
     colors: row.colors || [],
     sizes: row.sizes || [],
     soldOut: row.sold_out || [],
@@ -66,6 +103,14 @@ function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
       ? b.imageColors.slice(0, 6).map((c) => (c && validColors[c] ? c : null))
       : [];
   }
+  if (b.media !== undefined) {
+    patch.media = sanitizeMedia(b.media, validColors);
+    /* 상품 카드·장바구니·공유 미리보기 등 나머지 화면은 계속 images를 보므로, 갤러리 사진으로 맞춰 둔다. */
+    const gallery = patch.media.filter((m) => m.kind === "gallery").slice(0, 6);
+    patch.images = gallery.map((m) => m.src);
+    patch.image_colors = gallery.map((m) => m.color);
+  }
+  if (b.modelInfo !== undefined) patch.model_info = String(b.modelInfo || "").trim().slice(0, 120) || null;
   if (b.colors !== undefined) {
     patch.colors = Array.isArray(b.colors) ? b.colors.filter((c) => validColors[c]) : [];
   }
@@ -91,4 +136,4 @@ function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
   return { patch };
 }
 
-module.exports = { toProductDto, productPatchFromBody };
+module.exports = { toProductDto, productPatchFromBody, sanitizeMedia, mediaFromRow };

@@ -1,10 +1,9 @@
   /* ---------- 상품 관리 ---------- */
   let pfEditingId = null;
-  let pfImages = [null, null, null, null];
-  /* 사진 슬롯마다 "이 사진은 어떤 컬러냐"를 골라둘 수 있게 하는 병렬 배열(같은 인덱스로
-     pfImages와 짝을 맞춘다). 비워두면(null) 컬러 무관 공통 사진으로 취급된다 — product.html이
-     컬러를 클릭했을 때 이 값이 있는 사진으로만 바꿔치기하고, 없으면 지금 보던 사진을 그대로 둔다. */
-  let pfImageColors = [null, null, null, null];
+  /* 상품 사진·상세 콘텐츠 목록(서버 products.media) — { kind: gallery|detail|video|text, src, text, caption, color }.
+     color가 비어 있으면 공통(모든 컬러에서 보임), 있으면 고객이 그 컬러를 골랐을 때만 보인다. */
+  let pfMedia = [];
+  let pfMediaFilter = "all"; // "all" | "" (공통만) | 컬러 키
   let pfSelectedColors = [];
   const PF_SIZE_OPTIONS = ["XS", "S", "M", "L", "XL"];
   const CATEGORY_BASE = ["후드티", "후드집업", "크롭 후드티", "티셔츠"];
@@ -36,9 +35,7 @@
       b.addEventListener("click", () => {
         const k = b.dataset.c;
         pfSelectedColors = pfSelectedColors.includes(k) ? pfSelectedColors.filter((x) => x !== k) : [...pfSelectedColors, k];
-        /* 컬러를 방금 뺐는데 어떤 사진 슬롯이 그 컬러를 물고 있으면(선택지에서 사라져야 하므로)
-           공통(null)으로 되돌린다. */
-        pfImageColors = pfImageColors.map((c) => (c && pfSelectedColors.includes(c) ? c : null));
+        if (pfMediaFilter && pfMediaFilter !== "all" && !pfSelectedColors.includes(pfMediaFilter)) pfMediaFilter = "all";
         renderPfColors();
         renderPfPhotos();
       })
@@ -160,50 +157,102 @@
 
   const PF_UPLOAD_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>`;
 
-  function renderPfPhotos() {
-    el("pf-photos").innerHTML = pfImages.map((url, i) => {
-      const photoLabel = t("상품사진 {n}", { n: i + 1 });
-      const colorOptions = pfSelectedColors
-        .map((c) => `<option value="${esc(c)}" ${pfImageColors[i] === c ? "selected" : ""}>${esc(t(COLORS[c]?.label || c))}</option>`)
-        .join("");
-      return `
-      <div>
-        <div class="small" style="margin-bottom:6px;font-weight:600">${esc(photoLabel)}</div>
-        ${url
-          ? `<img src="${esc(url)}" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`
-          : `<div style="width:100%;aspect-ratio:4/5;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center" class="small">${esc(t("사진 없음"))}</div>`}
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-          <label class="upload-btn" style="cursor:pointer;justify-content:center;width:100%">
-            ${PF_UPLOAD_ICON}
-            <span>${esc(url ? t("사진 변경") : t("사진 선택"))}</span>
-            <input type="file" accept="image/*" class="upload-input pf-photo-input" data-i="${i}">
-          </label>
-          ${url ? `<button type="button" class="btn btn--sm btn--ghost pf-photo-remove" data-i="${i}">${esc(t("제거"))}</button>` : ""}
-          ${
-            url && pfSelectedColors.length
-              ? `<select class="pf-photo-color" data-i="${i}" title="${esc(t("이 사진의 컬러 (고르면 그 컬러 클릭 시 이 사진으로 바뀜)"))}">
-                   <option value="">${esc(t("공통 (컬러 무관)"))}</option>
-                   ${colorOptions}
-                 </select>`
-              : ""
-          }
+  const MEDIA_KIND_LABEL = { gallery: "상품 사진", detail: "상세 사진", video: "상세 영상", text: "상세 문구" };
+  const colorLabel = (c) => (c ? t(COLORS[c]?.label || c) : t("공통"));
+
+  function mediaVisible(m) {
+    return pfMediaFilter === "all" || (pfMediaFilter === "" ? !m.color : m.color === pfMediaFilter);
+  }
+
+  function mediaItemHTML(m, i) {
+    const colorOptions = [`<option value="">${esc(t("공통 (모든 컬러)"))}</option>`]
+      .concat([...new Set([...pfSelectedColors, ...(m.color ? [m.color] : [])])].map((c) => `<option value="${esc(c)}" ${m.color === c ? "selected" : ""}>${esc(colorLabel(c))}</option>`))
+      .join("");
+    const preview =
+      m.kind === "text"
+        ? `<textarea class="pf-media-text" data-i="${i}" rows="3" placeholder="${esc(t("예: 480g 헤비 기모 원단, 목 립은 2중 봉제"))}">${esc(m.text || "")}</textarea>`
+        : m.kind === "video"
+          ? `<video src="${esc(m.src)}" muted playsinline preload="metadata" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;background:#000"></video>`
+          : `<img src="${esc(m.src)}" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;border:1px solid var(--line)" alt="">`;
+    return `
+      <div class="pf-media-item" data-i="${i}" style="display:flex;flex-direction:column;gap:6px">
+        <div class="small" style="font-weight:600">${esc(t(MEDIA_KIND_LABEL[m.kind]))} <span style="color:var(--text-muted);font-weight:400">· ${esc(colorLabel(m.color))}</span></div>
+        ${preview}
+        <select class="pf-media-color" data-i="${i}">${colorOptions}</select>
+        ${m.kind === "detail" || m.kind === "video" ? `<input class="pf-media-caption" data-i="${i}" maxlength="300" placeholder="${esc(t("설명 (선택)"))}" value="${esc(m.caption || "")}">` : ""}
+        <div style="display:flex;gap:4px">
+          <button type="button" class="btn btn--sm btn--ghost pf-media-up" data-i="${i}" aria-label="${esc(t("앞으로"))}">↑</button>
+          <button type="button" class="btn btn--sm btn--ghost pf-media-down" data-i="${i}" aria-label="${esc(t("뒤로"))}">↓</button>
+          <button type="button" class="btn btn--sm btn--ghost pf-media-remove" data-i="${i}" style="margin-left:auto">${esc(t("제거"))}</button>
         </div>
       </div>`;
-    }).join("");
-    el("pf-photos").querySelectorAll(".pf-photo-input").forEach((inp) => inp.addEventListener("change", () => onPfPhotoChange(inp)));
-    el("pf-photos").querySelectorAll(".pf-photo-remove").forEach((btn) =>
-      btn.addEventListener("click", () => {
-        const i = Number(btn.dataset.i);
-        pfImages[i] = null;
-        pfImageColors[i] = null;
-        renderPfPhotos();
-      })
-    );
-    el("pf-photos").querySelectorAll(".pf-photo-color").forEach((sel) =>
-      sel.addEventListener("change", () => {
-        pfImageColors[Number(sel.dataset.i)] = sel.value || null;
-      })
-    );
+  }
+
+  function renderPfPhotos() {
+    const filters = [["all", t("전체")], ["", t("공통")], ...pfSelectedColors.map((c) => [c, colorLabel(c)])];
+    const groups = [
+      { title: t("상단 상품 사진 (4:5)"), kinds: ["gallery"] },
+      { title: t("상세 페이지 (디테일 사진 · 영상 · 문구)"), kinds: ["detail", "video", "text"] },
+    ];
+    el("pf-photos").innerHTML = `
+      <p class="small" style="color:var(--text-muted);margin:0 0 10px">${esc(t("고객이 컬러를 고르면 그 컬러 항목과 공통 항목만 보입니다. 컬러를 먼저 고른 뒤 추가하면 그 컬러로 등록됩니다."))}</p>
+      <div class="chips" style="margin-bottom:12px">${filters.map(([k, label]) => `<button type="button" class="chip pf-media-filter" data-k="${esc(k)}" aria-pressed="${pfMediaFilter === k}">${esc(label)}</button>`).join("")}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <label class="upload-btn" style="cursor:pointer">${PF_UPLOAD_ICON}<span>${esc(t("+ 상품 사진"))}</span><input type="file" accept="image/*" class="upload-input" id="pf-add-gallery"></label>
+        <label class="upload-btn" style="cursor:pointer">${PF_UPLOAD_ICON}<span>${esc(t("+ 상세 사진"))}</span><input type="file" accept="image/*" multiple class="upload-input" id="pf-add-detail"></label>
+        <label class="upload-btn" style="cursor:pointer">${PF_UPLOAD_ICON}<span>${esc(t("+ 상세 영상"))}</span><input type="file" accept="video/*" class="upload-input" id="pf-add-video"></label>
+        <button type="button" class="btn btn--sm btn--ghost" id="pf-add-text">${esc(t("+ 상세 문구"))}</button>
+      </div>
+      ${groups.map((g) => {
+        const items = pfMedia.map((m, i) => [m, i]).filter(([m]) => g.kinds.includes(m.kind) && mediaVisible(m));
+        return `<div style="margin-bottom:16px">
+          <div class="small" style="font-weight:700;margin-bottom:8px">${esc(g.title)} <span style="color:var(--text-muted);font-weight:400">${items.length}</span></div>
+          ${items.length
+            ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">${items.map(([m, i]) => mediaItemHTML(m, i)).join("")}</div>`
+            : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 없습니다"))}</p>`}
+        </div>`;
+      }).join("")}`;
+
+    const box = el("pf-photos");
+    box.querySelectorAll(".pf-media-filter").forEach((b) => b.addEventListener("click", () => { pfMediaFilter = b.dataset.k; renderPfPhotos(); }));
+    box.querySelectorAll(".pf-media-color").forEach((sel) => sel.addEventListener("change", () => { pfMedia[+sel.dataset.i].color = sel.value || null; renderPfPhotos(); }));
+    box.querySelectorAll(".pf-media-caption").forEach((inp) => inp.addEventListener("input", () => { pfMedia[+inp.dataset.i].caption = inp.value; }));
+    box.querySelectorAll(".pf-media-text").forEach((ta) => ta.addEventListener("input", () => { pfMedia[+ta.dataset.i].text = ta.value; }));
+    box.querySelectorAll(".pf-media-remove").forEach((b) => b.addEventListener("click", () => { pfMedia.splice(+b.dataset.i, 1); renderPfPhotos(); }));
+    const move = (i, dir) => {
+      // 같은 묶음(상단 사진 / 상세)끼리만 순서를 바꾼다
+      const isGallery = pfMedia[i].kind === "gallery";
+      let j = i + dir;
+      while (j >= 0 && j < pfMedia.length && (pfMedia[j].kind === "gallery") !== isGallery) j += dir;
+      if (j < 0 || j >= pfMedia.length) return;
+      [pfMedia[i], pfMedia[j]] = [pfMedia[j], pfMedia[i]];
+      renderPfPhotos();
+    };
+    box.querySelectorAll(".pf-media-up").forEach((b) => b.addEventListener("click", () => move(+b.dataset.i, -1)));
+    box.querySelectorAll(".pf-media-down").forEach((b) => b.addEventListener("click", () => move(+b.dataset.i, 1)));
+
+    const newColor = () => (pfMediaFilter && pfMediaFilter !== "all" ? pfMediaFilter : null);
+    el("pf-add-gallery").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      const color = newColor();
+      openPhotoEditor(file, "4/5", (blob) => uploadMedia(blob, "photo", (url) => pfMedia.push({ kind: "gallery", src: url, color })));
+    });
+    el("pf-add-detail").addEventListener("change", async (e) => {
+      const files = [...e.target.files];
+      e.target.value = "";
+      const color = newColor();
+      for (const f of files) await uploadMedia(f, "photo", (url) => pfMedia.push({ kind: "detail", src: url, color }));
+    });
+    el("pf-add-video").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      if (file.size > 60 * 1024 * 1024) { toast(t("영상은 60MB 이하만 올릴 수 있습니다")); return; }
+      uploadMedia(file, "video", (url) => pfMedia.push({ kind: "video", src: url, color: newColor() }));
+    });
+    el("pf-add-text").addEventListener("click", () => { pfMedia.push({ kind: "text", text: "", color: newColor() }); renderPfPhotos(); });
   }
 
   /* ---------- 사진 편집(자르기/회전/확대) ----------
@@ -367,44 +416,36 @@
     }, "image/jpeg", 0.92);
   });
 
-  async function uploadPfPhoto(input, i, blob) {
+  /* field: "photo"(사진, 15MB) 또는 "video"(영상, 60MB). 성공하면 onUrl(url)로 목록에 넣고 다시 그린다. */
+  async function uploadMedia(fileOrBlob, field, onUrl) {
     const token = await getAccessToken();
     const fd = new FormData();
-    fd.append("photo", blob, "photo.jpg");
-    input.disabled = true;
+    fd.append(field, fileOrBlob, fileOrBlob.name || (field === "video" ? "video.mp4" : "photo.jpg"));
+    toast(field === "video" ? t("영상 업로드 중… (용량에 따라 1분 이상 걸릴 수 있어요)") : t("사진 업로드 중…"));
     try {
-      const res = await fetch("/api/admin/products/photo", {
+      const res = await fetch(field === "video" ? "/api/admin/products/video" : "/api/admin/products/photo", {
         method: "POST",
         headers: { Authorization: "Bearer " + token },
         body: fd,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("사진 업로드에 실패했습니다"));
+        toast(body.error || t("업로드에 실패했습니다"));
         return;
       }
       const { url } = await res.json();
-      pfImages[i] = url;
+      onUrl(url);
       renderPfPhotos();
+      toast(t("올렸습니다 — 상품 저장을 눌러야 반영됩니다"));
     } catch (e) {
-      toast(t("사진 업로드에 실패했습니다"));
-    } finally {
-      input.disabled = false;
+      toast(t("업로드에 실패했습니다"));
     }
-  }
-
-  function onPfPhotoChange(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const i = Number(input.dataset.i);
-    input.value = "";
-    openPhotoEditor(file, "4/5", (blob) => uploadPfPhoto(input, i, blob));
   }
 
   function resetProductForm() {
     pfEditingId = null;
-    pfImages = [null, null, null, null];
-    pfImageColors = [null, null, null, null];
+    pfMedia = [];
+    pfMediaFilter = "all";
     pfSelectedColors = [];
     el("product-form-title").textContent = t("새 상품 추가");
     el("pf-id").value = "";
@@ -418,7 +459,7 @@
     el("pf-short").value = "";
     el("pf-desc").value = "";
     el("pf-details").value = "";
-    document.querySelectorAll(".pf-size").forEach((cb) => (cb.checked = true));
+    el("pf-modelinfo").value = "";
     el("pf-sizetable").value = "hoodie";
     el("pf-charmready").checked = false;
     el("pf-active").checked = true;
@@ -430,8 +471,11 @@
 
   function fillProductForm(p) {
     pfEditingId = p.id;
-    pfImages = [0, 1, 2, 3].map((i) => p.images[i] || null);
-    pfImageColors = [0, 1, 2, 3].map((i) => (p.imageColors && p.imageColors[i]) || null);
+    pfMedia = (p.media && p.media.length
+      ? p.media
+      : (p.images || []).map((src, i) => (src ? { kind: "gallery", src, color: (p.imageColors || [])[i] || null } : null)).filter(Boolean)
+    ).map((m) => ({ ...m }));
+    pfMediaFilter = "all";
     pfSelectedColors = [...(p.colors || [])];
     el("product-form-title").textContent = t("상품 수정") + " — " + p.id;
     el("pf-id").value = p.id;
@@ -445,8 +489,7 @@
     el("pf-short").value = p.short || "";
     el("pf-desc").value = p.desc || "";
     el("pf-details").value = (p.details || []).join("\n");
-    const soldOut = p.soldOut || [];
-    document.querySelectorAll(".pf-size").forEach((cb) => (cb.checked = !soldOut.includes(cb.value)));
+    el("pf-modelinfo").value = p.modelInfo || "";
     el("pf-sizetable").value = p.sizeTable || "hoodie";
     el("pf-charmready").checked = !!p.charmReady;
     el("pf-active").checked = p.active !== false;
@@ -483,12 +526,12 @@
       details: el("pf-details").value.split("\n").map((s) => s.trim()).filter(Boolean),
       colors: pfSelectedColors,
       sizes: PF_SIZE_OPTIONS,
-      soldOut: [...document.querySelectorAll(".pf-size")].filter((cb) => !cb.checked).map((cb) => cb.value),
+      soldOut: [], // 품절은 재고 탭 수량으로만 판단(예전 수동 품절 체크는 저장할 때 비운다)
+      modelInfo: el("pf-modelinfo").value.trim(),
       sizeTable: el("pf-sizetable").value,
       charmReady: el("pf-charmready").checked,
       active: el("pf-active").checked,
-      images: pfImages,
-      imageColors: pfImageColors,
+      media: pfMedia.filter((m) => m.kind !== "text" || (m.text || "").trim()),
     };
 
     const btn = el("pf-submit");
@@ -499,7 +542,9 @@
         : await adminFetch("/api/admin/products", { method: "POST", body: JSON.stringify({ id, ...body }) });
 
       if (!result) return;
-      toast(t("상품을 저장했습니다"));
+      toast(result.mediaSkipped
+        ? t("저장했지만 DB 마이그레이션 041 전이라 상세 콘텐츠·모델 정보는 빠졌습니다(상품 사진 앞 6장만 저장)")
+        : t("상품을 저장했습니다"));
       /* 관리자 미리보기와 실제 사이트가 다르게 보이는 걸(사진 비율 사고 같은) 저장한 그 자리에서
          바로 확인할 수 있게, 실제 상품 페이지 링크를 새 탭으로 열 수 있게 켜둔다.
          resetProductForm()이 폼을 새 상품 등록 상태로 되돌리므로, 이 링크는 그 뒤에 켜야 한다. */

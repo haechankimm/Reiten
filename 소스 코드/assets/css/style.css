@@ -1175,3 +1175,10 @@ html[data-admin-theme="grass"][data-theme="night"] {
 @media (max-width: 640px) {
   #admin-horse-scene { display: none; }
 }
+
+/* 상품 상세 콘텐츠(디테일 사진·영상·문구) — 고른 컬러 기준으로 product.html이 채운다 */
+.pdp-detail { max-width: 900px; margin: clamp(56px, 8vw, 96px) auto 0; padding-top: clamp(32px, 5vw, 56px); border-top: 1px solid var(--line); display: grid; gap: clamp(20px, 3vw, 36px); }
+.pdp-detail figure { margin: 0; }
+.pdp-detail img, .pdp-detail video { width: 100%; height: auto; display: block; background: var(--plate); border-radius: var(--radius); }
+.pdp-detail figcaption { margin-top: 10px; color: var(--muted); }
+.pdp-detail .lede { white-space: pre-line; max-width: 62ch; }

@@ -352,6 +352,7 @@
 | `038_admin_usage_log.sql` | Works 탭·기능 사용 통계 `admin_usage_log` 테이블 | ✅ 실행 완료, RLS 포함(2026-09-18) — Supabase가 띄운 "RLS 없이 생성" 경고에서 "Run and enable RLS"로 정상 실행 |
 | `039_abandoned_cart_reminder.sql` | 결제 이탈 리마인드 메일용 `pending_payments.reminder_sent_at` | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — 리마인드만 꺼짐) |
 | `040_admin_pin_and_permissions.sql` | 관리자 PIN(`admin_pins`) + 직원별 영역 권한(`admin_permissions`), RLS 포함 | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — PIN·권한 제한만 꺼짐) |
+| `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ⚠️ 실행 필요(2026-09-26 추가, 미실행이어도 사이트 정상 — 상세 콘텐츠·모델 정보·리뷰 요청만 꺼짐) |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 가장 급한 항목들은 위 "다음 세션이 가장 먼저 할 일"에 이미 뽑아뒀습니다. 나머지는 그룹별로 정리했습니다.
@@ -491,6 +492,20 @@
 - **2026-09-25 디자인 시안(적용 전)**: `디자인 시안/construction-grid-home.html` — "construction grids" 레퍼런스
   (12열 격자선·교차 십자표식·거대 타이트 타이포·아웃라인 글자·모노 캡션)를 홈에 입힌 단독 시안. 실제 사이트 파일은
   건드리지 않았고, 승인되면 그때 `style.css`/각 페이지에 이식.
+
+**2026-09-26(4차) — 컬러별 사진·상세 콘텐츠, 모델 정보, 품절 일원화, 리뷰 요청 메일.**
+- **컬러별 사진 + 상세 콘텐츠**: `products.media`(041) 한 목록에 상단 갤러리 사진·상세 사진·상세 영상·상세 문구를 담고
+  항목마다 컬러(비우면 공통)를 지정. 상품 페이지는 고른 컬러 항목+공통 항목만 보여줌(그 컬러 갤러리 사진이 하나도 없을 때만
+  전체로 폴백). 장바구니 사진도 고른 컬러의 첫 사진. 저장 시 서버가 갤러리 앞 6장을 `images`/`image_colors`에 동기화해
+  상품 카드·공유 미리보기 등 기존 코드는 그대로 동작. media가 비어 있는 예전 상품은 images 4칸을 갤러리로 변환해 내려줌.
+  Works 상품 폼의 "사진 4칸"을 컬러 필터 + 추가 버튼(상품 사진·상세 사진·상세 영상·상세 문구) + 항목별 컬러·설명·순서 조절로 교체.
+  영상은 `POST /api/admin/products/video`(60MB, Cloudinary video), CSP `media-src`에 Cloudinary 추가.
+- **모델 정보**: `products.model_info` — 사이즈 선택 아래 "모델 · 178cm · 70kg / L 착용".
+- **품절 일원화**: 고객 화면의 품절은 실재고만으로 계산(`withRealSoldOut`이 `soldOut`을 "모든 컬러 재고 0인 사이즈"로 재계산).
+  수동 품절 체크박스는 Works에서 제거(저장 시 `sold_out`을 비움) — 재고 조회 실패(degraded) 때만 예전 값이 비상용으로 쓰임.
+- **리뷰 요청 메일**: 배송중 전환(또는 첫 운송장 입력) 시각을 `orders.shipped_at`에 기록 → 5일 뒤 매일 11:00 KST에 1회 발송
+  (`lib/reviewRequest.js`, 이미 리뷰 쓴 주문·취소 주문 제외). 링크(`reviews.html?order=…#write`)가 주문번호를 자동 입력.
+  끄려면 `REVIEW_REQUEST_EMAIL=off`. 041 전에 배송 처리된 주문은 대상 아님.
 
 **2026-09-26(3차) — 2차 전체 점검(라이브·보안·데이터·번역·성능) + 수정 6건.**
 - 수정: ① `sitemap.xml`을 서버가 판매 중 상품으로 동적 생성(정적 파일에 비공개 상품 6개가 남아 검색엔진에 노출, 판매 중인

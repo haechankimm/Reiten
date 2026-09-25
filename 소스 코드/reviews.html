@@ -248,6 +248,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   el("r-product").innerHTML = ["general", ...PRODUCTS.map(p => p.id)]
     .map(id => `<option value="${id}">${esc(productLabel(id))}</option>`).join("");
   if (filterProduct && PRODUCTS.some(p => p.id === filterProduct)) el("r-product").value = filterProduct;
+  // 리뷰 요청 메일의 링크(?order=...&product=...#write)로 들어오면 주문번호를 채우고 작성 폼으로 이동
+  if (qs("order")) {
+    el("r-order-no").value = qs("order");
+    if (location.hash === "#write") setTimeout(() => el("form-wrap").scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+  }
   paintRatingChips();
 
   el("r-photo").addEventListener("change", () => {

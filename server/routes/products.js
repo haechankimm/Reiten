@@ -13,6 +13,22 @@ const { parseBulkIds } = require("../lib/bulk");
 const { toProductDto, productPatchFromBody } = require("../lib/products");
 const { uploadProductPhoto } = require("../lib/cloudinary");
 const { paginationParams } = require("../lib/pagination");
+const { isMissingColumnError } = require("../lib/pgErrors");
+const { uploadProductVideo } = require("../lib/cloudinary");
+
+/* 041 마이그레이션(media·model_info) 전이면 그 두 컬럼만 빼고 다시 저장한다 — 갤러리 사진은
+   images에도 같이 들어가므로 사진 자체는 저장되고, 상세 콘텐츠·모델 정보만 빠진다. */
+const MEDIA_COLUMNS = ["media", "model_info"];
+async function saveWithMediaFallback(run, patch) {
+  let result = await run(patch);
+  if (isMissingColumnError(result.error) && MEDIA_COLUMNS.some((c) => c in patch)) {
+    const rest = { ...patch };
+    MEDIA_COLUMNS.forEach((c) => delete rest[c]);
+    result = await run(rest);
+    result.mediaSkipped = true;
+  }
+  return result;
+}
 
 const router = express.Router();
 
@@ -38,11 +54,10 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
   const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
 
-  const { data, error } = await supabaseAdmin
-    .from("products")
-    .insert({ id, ...patch })
-    .select()
-    .single();
+  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+    (p) => supabaseAdmin.from("products").insert({ id, ...p }).select().single(),
+    patch
+  );
 
   if (error) {
     if (error.code === "23505") return res.status(409).json({ error: "이미 존재하는 상품 ID입니다." });
@@ -50,7 +65,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "상품 생성에 실패했습니다." });
   }
   logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
-  res.json(toProductDto(data));
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
 });
 
 /* ---------- 상품 일괄 처리 ----------
@@ -170,20 +185,18 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
   patch.updated_at = new Date().toISOString();
 
-  const { data, error } = await supabaseAdmin
-    .from("products")
-    .update(patch)
-    .eq("id", req.params.id)
-    .select()
-    .maybeSingle();
+  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+    (p) => supabaseAdmin.from("products").update(p).eq("id", req.params.id).select().maybeSingle(),
+    patch
+  );
 
   if (error) {
     console.error("[admin/products] 수정 실패:", error.message);
     return res.status(500).json({ error: "상품 수정에 실패했습니다." });
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
-  logAdminAction(req, "product.update", "product", req.params.id, patch);
-  res.json(toProductDto(data));
+  logAdminAction(req, "product.update", "product", req.params.id, { ...patch, media: patch.media ? `${patch.media.length}개` : undefined });
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
 });
 
 router.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
@@ -218,6 +231,27 @@ router.post("/api/admin/products/photo", requireAdmin, (req, res) => {
     } catch (e) {
       console.error("[admin/products] 사진 업로드 실패:", e.message);
       res.status(500).json({ error: "사진 업로드에 실패했습니다." });
+    }
+  });
+});
+
+/* 상세 영상(야간 반사 영상 등) — 60MB 이하 동영상. Cloudinary가 스트리밍용으로 최적화한다. */
+const productVideoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("video/")),
+}).single("video");
+
+router.post("/api/admin/products/video", requireAdmin, (req, res) => {
+  productVideoUpload(req, res, async (uploadErr) => {
+    if (uploadErr) return res.status(400).json({ error: "영상 업로드에 실패했습니다(60MB 이하 동영상만 가능)." });
+    if (!req.file) return res.status(400).json({ error: "영상 파일이 없습니다." });
+    try {
+      const url = await uploadProductVideo(req.file.buffer);
+      res.json({ url });
+    } catch (e) {
+      console.error("[admin/products] 영상 업로드 실패:", e.message);
+      res.status(500).json({ error: "영상 업로드에 실패했습니다." });
     }
   });
 });

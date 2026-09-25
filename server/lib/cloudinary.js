@@ -41,4 +41,19 @@ function uploadLookbookPhoto(buffer) {
   return upload(buffer, "reiten-lookbook", { maxSize: 2000 });
 }
 
-module.exports = { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto };
+/* 상세 영상 — 가로 최대 1280px로 줄이고 화질·포맷 자동(브라우저별 mp4/webm). */
+function uploadProductVideo(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "reiten-products-video",
+        resource_type: "video",
+        transformation: [{ width: 1280, crop: "limit" }, { quality: "auto", fetch_format: "auto" }],
+      },
+      (err, result) => (err ? reject(err) : resolve(result.secure_url))
+    );
+    stream.end(buffer);
+  });
+}
+
+module.exports = { uploadReviewPhoto, uploadProductPhoto, uploadLookbookPhoto, uploadProductVideo };
