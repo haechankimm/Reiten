@@ -4,7 +4,9 @@ const fs = require("fs");
 const Sentry = require("@sentry/node");
 const path = require("path");
 const express = require("express");
+require("./lib/asyncErrors");
 const helmet = require("helmet");
+const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 const cron = require("node-cron");
@@ -106,6 +108,9 @@ const app = express();
    이 설정이 없으면 express-rate-limit이 모든 방문자를 프록시의 IP 하나로 착각해
    한 명이 많이 요청하면 전체 방문자가 같이 차단될 수 있다. 로컬 직접 실행 시에는 영향 없음. */
 app.set("trust proxy", 1);
+
+// gzip 압축 — i18n.js(125KB)·style.css·app.js가 압축 없이 나가던 것을 약 1/4로 줄인다
+app.use(compression());
 
 /* CSP — 빌드 도구 없는 정적 사이트라 인라인 <script>/<style>에 크게 의존하므로 'unsafe-inline'을
    허용한다(nonce 기반으로 바꾸려면 전 페이지에 빌드 단계가 필요해져 지금 구조와 안 맞음).
@@ -343,6 +348,23 @@ app.get("/product.html", async (req, res, next) => {
 
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
+});
+
+/* sitemap.xml — 페이지 목록은 정적 파일에서 가져오되 상품 URL은 지금 판매 중인 상품으로 매번 새로 만든다
+   (정적 파일에 박혀 있던 상품 목록이 비공개 전환을 못 따라가 판매 종료 상품 6개가 검색엔진에 계속 노출되던 문제). */
+app.get("/sitemap.xml", async (req, res, next) => {
+  try {
+    const base = await fs.promises.readFile(path.join(SITE_DIR, "sitemap.xml"), "utf8");
+    const pageLocs = [...base.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).filter((u) => !u.includes("product.html?id="));
+    const products = await getActiveProducts();
+    const productLocs = products.map((p) => `https://reiten.kr/product.html?id=${encodeURIComponent(p.id)}`);
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...pageLocs, ...productLocs]
+      .map((u) => `  <url><loc>${escapeHtmlAttr(u)}</loc></url>`)
+      .join("\n")}\n</urlset>\n`;
+    res.set("Content-Type", "application/xml; charset=utf-8").set("Cache-Control", "public, max-age=3600").send(xml);
+  } catch (err) {
+    next();
+  }
 });
 
 app.use(
@@ -2886,9 +2908,16 @@ async function checkRestockNeeded() {
   }
   if (!rows.length) return;
 
+  /* 판매 중(active)인 상품의 지금 판매하는 컬러만 대상 — 비공개 상품·빠진 컬러의 옛 재고행(0개)까지
+     매주 "발주하라"고 알리던 문제(2026-09 점검에서 발견). */
+  const { data: activeProducts } = await supabaseAdmin.from("products").select("id, colors").eq("active", true);
+  const sellable = new Map((activeProducts || []).map((p) => [p.id, new Set(p.colors || [])]));
+  const candidates = rows.filter((r) => sellable.has(r.product_id) && sellable.get(r.product_id).has(r.color));
+  if (!candidates.length) return;
+
   const cutoff = Date.now() - RESTOCK_ALERT_DAYS * 24 * 3600 * 1000;
   const overdue = [];
-  for (const row of rows) {
+  for (const row of candidates) {
     const since = await findOutOfStockSince(row.product_id, row.color, row.size, row.qty);
     if (since && new Date(since).getTime() <= cutoff) overdue.push({ ...row, since });
   }
