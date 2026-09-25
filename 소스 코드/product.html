@@ -60,7 +60,20 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   (async () => {
   await Promise.all([loadProducts(), loadColors()]);
 
-  const p = getProduct(qs("id")) || PRODUCTS[0];
+  const p = getProduct(qs("id"));
+  /* 판매 종료(비공개)되거나 없는 상품 링크로 들어오면, 예전엔 첫 번째 상품을 대신 보여줘서
+     카톡·인스타로 공유된 옛 링크가 엉뚱한 상품으로 열렸다 — 안내 문구와 쇼핑 링크로 대체한다. */
+  if (!p) {
+    document.title = t("상품을 찾을 수 없습니다") + " — REITEN";
+    document.getElementById("main").innerHTML = `
+      <section class="sec"><div class="wrap" style="text-align:center;padding:60px 0">
+        <p class="eyebrow">Not available</p>
+        <h1 class="h-xl" style="margin-top:12px">${esc(t("판매가 종료되었거나 없는 상품입니다"))}</h1>
+        <p class="lede" style="margin:14px auto 0;max-width:44ch">${esc(t("지금 판매 중인 상품을 확인해 주세요."))}</p>
+        <a class="btn" style="margin-top:22px" href="shop.html">${esc(t("상품 보러 가기"))}</a>
+      </div></section>`;
+    return;
+  }
   document.title = productName(p) + " — REITEN";
 
   /* soldOut(상품.sizes 전체, 관리자가 손으로 체크)과 별개로, outOfStockByColor는 실제 재고(컬러별)가
@@ -294,7 +307,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       sig: [p.id, state.color, state.size].join("|"),
       productId: p.id,
       name: productName(p),
-      image: p.images.find(Boolean) || null,
+      // 고른 컬러로 태그된 사진이 있으면 그 사진을 장바구니에 담는다(없으면 첫 사진)
+      image: p.images[(p.imageColors || []).findIndex((c) => c === state.color)] || p.images.find(Boolean) || null,
       color: state.color,
       size: state.size,
       unit: p.price,

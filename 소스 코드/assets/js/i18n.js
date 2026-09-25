@@ -1259,6 +1259,9 @@ const I18N = {
   },
   "아직 담은 상품이 없습니다.": { en: "Your wishlist is empty.", ja: "まだ保存した商品がありません。" },
   "상품 보러 가기": { en: "Browse products", ja: "商品を見る" },
+  "상품을 찾을 수 없습니다": { en: "Product not found", ja: "商品が見つかりません" },
+  "판매가 종료되었거나 없는 상품입니다": { en: "This product is no longer available", ja: "販売終了または存在しない商品です" },
+  "지금 판매 중인 상품을 확인해 주세요.": { en: "Please browse our current products.", ja: "現在販売中の商品をご覧ください。" },
 
   /* ---------- 주문취소 신청 ---------- */
   "주문취소 신청": { en: "Request order cancellation", ja: "注文キャンセル申請" },

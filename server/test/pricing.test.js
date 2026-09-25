@@ -128,3 +128,9 @@ test("couponDiscount — 적용 상품이 장바구니에 없으면 할인 0", (
   const coupon = { discount_type: "percent", discount_value: 10, scope: "products", product_ids: ["no-such-product"] };
   assert.equal(couponDiscount(coupon, { subtotal: 297000, items, rawItems }), 0);
 });
+
+test("orderNo — UTC 서버에서도 KST 날짜로 찍힌다(KST 01시 = UTC 전날 16시)", () => {
+  assert.ok(orderNo(1, new Date("2026-08-04T16:00:00Z")).startsWith("R260805-"));
+  assert.ok(orderNo(1, new Date("2026-08-05T14:59:00Z")).startsWith("R260805-"));
+  assert.ok(orderNo(1, new Date("2026-08-05T15:00:00Z")).startsWith("R260806-"));
+});

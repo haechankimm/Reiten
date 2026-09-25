@@ -338,6 +338,14 @@ html[data-theme="night"] .logo-invert { filter: invert(1) brightness(1.6); }
   .nav { display: none; }
   .burger { display: grid; }
 }
+/* 375px 폰에서 아이콘 6개(언어·테마·계정·위시·장바구니·메뉴)가 화면 밖으로 밀려 메뉴 버튼이 잘리고
+   페이지 전체가 가로로 흔들리던 문제 — 좁은 화면에서만 아이콘 간격·크기를 줄인다. */
+@media (max-width: 480px) {
+  .hdr__in { gap: 8px; }
+  .hdr__tools { gap: 0; }
+  .icon-btn { width: 36px; height: 36px; }
+  .icon-btn svg { width: 17px; height: 17px; }
+}
 
 /* =========================================================
    hero

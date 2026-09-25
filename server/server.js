@@ -2912,7 +2912,7 @@ async function checkRestockNeeded() {
 
 cron.schedule("0 9 * * 1", () => {
   checkRestockNeeded().catch((err) => console.error("[restock-alert] 실행 실패:", err.message));
-});
+}, { timezone: "Asia/Seoul" });
 
 /* ---------- 월간 정산 리포트 ----------
    매달 1일 09:00에 "지난달"(KST 기준) 주문·쿠폰·환불 내역을 모아 엑셀(요약/주문상세/쿠폰/환불
@@ -3028,7 +3028,7 @@ async function sendMonthlySettlement() {
 
 cron.schedule("0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
-});
+}, { timezone: "Asia/Seoul" });
 
 /* ---------- 라우트 등록 순서 검사 (재발 방지) ----------
    2026-09-01 코드 감사에서 발견된 버그 — Express는 라우트를 등록 순서대로 매칭하는데,
@@ -3109,8 +3109,11 @@ if (process.env.SENTRY_DSN) {
 /* 500 — 처리 안 된 예외는 스택을 고객에게 노출하지 않고 브랜드 오류 페이지(또는 JSON)로 응답 */
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error("[unhandled]", err);
   if (res.headersSent) return next(err);
+  // 깨진 JSON·너무 큰 본문은 서버 고장이 아니라 잘못된 요청(400/413)
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "요청 형식이 올바르지 않습니다." });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "요청이 너무 큽니다." });
+  console.error("[unhandled]", err);
   if (req.path.startsWith("/api/")) return res.status(500).json({ error: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요." });
   res.status(500).sendFile(path.join(SITE_DIR, "500.html"));
 });

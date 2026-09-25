@@ -7,7 +7,9 @@
    020 미실행 등 — 충돌 가능성은 남지만 사이트가 완전히 멈추는 것보다는 낫다). */
 function orderNo(seq, date = new Date()) {
   const p = (n) => String(n).padStart(2, "0");
-  const prefix = "R" + String(date.getFullYear()).slice(2) + p(date.getMonth() + 1) + p(date.getDate());
+  // 서버(Render)는 UTC라 로컬 시각을 쓰면 KST 00~09시 주문이 전날 날짜로 찍힌다 — 항상 KST 기준 날짜.
+  const kst = new Date(date.getTime() + 9 * 3600 * 1000);
+  const prefix = "R" + String(kst.getUTCFullYear()).slice(2) + p(kst.getUTCMonth() + 1) + p(kst.getUTCDate());
   const suffix = Number.isFinite(seq) ? String(seq).padStart(6, "0") : String(Math.floor(Math.random() * 9000) + 1000);
   return prefix + "-" + suffix;
 }

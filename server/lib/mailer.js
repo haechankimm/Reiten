@@ -3,6 +3,11 @@ const { SITE, COURIERS } = require("../../소스 코드/assets/js/data.js");
 const { logSystemError } = require("./adminLog");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+/* RESEND_FROM이 없으면 Resend 테스트 주소(onboarding@resend.dev)로 폴백하는데, 이 주소는 계정 소유자에게만
+   보낼 수 있어 고객·관리자 메일이 전부 실패한다(2026-09 운영에서 실제로 발생) — 기동 시 크게 경고한다. */
+if (resend && !process.env.RESEND_FROM) {
+  console.error("[mailer] ⚠️ RESEND_FROM 환경변수가 없습니다 — 테스트 주소로 발송돼 고객 메일이 전부 실패합니다. order@reiten.kr 등 인증된 도메인 주소를 설정하세요.");
+}
 
 /* Resend SDK는 실패해도 예외를 안 던지고 {data, error}만 돌려주는데, 지금까지 이 파일의 모든
    발송 함수가 그 반환값을 확인하지 않아 실패해도 완전히 무음이었다(2026-09 "알림 발송 실패
