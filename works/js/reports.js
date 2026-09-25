@@ -269,6 +269,7 @@
     if (canView("outbox")) paintAdminOutbox();
     paintAdminHome(profile);
     initPush();
+    paintAlertPanel();
     return true;
   }
 

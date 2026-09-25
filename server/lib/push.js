@@ -18,22 +18,26 @@ if (configured) {
 /* 모든 관리자의 모든 구독 기기에 알림을 보낸다(새 주문 접수처럼 관리자 전원이 알아야 할 이벤트용).
    구독이 만료·취소됐으면(410 Gone, 404) 그 행을 지워 다음부터는 시도조차 안 하게 정리한다. */
 async function sendPushToAdmins(payload) {
-  if (!configured) return;
+  if (!configured) return { ok: false, sent: 0, total: 0, error: "VAPID 키 없음" };
 
   const { data: subs, error } = await supabaseAdmin.from("push_subscriptions").select("endpoint, keys");
   if (error) {
     if (!isMissingSchemaError(error)) console.error("[push] 구독 목록 조회 실패:", error.message);
-    return; // 테이블 없음(026 미실행)이거나 다른 오류 — 조용히 건너뜀
+    return { ok: false, sent: 0, total: 0, error: "구독 목록 조회 실패" }; // 테이블 없음(026 미실행)이거나 다른 오류
   }
-  if (!subs.length) return;
+  if (!subs.length) return { ok: false, sent: 0, total: 0, error: "알림을 켠 기기가 없음" };
 
   const body = JSON.stringify(payload);
   const staleEndpoints = [];
+  let sent = 0;
+  let lastError = "";
   await Promise.all(
     subs.map(async (sub) => {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, body);
+        sent++;
       } catch (err) {
+        lastError = err.statusCode ? `HTTP ${err.statusCode} ${err.body || err.message}` : err.message;
         if (err.statusCode === 404 || err.statusCode === 410) staleEndpoints.push(sub.endpoint);
         else {
           console.error("[push] 알림 발송 실패:", err.message);
@@ -47,6 +51,7 @@ async function sendPushToAdmins(payload) {
   if (staleEndpoints.length) {
     await supabaseAdmin.from("push_subscriptions").delete().in("endpoint", staleEndpoints);
   }
+  return { ok: sent > 0, sent, total: subs.length, expired: staleEndpoints.length, error: lastError || undefined };
 }
 
 module.exports = { sendPushToAdmins, configured };

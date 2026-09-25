@@ -78,6 +78,7 @@ const handoffNotesRoutes = require("./routes/handoffNotes");
 const calendarRoutes = require("./routes/calendar");
 const usageLogRoutes = require("./routes/usageLog");
 const staffRoutes = require("./routes/staff");
+const alertsRoutes = require("./routes/alerts");
 const { adminGuard } = require("./lib/adminGuard");
 const { sendPushToAdmins } = require("./lib/push");
 
@@ -1731,6 +1732,7 @@ app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) 
    건드리지 않는 순수 CRUD라 routes/admins.js로 분리했다(2026-09-01, 라우트 분리 다음 라운드). */
 app.use(adminsRoutes);
 app.use(staffRoutes);
+app.use(alertsRoutes);
 
 /* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
    이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */

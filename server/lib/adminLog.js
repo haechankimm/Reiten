@@ -88,6 +88,8 @@ function logSystemError(type, detail) {
         .join(", ")
     : "";
   sendAdminWebhookAlert(`🚨 [REITEN] ${label}${detailText ? "\n" + detailText : ""}`);
+  // 텔레그램 + Works 폰 푸시로 즉시 알림(30분 중복 제한, lib/criticalAlert.js)
+  require("./criticalAlert").sendCriticalAlert(type, label, detailText, detail);
 }
 
 /* ---------- 결제 트랜잭션 로그 ----------
