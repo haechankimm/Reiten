@@ -496,6 +496,21 @@
     .logrow-head { display: none; }
   }
 
+  /* 상단바 PIN 변경·로그아웃 — 데스크톱은 글자, 폰에서는 아이콘만(버튼이 늘어 상단바가 두 줄로 접히던 문제) */
+  .topbar-act .act-ico { display: none; width: 17px; height: 17px; }
+  @media (max-width: 860px) {
+    .topbar { flex-wrap: nowrap; }
+    .topbar-right { flex-wrap: nowrap; margin-left: auto; gap: 6px; }
+    .topbar-act { width: 36px; height: 36px; padding: 0; justify-content: center; }
+    .topbar-act .act-ico { display: block; }
+    .topbar-act .act-txt { display: none; }
+    .admin-chip { display: none !important; }
+  }
+  @media (max-width: 400px) {
+    #admin-lang-switch button { padding: 0 7px; }
+    .topbar-right { gap: 4px; }
+  }
+
   /* ---------- 캘린더 ---------- */
   .cal-grid { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-surface); }
   .cal-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }
