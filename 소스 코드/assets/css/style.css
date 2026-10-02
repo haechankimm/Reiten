@@ -1184,3 +1184,7 @@ html[data-admin-theme="grass"][data-theme="night"] {
 .pdp-detail img, .pdp-detail video { width: 100%; height: auto; display: block; background: var(--plate); border-radius: var(--radius); }
 .pdp-detail figcaption { margin-top: 10px; color: var(--muted); }
 .pdp-detail .lede { white-space: pre-line; max-width: 62ch; }
+
+/* 라이더 사이즈 추천(product.html) */
+.size-advisor { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper-2); }
+.size-advisor .field { margin-bottom: 10px; }

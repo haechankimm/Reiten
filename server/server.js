@@ -91,6 +91,7 @@ const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
 const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
 const { toCustomerOrderDto } = require("./lib/customerOrders");
 const { buildSettlement } = require("./lib/settlement");
+const { getReviewPhotoPoints } = require("./lib/reviewRewards");
 const { adminGuard, hasAreaPermission } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
@@ -1445,8 +1446,14 @@ const VIRTUAL_ACCOUNT_DEFAULT_VALID_HOURS = 24;
 
 /* 브라우저가 Supabase 클라이언트를 초기화하기 위한 공개 설정값 — anon key는 비밀이 아니다
    (Supabase의 RLS가 실제 접근 권한을 결정하며, service role key만 비밀로 취급한다). */
-app.get("/api/config", (req, res) => {
+let reviewPhotoPointsCache = { value: null, at: 0 };
+app.get("/api/config", async (req, res) => {
+  // 사진 리뷰 적립금 안내(reviews.html)용 — 설정값을 5분 캐시(lib/reviewRewards.js)
+  if (reviewPhotoPointsCache.value === null || Date.now() - reviewPhotoPointsCache.at > 5 * 60 * 1000) {
+    reviewPhotoPointsCache = { value: await getReviewPhotoPoints(supabaseAdmin).catch(() => 0), at: Date.now() };
+  }
   res.json({
+    reviewPhotoPoints: reviewPhotoPointsCache.value,
     supabaseUrl: process.env.SUPABASE_URL || null,
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || null,
     // storeId/channelKey는 포트원 결제창을 여는 데 필요한 공개 식별자다(비밀 아님) —

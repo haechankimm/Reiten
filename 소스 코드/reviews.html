@@ -86,6 +86,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               <span class="small upload-filename" id="r-photo-name" data-i18n="선택된 파일 없음">선택된 파일 없음</span>
             </div>
             <img id="r-photo-preview" class="upload-preview" alt="" hidden>
+            <p class="small" id="r-photo-reward" style="margin-top:8px;color:var(--muted)" hidden></p>
           </div>
           <div class="field">
             <label for="r-insta" data-i18n="인스타그램 아이디 (선택)">인스타그램 아이디 (선택)</label>
@@ -254,6 +255,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (location.hash === "#write") setTimeout(() => el("form-wrap").scrollIntoView({ behavior: "smooth", block: "start" }), 300);
   }
   paintRatingChips();
+
+  // 사진 리뷰 적립금 안내 — 금액은 Works "정보" 탭 설정값(/api/config), 0이면 안내 숨김
+  fetch("/api/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
+    if (!cfg || !cfg.reviewPhotoPoints) return;
+    const note = el("r-photo-reward");
+    note.textContent = t("회원으로 주문하신 상품에 사진 리뷰를 남기면, 승인 후 적립금 {amount}을 드려요.", { amount: money(cfg.reviewPhotoPoints) });
+    note.hidden = false;
+  }).catch(() => {});
 
   el("r-photo").addEventListener("change", () => {
     const file = el("r-photo").files[0];

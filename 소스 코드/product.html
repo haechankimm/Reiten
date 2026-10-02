@@ -53,6 +53,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/data.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
+<script src="assets/js/sizeAdvisor.js"></script>
 <script>
   applyI18n();
   renderHeader("shop.html");
@@ -119,6 +120,74 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       : `<div class="ph" style="aspect-ratio:4/5"><span class="ph__label">${t("사진 준비중")}</span></div>`;
   }
 
+  /* ---------- 라이더 사이즈 추천 (assets/js/sizeAdvisor.js) ----------
+     입력값은 브라우저에만 저장해 다른 상품에서도 다시 안 쳐도 되게 한다(서버로 보내지 않음). */
+  const ADVISOR_KEY = "reiten_size_profile";
+  const advisor = (() => {
+    try { return { open: false, result: null, ...(JSON.parse(localStorage.getItem(ADVISOR_KEY)) || {}) }; }
+    catch (e) { return { open: false, result: null }; }
+  })();
+  advisor.open = false;
+  advisor.result = null;
+
+  function sizeAdvisorHTML() {
+    const r = advisor.result;
+    const reasonText = r && !r.error ? [
+      r.reasons.includes("protector_up") ? t("보호대 위에 입는 걸 감안해 한 치수 크게 골랐어요.") : "",
+      r.reasons.includes("fit_up") ? t("넉넉한 핏을 원하셔서 한 치수 크게 봤어요.") : "",
+      r.reasons.includes("fit_down") ? t("딱 맞는 핏을 원하셔서 한 치수 작게 봤어요.") : "",
+      r.reasons.includes("nearest_available") ? t("이 상품에 있는 사이즈 중 가장 가까운 사이즈예요.") : "",
+    ].filter(Boolean).join(" ") : "";
+    const recOut = r && !r.error && (p.soldOut.includes(r.recommended) || outSizesForColor(state.color).includes(r.recommended));
+    return `
+      <button type="button" class="link-u small" id="size-advisor-toggle" style="margin-top:12px;background:none;border:0;padding:0;cursor:pointer" aria-expanded="${advisor.open}">
+        ${esc(t("내 사이즈 추천받기 (라이더용)"))}
+      </button>
+      <div class="size-advisor" id="size-advisor" ${advisor.open ? "" : "hidden"}>
+        <div class="row-2">
+          <div class="field"><label for="sa-height">${esc(t("키 (cm)"))}</label><input id="sa-height" type="number" inputmode="numeric" min="130" max="210" value="${esc(advisor.heightCm || "")}"></div>
+          <div class="field"><label for="sa-weight">${esc(t("몸무게 (kg)"))}</label><input id="sa-weight" type="number" inputmode="numeric" min="30" max="160" value="${esc(advisor.weightKg || "")}"></div>
+        </div>
+        <div class="field">
+          <label for="sa-fit">${esc(t("원하는 핏"))}</label>
+          <select id="sa-fit">
+            <option value="fitted" ${advisor.fit === "fitted" ? "selected" : ""}>${esc(t("딱 맞게"))}</option>
+            <option value="regular" ${!advisor.fit || advisor.fit === "regular" ? "selected" : ""}>${esc(t("보통(디자인 그대로의 오버핏)"))}</option>
+            <option value="relaxed" ${advisor.fit === "relaxed" ? "selected" : ""}>${esc(t("더 넉넉하게"))}</option>
+          </select>
+        </div>
+        <label class="checkbox"><input type="checkbox" id="sa-protector" ${advisor.protector ? "checked" : ""}> <span>${esc(t("이너 프로텍터(보호대) 위에 입을 거예요"))}</span></label>
+        <button type="button" class="btn btn--sm btn--line" id="sa-run" style="margin-top:10px">${esc(t("추천 사이즈 보기"))}</button>
+        ${r && r.error ? `<p class="small" style="margin-top:10px;color:var(--danger)">${esc(t(r.error))}</p>` : ""}
+        ${r && !r.error ? `
+        <div class="notice" style="margin-top:12px">
+          <b>${esc(t("추천 사이즈"))}: ${esc(r.recommended)}</b>${r.usual !== r.recommended ? ` <span class="small">(${esc(t("평소 사이즈 {size}", { size: r.usual }))})</span>` : ""}<br>
+          ${reasonText ? `<span class="small">${esc(reasonText)}</span><br>` : ""}
+          ${recOut ? `<span class="small" style="color:var(--danger)">${esc(t("지금 고른 컬러는 이 사이즈가 품절이에요."))}</span><br>` : `<button type="button" class="btn btn--sm" id="sa-apply" style="margin-top:8px">${esc(t("{size} 선택하기", { size: r.recommended }))}</button><br>`}
+          <span class="small" style="color:var(--muted)">${esc(t("키·몸무게로 어림잡은 참고치예요. 아래 사이즈 실측표의 가슴단면도 함께 확인해 주세요."))}</span>
+        </div>` : ""}
+      </div>`;
+  }
+
+  function bindSizeAdvisor() {
+    document.getElementById("size-advisor-toggle")?.addEventListener("click", () => { advisor.open = !advisor.open; render(); });
+    document.getElementById("sa-run")?.addEventListener("click", () => {
+      advisor.heightCm = document.getElementById("sa-height").value;
+      advisor.weightKg = document.getElementById("sa-weight").value;
+      advisor.fit = document.getElementById("sa-fit").value;
+      advisor.protector = document.getElementById("sa-protector").checked;
+      advisor.result = recommendSize(advisor, { sizes: p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
+      advisor.open = true;
+      try {
+        localStorage.setItem(ADVISOR_KEY, JSON.stringify({ heightCm: advisor.heightCm, weightKg: advisor.weightKg, fit: advisor.fit, protector: advisor.protector }));
+      } catch (e) {}
+      render();
+    });
+    document.getElementById("sa-apply")?.addEventListener("click", () => {
+      if (advisor.result && advisor.result.recommended) { state.size = advisor.result.recommended; render(); }
+    });
+  }
+
   function render() {
     const st = SIZE_TABLES[p.sizeTable];
     const outForColor = outSizesForColor(state.color);
@@ -167,6 +236,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <div class="opt__label"><span>Size</span><b>${t("남녀공용 오버핏")}</b></div>
           <div class="chips" id="sizes"></div>
           ${p.modelInfo ? `<p class="small" style="margin-top:10px;color:var(--muted)">${esc(t("모델"))} · ${esc(p.modelInfo)}</p>` : ""}
+          ${sizeAdvisorHTML()}
         </div>
 
         <div class="opt">
@@ -307,6 +377,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     }).join("");
     sizesEl.querySelectorAll(".chip").forEach(b =>
       b.addEventListener("click", () => { state.size = b.dataset.s; render(); }));
+    bindSizeAdvisor();
 
     // 수량
     const qtyEl = document.getElementById("qty");

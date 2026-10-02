@@ -15,6 +15,8 @@ const { normalizeTel } = require("../lib/phone");
 const { uploadReviewPhoto } = require("../lib/cloudinary");
 const { isMissingColumnError } = require("../lib/pgErrors");
 
+const { rewardPhotoReview } = require("../lib/reviewRewards");
+
 const router = express.Router();
 
 const reviewUpload = multer({
@@ -210,8 +212,17 @@ router.patch("/api/admin/reviews/bulk-approve", requireAdmin, async (req, res) =
     console.error("[admin/reviews] 일괄 승인 처리 실패:", error.message);
     return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
   }
-  logAdminAction(req, "review.bulk_approve", "review", `${ids.length}건`, { ids, approved });
-  res.json({ ok: true, count: ids.length });
+  // 승인한 사진 리뷰 중 회원 주문으로 쓴 리뷰에 적립금(lib/reviewRewards.js)
+  let rewarded = 0;
+  if (approved) {
+    const { data: rows } = await supabaseAdmin.from("reviews").select("*").in("id", ids);
+    for (const r of rows || []) {
+      const out = await rewardPhotoReview(supabaseAdmin, r);
+      if (out.awarded) rewarded++;
+    }
+  }
+  logAdminAction(req, "review.bulk_approve", "review", `${ids.length}건`, { ids, approved, rewarded });
+  res.json({ ok: true, count: ids.length, rewarded });
 });
 
 router.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
@@ -221,8 +232,13 @@ router.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   }
   const { error } = await supabaseAdmin.from("reviews").update({ approved }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "승인 처리에 실패했습니다." });
-  logAdminAction(req, "review.update", "review", req.params.id, { approved });
-  res.json({ ok: true });
+  let reward = null;
+  if (approved) {
+    const { data: review } = await supabaseAdmin.from("reviews").select("*").eq("id", req.params.id).maybeSingle();
+    reward = await rewardPhotoReview(supabaseAdmin, review);
+  }
+  logAdminAction(req, "review.update", "review", req.params.id, { approved, rewarded: reward ? reward.awarded : 0 });
+  res.json({ ok: true, rewarded: reward ? reward.awarded : 0 });
 });
 
 router.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
