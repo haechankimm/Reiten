@@ -13,7 +13,11 @@ const { updateWithOptionalColumnFallback } = require("../lib/dbUpdate");
 
 const router = express.Router();
 
-function toQnaDto(q, { redact } = {}) {
+/* 고객 화면용 — 담당자(assigned_to)·내부 메모(internal_note)·연락용 이메일은 절대 넣지 않는다.
+   예전엔 관리자용과 같은 DTO 하나를 같이 써서 공개 GET /api/qna로 Works의 "내부 메모(고객에게
+   보이지 않음)"와 담당 직원 id가 누구에게나 내려가고 있었다(2026-10-02 노출 감사에서 발견) —
+   공개용과 관리자용을 아예 다른 함수로 나눠, 관리자 필드를 추가해도 공개 쪽에 섞일 수 없게 한다. */
+function toPublicQnaDto(q, { redact } = {}) {
   const hide = redact && q.secret;
   return {
     id: q.id,
@@ -25,6 +29,14 @@ function toQnaDto(q, { redact } = {}) {
     status: q.status,
     at: q.created_at,
     answeredAt: q.answered_at,
+  };
+}
+
+function toAdminQnaDto(q) {
+  return {
+    ...toPublicQnaDto(q, { redact: false }),
+    email: q.email || null,
+    hasAccount: !!q.user_id,
     assignedTo: q.assigned_to || null,
     internalNote: q.internal_note || null,
   };
@@ -39,7 +51,7 @@ router.get("/api/qna", optionalAuth, async (req, res) => {
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
 
   res.json(
-    data.map((q) => toQnaDto(q, { redact: !(req.user && req.user.id === q.user_id) }))
+    data.map((q) => toPublicQnaDto(q, { redact: !(req.user && req.user.id === q.user_id) }))
   );
 });
 
@@ -75,7 +87,7 @@ router.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
     return res.status(500).json({ error: "문의 등록에 실패했습니다." });
   }
 
-  res.json(toQnaDto(data, { redact: false }));
+  res.json(toPublicQnaDto(data, { redact: false }));
 });
 
 /* 문의 목록 필터 — q는 작성자명·문의내용·상품ID 부분 일치, status는 "답변대기"/"답변완료". */
@@ -102,7 +114,7 @@ router.get("/api/admin/qna", requireAdmin, async (req, res) => {
   const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map((q) => toQnaDto(q, { redact: false })), page, pageSize, total: count ?? data.length });
+  res.json({ items: data.map(toAdminQnaDto), page, pageSize, total: count ?? data.length });
 });
 
 /* 답변 등록(answer)과 담당자·내부 메모 저장을 하나의 PATCH로 합쳤다 — answer가 없어도
@@ -126,7 +138,7 @@ router.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
   if (error || !data) return res.status(500).json({ error: "저장에 실패했습니다." });
   if (answer !== undefined) logAdminAction(req, "qna.answer", "qna", req.params.id);
   else logAdminAction(req, "qna.update", "qna", req.params.id, patch);
-  res.json({ ok: true, item: toQnaDto(data, { redact: false }) });
+  res.json({ ok: true, item: toAdminQnaDto(data) });
 });
 
 /* ---------- CS 빠른 답변 템플릿 (023_qna_templates.sql, 024_qna_template_keywords.sql) ----------

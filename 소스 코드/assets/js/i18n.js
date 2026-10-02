@@ -484,7 +484,7 @@ const I18N = {
   "재고 2개 이하": { de: "Bestand ≤ 2" },
   "내용": { de: "Inhalt" },
   "예: Supabase, Render, 사업자등록번호": { de: "z. B. Supabase, Render, Gewerberegisternummer" },
-  "예: haechankimm": { de: "z. B. haechankimm" },
+  "예: 이메일 앞부분": { de: "z. B. Anfang der E-Mail" },
   "주문번호·이름·연락처 검색": { de: "Suche nach Bestellnr., Name, Telefon" },
   "예: R260801, 홍길동, 010": { de: "z. B. R260801, Max Mustermann, 010" },
   "내보내기": { de: "Exportieren" },

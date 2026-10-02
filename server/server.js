@@ -85,6 +85,7 @@ const staffRoutes = require("./routes/staff");
 const alertsRoutes = require("./routes/alerts");
 const accountRoutes = require("./routes/account");
 const { adminGuard } = require("./lib/adminGuard");
+const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
 
 /* SENTRY_DSN이 없으면 아무 것도 하지 않고 조용히 건너뛴다(로컬 개발 환경 포함) —
@@ -267,6 +268,10 @@ app.use(express.json());
 
 /* 모든 /api/admin/* 요청의 관문 — 로그인·관리자 확인, PIN(2단계), 직원별 영역 권한(lib/adminGuard.js) */
 app.use("/api/admin", adminGuard);
+
+/* 정적 폴더 안의 내부 문서(README.md·사용설명서.md 등)는 웹으로 내보내지 않는다 — 아래 두 static
+   핸들러(works/, 소스 코드/)보다 반드시 먼저 걸려야 한다(lib/staticGuard.js 참고). */
+app.use(staticGuard(path.join(SITE_DIR, "404.html")));
 
 /* works.reiten.kr로 들어온 요청은 관리자 전용 정적 사이트(works/)를 먼저 찾는다.
    express.static은 파일을 못 찾으면 그냥 next()로 넘어가므로, works/에 없는 assets/*
@@ -1458,11 +1463,22 @@ app.use(healthRoutes);
 const LOGIN_FAIL_THRESHOLD = 7;
 const LOGIN_LOCK_MINUTES = 15;
 
+/* 잠금 기록은 "이메일 + 접속 IP" 단위로 센다(2026-10-02 노출 감사). 예전엔 이메일 하나에 묶여 있어서,
+   로그인 화면을 쓰지도 않은 제3자가 대표 이메일로 success:false 보고만 7번 보내면 대표의 Works
+   로그인 버튼이 15분씩 계속 잠기는(그리고 잠금 알림 메일이 계속 오는) 방해가 가능했다. IP를 함께
+   키로 쓰면 공격자는 자기 IP에서만 잠기고, 다른 곳에서 접속하는 진짜 관리자는 영향을 받지 않는다.
+   IP 원문은 저장하지 않고 해시 앞 16자리만 붙인다(login_attempts.email 컬럼을 그대로 재사용 —
+   마이그레이션 불필요). */
+function loginLockKey(email, req) {
+  const ipHash = crypto.createHash("sha256").update(String(req.ip || "")).digest("hex").slice(0, 16);
+  return `${email}#${ipHash}`;
+}
+
 app.get("/api/admin/login-lock", writeLimiter, async (req, res) => {
   const email = String(req.query.email || "").trim().toLowerCase().slice(0, 200);
   if (!email) return res.json({ locked: false });
 
-  const { data, error } = await supabaseAdmin.from("login_attempts").select("locked_until").eq("email", email).maybeSingle();
+  const { data, error } = await supabaseAdmin.from("login_attempts").select("locked_until").eq("email", loginLockKey(email, req)).maybeSingle();
   if (error) console.error("[login-lock] 조회 실패(017_login_lockout.sql 미실행일 수 있음):", error.message);
   const lockedUntil = data?.locked_until ? new Date(data.locked_until) : null;
   if (lockedUntil && lockedUntil > new Date()) {
@@ -1490,14 +1506,15 @@ app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
     if (error || !data.user || String(data.user.email || "").trim().toLowerCase() !== email) {
       return res.status(403).json({ error: "본인 계정에 대해서만 초기화할 수 있습니다." });
     }
-    await supabaseAdmin.from("login_attempts").delete().eq("email", email);
+    await supabaseAdmin.from("login_attempts").delete().eq("email", loginLockKey(email, req));
     return res.json({ ok: true });
   }
 
-  const { data: prev, error: selectError } = await supabaseAdmin.from("login_attempts").select("fail_count").eq("email", email).maybeSingle();
+  const lockKey = loginLockKey(email, req);
+  const { data: prev, error: selectError } = await supabaseAdmin.from("login_attempts").select("fail_count").eq("email", lockKey).maybeSingle();
   if (selectError) console.error("[login-lock] 조회 실패(017_login_lockout.sql 미실행일 수 있음):", selectError.message);
   const failCount = (prev?.fail_count || 0) + 1;
-  const patch = { email, fail_count: failCount, updated_at: new Date().toISOString() };
+  const patch = { email: lockKey, fail_count: failCount, updated_at: new Date().toISOString() };
 
   if (failCount >= LOGIN_FAIL_THRESHOLD) {
     patch.locked_until = new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000).toISOString();
