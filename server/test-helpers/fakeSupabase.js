@@ -64,6 +64,19 @@ class FakeQuery {
     }
     return this;
   }
+  /* 배송추적·구매확정 크론(lib/purchaseConfirm.js, 2026-10-02)이 쓰는 비교 필터 — is(null)·neq·lt·lte·gt·gte.
+     ISO 날짜 문자열은 사전순 비교가 시간순과 같아 그대로 비교한다. */
+  is(col, val) { return this._cmp(col, "is", val); }
+  neq(col, val) { return this._cmp(col, "neq", val); }
+  lt(col, val) { return this._cmp(col, "lt", val); }
+  lte(col, val) { return this._cmp(col, "lte", val); }
+  gt(col, val) { return this._cmp(col, "gt", val); }
+  gte(col, val) { return this._cmp(col, "gte", val); }
+  _cmp(col, op, val) {
+    this.cmpFilters = this.cmpFilters || [];
+    this.cmpFilters.push([col, op, val]);
+    return this;
+  }
   order(col, opts = {}) {
     this.orderCol = col;
     this.orderAsc = opts.ascending !== false;
@@ -119,6 +132,16 @@ class FakeQuery {
         this.filters.every(([col, val]) => r[col] === val) &&
         (this.inFilters || []).every(([col, values]) => values.includes(r[col])) &&
         (this.jsonContainsFilters || []).every(([col, needle]) => needle.every((v) => (r[col] || []).includes(v))) &&
+        (this.cmpFilters || []).every(([col, op, val]) => {
+          const v = r[col];
+          if (op === "is") return val === null ? v === null || v === undefined : v === val;
+          if (op === "neq") return v !== val;
+          if (v === null || v === undefined) return false;
+          if (op === "lt") return v < val;
+          if (op === "lte") return v <= val;
+          if (op === "gt") return v > val;
+          return v >= val;
+        }) &&
         (!this.orFilters ||
           this.orFilters.some(({ col, op, pattern }) => {
             if (op !== "ilike" || !(col in r)) return false;

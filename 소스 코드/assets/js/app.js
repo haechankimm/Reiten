@@ -596,6 +596,97 @@ function apiErrorText(body, fallback) {
   return fallback;
 }
 
+/* ---------- 주문조회·내 주문 공용 표시 (2026-10-02) ----------
+   서버(lib/customerOrders.js)가 쿠폰·적립금 할인, 환불액, 결제수단, 구매확정 상태까지 내려준다. */
+function localDate(iso) {
+  return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+}
+
+/* 주문 금액 표의 합계 줄들 — 상품 합계 → 쿠폰 → 적립금 → 배송비 → 총 결제금액 → 환불된 금액.
+   예전엔 쿠폰·적립금 줄이 없어 "합계 + 배송비 ≠ 총 결제금액"으로 보였다. */
+function orderAmountRowsHTML(o) {
+  const row = (label, value, strong) =>
+    `<tr><td colspan="3" style="text-align:right;${strong ? "font-weight:650" : "color:var(--muted)"}">${esc(label)}</td><td${strong ? ' style="font-weight:650"' : ""}>${value}</td></tr>`;
+  return [
+    row(t("상품 합계"), money(o.subtotal)),
+    o.discount ? row(t("쿠폰 할인") + (o.couponCode ? ` (${o.couponCode})` : ""), "−" + money(o.discount)) : "",
+    o.pointsUsed ? row(t("적립금 사용"), "−" + money(o.pointsUsed)) : "",
+    row(t("배송비"), o.shipping === 0 ? esc(t("무료")) : money(o.shipping)),
+    row(t("총 결제금액"), money(o.total), true),
+    o.refundedAmount ? row(t("환불된 금액"), "−" + money(o.refundedAmount)) : "",
+  ].join("");
+}
+
+/* 입금대기 주문의 입금 안내 — 주문완료 화면을 닫았거나 안내 메일을 못 받아도 여기서 계좌를 다시 볼 수 있게. */
+function orderPaymentGuideHTML(o) {
+  if (o.status !== "입금대기") return "";
+  if (o.paymentMethod === "virtual_account" && o.virtualAccount) {
+    const va = o.virtualAccount;
+    return `<div class="notice" style="margin-top:16px">
+      <b>${t("가상계좌 입금 안내")}</b><br>
+      ${esc(va.bank || "")} ${esc(va.accountNumber || "")}<br>
+      ${t("입금액")} <b class="tnum">${money(o.total)}</b>${va.dueAt ? ` · ${t("입금기한")} <b>${esc(new Date(va.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"))}</b>` : ""}
+    </div>`;
+  }
+  if (o.paymentMethod === "bank_transfer") {
+    const so = SITE.order;
+    return `<div class="notice" style="margin-top:16px">
+      <b>${t("입금 안내")}</b><br>
+      ${esc(so.bankName)} ${esc(so.accountNo)} · ${t("예금주")} ${esc(so.holder)}<br>
+      ${t("입금액")} <b class="tnum">${money(o.total)}</b><br>
+      <span class="small">${t("24시간 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
+    </div>`;
+  }
+  return "";
+}
+
+/* 구매확정 — 이미 확정됐으면 날짜, 확정 가능하면 버튼(적립 예정 포인트·자동 확정일 안내). */
+function orderConfirmHTML(o) {
+  if (o.confirmedAt) return `<p class="small" style="margin-top:10px">✓ ${esc(t("구매확정 완료"))} · ${esc(localDate(o.confirmedAt))}</p>`;
+  if (!o.canConfirm) return "";
+  const lines = [
+    o.pointsEarned ? t("구매확정하면 적립금 {amount}이 바로 지급됩니다.", { amount: money(o.pointsEarned) }) : t("상품을 잘 받으셨다면 구매확정을 눌러 주세요."),
+    o.autoConfirmAt ? t("누르지 않아도 {date}에 자동으로 구매확정됩니다.", { date: localDate(o.autoConfirmAt) }) : "",
+  ].filter(Boolean);
+  return `<div style="margin-top:12px">
+    <button class="btn btn--sm btn--line" type="button" data-confirm-order="${esc(o.no)}">${esc(t("구매확정"))}</button>
+    <p class="small" style="margin-top:6px;color:var(--muted)">${esc(lines.join(" "))}</p>
+  </div>`;
+}
+
+/* getTel: 비회원 조회 화면이면 입력한 연락처를 돌려주는 함수(회원은 로그인으로 본인 확인). */
+function bindOrderConfirmButtons(root, getTel, onDone) {
+  root.querySelectorAll("[data-confirm-order]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      if (!confirm(t("구매를 확정할까요? 확정하면 적립금이 지급되고, 이후 반품·교환은 고객센터로 문의해 주셔야 합니다."))) return;
+      btn.disabled = true;
+      const headers = { "Content-Type": "application/json" };
+      if (typeof getAccessToken === "function") {
+        const token = await getAccessToken().catch(() => null);
+        if (token) headers.Authorization = "Bearer " + token;
+      }
+      try {
+        const res = await fetch("/api/orders/confirm", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ orderNo: btn.dataset.confirmOrder, tel: getTel ? getTel() : undefined }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast(apiErrorText(body, t("구매확정에 실패했습니다.")));
+          btn.disabled = false;
+          return;
+        }
+        toast(body.pointsCredited ? t("구매확정했습니다. 적립금 {amount}이 지급됐어요.", { amount: money(body.pointsCredited) }) : t("구매확정했습니다."));
+        if (onDone) onDone(body);
+      } catch (e) {
+        toast(t("구매확정에 실패했습니다."));
+        btn.disabled = false;
+      }
+    })
+  );
+}
+
 /* 장바구니에 참(charm-*) 말고 실물 상품이 하나라도 있는지 — 참 단독 주문은 받지 않는다(server/lib/pricing.js hasPhysicalProduct와 같은 기준). */
 function cartHasPhysicalProduct(items) {
   return (items || []).some((it) => it && typeof it.productId === "string" && it.productId && !it.productId.startsWith("charm-"));

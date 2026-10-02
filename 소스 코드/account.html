@@ -261,6 +261,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   function orderCard(o) {
     const itemsLine = o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ");
+    // 쿠폰·적립금 할인과 환불액을 같이 보여줘야 "상품 합계와 결제 금액이 왜 다른지"가 보인다(2026-10-02).
+    const adjustments = [
+      o.discount ? `${t("쿠폰 할인")} −${money(o.discount)}` : "",
+      o.pointsUsed ? `${t("적립금 사용")} −${money(o.pointsUsed)}` : "",
+      o.refundedAmount ? `${t("환불된 금액")} −${money(o.refundedAmount)}` : "",
+    ].filter(Boolean).join(" · ");
     return `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
@@ -272,7 +278,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <span class="small">${esc(t(o.status || "입금대기"))}</span>
           <b class="tnum">${money(o.total)}</b>
         </div>
+        ${adjustments ? `<p class="small tnum" style="margin-top:4px;color:var(--muted);text-align:right">${esc(adjustments)}</p>` : ""}
         ${trackingLine(o)}
+        ${orderPaymentGuideHTML(o)}
+        ${orderConfirmHTML(o)}
       </div>`;
   }
 
@@ -284,6 +293,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       if (!res.ok) return;
       const orders = await res.json();
       el("my-orders").innerHTML = orders.map(orderCard).join("");
+      bindOrderConfirmButtons(el("my-orders"), null, () => { paintMyOrders(); paintPointsBalance(); });
       el("my-orders-empty").hidden = orders.length > 0;
     } catch (e) {}
   }

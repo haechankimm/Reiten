@@ -63,6 +63,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <thead><tr><th data-i18n="상품">상품</th><th data-i18n="옵션">옵션</th><th data-i18n="수량">수량</th><th data-i18n="금액">금액</th></tr></thead>
           <tbody id="lk-items"></tbody>
         </table>
+        <div id="lk-extra"></div>
 
         <div id="lk-cancel-block" hidden style="margin-top:28px">
           <button class="btn btn--ghost" type="button" id="lk-cancel-open" data-i18n="주문취소 신청">주문취소 신청</button>
@@ -167,10 +168,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
           <td>${i.qty}</td>
           <td>${money(i.sum)}</td>
-        </tr>`).join("") + `
-        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("상품 합계"))}</td><td>${money(o.subtotal)}</td></tr>
-        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("배송비"))}</td><td>${o.shipping === 0 ? esc(t("무료")) : money(o.shipping)}</td></tr>
-        <tr><td colspan="3" style="text-align:right;font-weight:650">${esc(t("총 결제금액"))}</td><td style="font-weight:650">${money(o.total)}</td></tr>`;
+        </tr>`).join("") + orderAmountRowsHTML(o);
+
+      // 입금대기면 입금 계좌, 배송된 주문이면 구매확정 버튼(lookup 응답은 lib/customerOrders.js)
+      el("lk-extra").innerHTML = orderPaymentGuideHTML(o) + orderConfirmHTML(o);
+      bindOrderConfirmButtons(el("lk-extra"), () => tel.value.trim(), () => el("lookup-form").requestSubmit());
 
       el("lk-result").hidden = false;
 

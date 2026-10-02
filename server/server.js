@@ -86,6 +86,8 @@ const accountRoutes = require("./routes/account");
 const refundsRoutes = require("./routes/refunds");
 const returnsRoutes = require("./routes/returns");
 const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
+const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
+const { toCustomerOrderDto } = require("./lib/customerOrders");
 const { adminGuard, hasAreaPermission } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
@@ -876,7 +878,10 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
     console.error("[push] 알림 발송 실패:", err.message)
   );
   issueThanksCouponsIfEligible(saved).catch((err) => console.error("[thanks-coupon] 처리 실패:", err.message));
-  creditPoints(supabaseAdmin, userId, pointsEarned, orderNumber).catch((err) => console.error("[points] 적립 실패:", err.message));
+  /* 적립은 구매확정 때(lib/purchaseConfirm.js) — 043 마이그레이션 전이라 구매확정 기능이 꺼져 있으면 예전처럼 즉시 적립. */
+  confirmationEnabled()
+    .then((deferred) => (deferred ? null : creditPoints(supabaseAdmin, userId, pointsEarned, orderNumber)))
+    .catch((err) => console.error("[points] 적립 실패:", err.message));
 
   return { ok: true, saved };
 }
@@ -1546,9 +1551,10 @@ app.post("/api/orders/lookup", lookupLimiter, async (req, res) => {
     return res.status(400).json({ error: "주문번호와 연락처를 입력해 주세요." });
   }
 
+  // select("*") — 쿠폰·적립금·환불·구매확정 컬럼은 마이그레이션 시점에 따라 없을 수 있어 *로 받고 DTO에서 고른다.
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("order_no, customer, items, subtotal, shipping, total, status, courier, tracking_no, created_at")
+    .select("*")
     .eq("order_no", orderNoStr)
     .maybeSingle();
 
@@ -1562,24 +1568,14 @@ app.post("/api/orders/lookup", lookupLimiter, async (req, res) => {
     return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
   }
 
-  res.json({
-    no: data.order_no,
-    at: data.created_at,
-    items: data.items,
-    subtotal: data.subtotal,
-    shipping: data.shipping,
-    total: data.total,
-    status: data.status,
-    courier: data.courier || null,
-    trackingNo: data.tracking_no || null,
-  });
+  res.json(toCustomerOrderDto(data));
 });
 
 /* ---------- 회원 주문내역 ---------- */
 app.get("/api/my/orders", requireAuth, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("order_no, items, subtotal, shipping, total, status, courier, tracking_no, created_at")
+    .select("*")
     .eq("user_id", req.user.id)
     .order("created_at", { ascending: false });
 
@@ -1588,19 +1584,29 @@ app.get("/api/my/orders", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "주문내역을 불러오지 못했습니다." });
   }
 
-  res.json(
-    data.map((o) => ({
-      no: o.order_no,
-      at: o.created_at,
-      items: o.items,
-      subtotal: o.subtotal,
-      shipping: o.shipping,
-      total: o.total,
-      status: o.status,
-      courier: o.courier || null,
-      trackingNo: o.tracking_no || null,
-    }))
-  );
+  res.json(data.map(toCustomerOrderDto));
+});
+
+/* ---------- 구매확정(고객) ----------
+   주문조회(비회원: 주문번호+연락처)나 내 주문(회원: 로그인)에서 "구매확정"을 누르면 바로 확정하고 적립금을
+   지급한다. 안 눌러도 배송완료 7일(배송완료 기록이 없으면 출고 14일) 뒤 자동 확정(lib/purchaseConfirm.js). */
+app.post("/api/orders/confirm", optionalAuth, lookupLimiter, async (req, res) => {
+  const { orderNo: reqOrderNo, tel } = req.body || {};
+  const orderNoStr = String(reqOrderNo || "").trim();
+  if (!orderNoStr) return res.status(400).json({ error: "주문번호가 필요합니다." });
+  const { data: order } = await supabaseAdmin.from("orders").select("*").eq("order_no", orderNoStr).maybeSingle();
+  const ownsByLogin = !!(order && req.user && order.user_id && order.user_id === req.user.id);
+  const ownsByTel = !!(order && normalizeTel(tel) && normalizeTel(order.customer && order.customer.tel) === normalizeTel(tel));
+  if (!order || (!ownsByLogin && !ownsByTel)) {
+    return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
+  }
+  if (!(await confirmationEnabled())) return res.status(503).json({ error: "지금은 구매확정을 할 수 없습니다. 잠시 후 다시 시도해 주세요." });
+  if (!canConfirm(order)) {
+    return res.status(409).json({ error: order.confirmed_at ? "이미 구매확정된 주문입니다." : "배송이 시작된 주문만 구매확정할 수 있습니다." });
+  }
+  const result = await confirmOrder(order);
+  if (!result.ok) return res.status(result.already ? 409 : 500).json({ error: result.already ? "이미 구매확정된 주문입니다." : "구매확정에 실패했습니다." });
+  res.json({ ok: true, confirmedAt: result.confirmedAt, pointsCredited: result.pointsCredited });
 });
 
 /* ---------- 반품 · 교환 · 주문취소 신청 ----------
@@ -1966,11 +1972,17 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
        이미 "입금확인"으로 저장됨) — 이 분기는 무통장입금이 관리자 확인으로 처음 "입금확인"이
        되는 순간만 탄다. points_earned는 생성 시 0으로 저장돼 있었으므로 여기서 실제 적립액으로
        채워 넣는다(고객이 주문 내역에서 정확한 적립 예정 포인트를 보게 하기 위함). */
-    awardPoints(supabaseAdmin, saved.user_id, saved.total, saved.order_no)
-      .then((amount) => {
-        if (amount) supabaseAdmin.from("orders").update({ points_earned: amount }).eq("order_no", saved.order_no).then(() => {});
-      })
-      .catch((err) => console.error("[points] 적립 실패:", err.message));
+    /* 구매확정 기능이 켜져 있으면(043) 여기서는 "적립 예정액"만 기록하고 실제 적립은 구매확정 때 한다
+       (lib/purchaseConfirm.js — 결제 직후 적립 → 사용 → 반품하는 악용 방지). 꺼져 있으면 예전처럼 즉시 적립. */
+    (async () => {
+      if (await confirmationEnabled()) {
+        const amount = await previewEarnedPoints(supabaseAdmin, saved.user_id, saved.total);
+        if (amount) await supabaseAdmin.from("orders").update({ points_earned: amount }).eq("order_no", saved.order_no);
+        return;
+      }
+      const amount = await awardPoints(supabaseAdmin, saved.user_id, saved.total, saved.order_no);
+      if (amount) await supabaseAdmin.from("orders").update({ points_earned: amount }).eq("order_no", saved.order_no);
+    })().catch((err) => console.error("[points] 적립 실패:", err.message));
   }
   if (!prev?.tracking_no && saved.tracking_no) {
     sendCustomerShipped(saved).catch((err) => {
@@ -2050,7 +2062,8 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
     if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
       patch.shipped_at = new Date().toISOString();
     }
-    const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", orderNo, patch, ["shipped_at"]);
+    if (patch.status === "완료" && prev.status !== "완료") patch.delivered_at = new Date().toISOString(); // 배송완료 기록 → 7일 뒤 자동 구매확정
+    const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", orderNo, patch, ["shipped_at", "delivered_at"]);
     if (error || !saved) {
       results.push({ orderNo, ok: false, error: "저장에 실패했습니다." });
       continue;
@@ -2143,7 +2156,9 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
     patch.shipped_at = new Date().toISOString();
   }
-  const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", req.params.no, patch, [...ASSIGNEE_NOTE_OPTIONAL_COLUMNS, "shipped_at"]);
+  // 관리자가 직접 "완료"로 바꾸는 순간을 배송완료로 기록한다(배송조회 키가 없을 때의 기준) → 7일 뒤 자동 구매확정.
+  if (patch.status === "완료" && prev.status !== "완료") patch.delivered_at = new Date().toISOString();
+  const { data: saved, error } = await updateWithOptionalColumnFallback("orders", "order_no", req.params.no, patch, [...ASSIGNEE_NOTE_OPTIONAL_COLUMNS, "shipped_at", "delivered_at"]);
 
   if (error || !saved) return res.status(500).json({ error: "저장에 실패했습니다." });
 
@@ -2699,6 +2714,16 @@ async function closeExpiredVirtualAccounts() {
 
 cron.schedule("0 11 * * *", () => {
   sendReviewRequests().catch((err) => console.error("[review-request] 실행 실패:", err.message));
+}, { timezone: "Asia/Seoul" });
+
+/* 배송조회 자동화(SWEETTRACKER_API_KEY가 있을 때만) — 매시 15분, 배송완료면 주문 "완료" + delivered_at */
+cron.schedule("15 * * * *", () => {
+  checkDeliveries().catch((err) => console.error("[tracking] 실행 실패:", err.message));
+});
+
+/* 자동 구매확정 — 매일 03:40(KST), 배송완료 7일·출고 14일 지난 주문(반품·교환 처리 중 제외) 확정 + 적립금 지급 */
+cron.schedule("40 3 * * *", () => {
+  autoConfirmOrders().catch((err) => console.error("[purchase-confirm] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
 cron.schedule("30 * * * *", () => {
