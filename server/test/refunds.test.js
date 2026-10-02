@@ -73,7 +73,11 @@ test("두 번에 나눠 환불해도 합계가 정확히 맞는다(반올림 오
 
 test("남은 수량보다 많이 고르거나 아무것도 안 고르면 거절", () => {
   const prev = [{ lines: [{ index: 0, qty: 1 }], goods_amount: 1, points_restored: 0, refund_amount: 1 }];
-  assert.match(computeRefund(order(), prev, [{ index: 0, qty: 1 }], { kind: "return" }).error, /최대 0개/);
+  const over = computeRefund(order(), prev, [{ index: 0, qty: 1 }], { kind: "return" });
+  assert.match(over.error, /최대 0개/);
+  // 독일어 직원 화면에서도 번역되도록 번역 키·변수를 같이 내려준다
+  assert.equal(over.i18n.key, "'{name}'은(는) 최대 {n}개까지 환불할 수 있습니다.");
+  assert.equal(over.i18n.vars.n, 0);
   assert.match(computeRefund(order(), [], [], { kind: "return" }).error, /골라/);
   assert.match(computeRefund(order(), [], [{ index: 9, qty: 1 }], { kind: "return" }).error, /존재하지 않는/);
 });

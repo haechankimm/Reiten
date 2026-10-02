@@ -159,7 +159,7 @@
 
     if (res.status === 409 && body.code === "already_registered" && body.existingId) {
       btn.disabled = false;
-      if (!confirm(body.error)) return;
+      if (!confirm(serverMsg(body, t("이미 가입된 이메일입니다. 관리자로 승격할까요?")))) return;
       const promoted = await adminFetch(`/api/admin/members/${encodeURIComponent(body.existingId)}/promote`, { method: "PATCH" });
       if (!promoted) return;
       toast(t("관리자로 승격했습니다"));
@@ -170,7 +170,7 @@
 
     btn.disabled = false;
     if (!res.ok) {
-      toast(body.error || t("요청이 실패했습니다") + ` (${res.status})`);
+      toast(serverMsg(body, t("요청이 실패했습니다") + ` (${res.status})`));
       return;
     }
     toast(t("초대 메일을 보냈습니다"));

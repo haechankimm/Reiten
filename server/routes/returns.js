@@ -107,7 +107,7 @@ router.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
   const requestType = prev.request_type || "return";
   const allowed = RETURN_STATUSES_BY_TYPE[requestType] || RETURN_STATUSES_BY_TYPE.return;
   if (statusStr !== undefined && !allowed.includes(statusStr)) {
-    return res.status(400).json({ error: `이 신청 유형에서 쓸 수 없는 상태입니다(${allowed.join("·")}).` });
+    return res.status(400).json({ error: `이 신청 유형에서 쓸 수 없는 상태입니다(${allowed.join("·")}).`, i18n: { key: "이 신청 유형에서 쓸 수 없는 상태입니다({statuses}).", vars: { statuses: allowed.join("·") } } });
   }
   const becomesDone = statusStr === "완료" && prev.status !== "완료";
 

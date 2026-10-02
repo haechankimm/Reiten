@@ -24,8 +24,8 @@
     const r = await adminFetch("/api/admin/alerts/test", { method: "POST", body: "{}" });
     btn.disabled = false;
     if (!r) { el("alert-result").textContent = ""; return; }
-    const tg = r.telegram.ok ? t("텔레그램: 보냄") : t("텔레그램: 실패 — {e}", { e: r.telegram.error || "" });
-    const push = r.push && r.push.ok ? t("폰 푸시: {n}대에 보냄", { n: r.push.sent }) : t("폰 푸시: 실패 — {e}", { e: (r.push && r.push.error) || "" });
+    const tg = r.telegram.ok ? t("텔레그램: 보냄") : t("텔레그램: 실패 — {e}", { e: t(r.telegram.error || "") });
+    const push = r.push && r.push.ok ? t("폰 푸시: {n}대에 보냄", { n: r.push.sent }) : t("폰 푸시: 실패 — {e}", { e: t((r.push && r.push.error) || "") });
     el("alert-result").textContent = `${tg}\n${push}`;
     paintAlertPanel();
   });

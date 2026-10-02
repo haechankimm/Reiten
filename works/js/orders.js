@@ -307,7 +307,7 @@
     }
     if (!res.ok) {
       let message = "";
-      try { message = (await res.json()).error || ""; } catch (e) {}
+      try { message = serverMsg(await res.json(), ""); } catch (e) {}
       toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
       return;
     }
@@ -386,7 +386,7 @@
     const failed = result.results.filter((r) => !r.ok);
     el("ord-bulk-result").textContent = t("{ok}건 성공, {fail}건 실패", { ok: okCount, fail: failed.length });
     if (failed.length) {
-      toast(failed.map((r) => `${r.orderNo || "?"}: ${r.error}`).join("\n"));
+      toast(failed.map((r) => `${r.orderNo || "?"}: ${t(r.error || "")}`).join("\n"));
     } else {
       toast(t("일괄 처리를 완료했습니다"));
       el("ord-bulk-input").value = "";

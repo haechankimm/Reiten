@@ -70,7 +70,7 @@
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("사진 업로드에 실패했습니다"));
+        toast(serverMsg(body, t("사진 업로드에 실패했습니다")));
         return;
       }
       const { url } = await res.json();

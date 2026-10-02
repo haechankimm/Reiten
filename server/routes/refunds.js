@@ -66,7 +66,7 @@ router.post("/api/admin/refunds/preview", requireAdmin, async (req, res) => {
   }
   const { rows } = await loadPreviousRefunds(supabaseAdmin, order.order_no);
   const calc = computeRefund(order, rows, lines, { kind, fault, shippingDeduction, shippingFee: SITE.shipping.fee });
-  if (calc.error) return res.status(400).json({ error: calc.error });
+  if (calc.error) return res.status(400).json({ error: calc.error, i18n: calc.i18n });
   res.json({ ...calc, paymentMethod: order.payment_method || null, hasAccount: !!order.user_id, pointsEarned: Number(order.points_earned) || 0 });
 });
 
@@ -102,7 +102,7 @@ router.post("/api/admin/refunds", requireAdmin, async (req, res) => {
       logSystemError("refund_failed", { orderNo: order.order_no, error: result.cardError, source: refundKind });
       sendAdminRefundFailed({ orderNo: order.order_no, amount: null, error: result.cardError }).catch(() => {});
     }
-    return res.status(result.status || 500).json({ error: result.error });
+    return res.status(result.status || 500).json({ error: result.error, i18n: result.i18n });
   }
   const refund = result.refund;
 

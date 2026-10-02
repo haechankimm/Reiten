@@ -124,7 +124,7 @@ router.delete("/api/admin/colors/:key", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "삭제 가능 여부를 확인하지 못했습니다." });
   }
   if (inUse.length) {
-    return res.status(409).json({ error: `이 색상을 사용 중인 상품이 ${inUse.length}개 있어 삭제할 수 없습니다.` });
+    return res.status(409).json({ error: `이 색상을 사용 중인 상품이 ${inUse.length}개 있어 삭제할 수 없습니다.`, i18n: { key: "이 색상을 사용 중인 상품이 {n}개 있어 삭제할 수 없습니다.", vars: { n: inUse.length } } });
   }
 
   const { error } = await supabaseAdmin.from("product_colors").delete().eq("key", key);

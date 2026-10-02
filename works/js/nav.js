@@ -241,7 +241,15 @@
   /* 서버 오류 응답을 지금 언어(한국어/독일어)로 — 한국어 원문이 곧 사전 키라 t()로 바로 번역되고,
      숫자가 끼는 문구는 서버가 함께 주는 번역 키·변수(i18n)로 번역한다(고객 사이트 apiErrorText와 같은 규칙). */
   function serverMsg(body, fallback) {
-    if (body && body.i18n && typeof body.i18n.key === "string") return t(body.i18n.key, body.i18n.vars || {});
+    if (body && body.i18n && typeof body.i18n.key === "string") {
+      // 변수(권한 이름 "주문·배송", "조회" 등)도 사전에 있으면 같이 번역한다
+      const vars = {};
+      Object.keys(body.i18n.vars || {}).forEach((k) => {
+        const v = body.i18n.vars[k];
+        vars[k] = typeof v === "string" ? t(v) : v;
+      });
+      return t(body.i18n.key, vars);
+    }
     if (body && typeof body.error === "string" && body.error) return t(body.error);
     return fallback;
   }

@@ -30,10 +30,12 @@ async function resolveCoupon(db, rawCode, { rawItems, items, subtotal }) {
     throw Object.assign(new Error("기간이 만료된 쿠폰입니다."), { status: 400 });
   }
   if (subtotal < coupon.min_subtotal) {
-    throw Object.assign(
-      new Error(`이 쿠폰은 ${coupon.min_subtotal.toLocaleString("ko-KR")}원 이상 주문부터 사용할 수 있습니다.`),
-      { status: 400 }
-    );
+    const amount = coupon.min_subtotal.toLocaleString("ko-KR");
+    // i18n: 금액이 들어가는 문구라 고객 화면이 번역할 수 있게 키·변수를 같이 넘긴다(assets/js/app.js apiErrorText)
+    throw Object.assign(new Error(`이 쿠폰은 ${amount}원 이상 주문부터 사용할 수 있습니다.`), {
+      status: 400,
+      i18n: { key: "이 쿠폰은 {amount}원 이상 주문부터 사용할 수 있습니다.", vars: { amount } },
+    });
   }
   if (coupon.usage_limit != null) {
     /* 동시에 마지막 1장을 두 주문이 같이 쓰면 usage_limit을 살짝 넘길 수 있는 이론적 여지가 있다

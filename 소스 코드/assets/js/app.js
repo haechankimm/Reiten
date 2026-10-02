@@ -587,11 +587,20 @@ function isProductFullyOutOfStock(p) {
   );
 }
 
+/* 서버가 보낸 문구 변수(예: 권한 이름 "주문·배송")도 사전에 있으면 같이 번역한다 — 없으면 그대로 */
+function translatedVars(vars) {
+  const out = {};
+  Object.keys(vars || {}).forEach((k) => {
+    out[k] = typeof vars[k] === "string" ? t(vars[k]) : vars[k];
+  });
+  return out;
+}
+
 /* 서버(API) 오류 응답을 지금 언어로 바꿔 보여준다 — 서버는 한국어 문구(error)와, 숫자 등이 끼는 문구는
    번역용 키·변수(i18n: { key, vars })를 함께 내려준다. 한국어 원문이 곧 사전 키라(i18n.js) t()로 바로
    번역되고, 사전에 없으면 한국어 원문 그대로 나온다. 영어·일본어 손님에게 한국어 오류만 뜨던 문제 수정(2026-10-02). */
 function apiErrorText(body, fallback) {
-  if (body && body.i18n && typeof body.i18n.key === "string") return t(body.i18n.key, body.i18n.vars || {});
+  if (body && body.i18n && typeof body.i18n.key === "string") return t(body.i18n.key, translatedVars(body.i18n.vars));
   if (body && typeof body.error === "string" && body.error) return t(body.error);
   return fallback;
 }

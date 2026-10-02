@@ -545,7 +545,8 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   }
   const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
   if (missing.length) {
-    return { error: { status: 400, body: { error: `필수 항목이 비었습니다: ${missing.join(", ")}` } } };
+    const fields = missing.join(", ");
+    return { error: { status: 400, body: { error: `필수 항목이 비었습니다: ${fields}`, i18n: { key: "필수 항목이 비었습니다: {fields}", vars: { fields } } } } };
   }
   // 차단된 회원이 로그아웃하고 같은 이메일로 비회원 주문하는 길도 막는다(lib/bans.js).
   if (await isEmailBanned(customer.email)) {
@@ -570,7 +571,7 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   try {
     coupon = await resolveCoupon(supabaseAdmin, couponCode, { rawItems, items, subtotal });
   } catch (e) {
-    return { error: { status: e.status || 400, body: { error: e.message } } };
+    return { error: { status: e.status || 400, body: { error: e.message, i18n: e.i18n } } };
   }
 
   /* 배송비까지 포인트로 낼 수는 없으므로 (상품 합계 - 쿠폰 할인액)을 상한으로 clamp한다
@@ -2074,7 +2075,7 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
   const items = Array.isArray(req.body?.orders) ? req.body.orders : [];
   if (!items.length) return res.status(400).json({ error: "orders가 필요합니다." });
   if (items.length > ORDER_BULK_MAX) {
-    return res.status(400).json({ error: `한 번에 최대 ${ORDER_BULK_MAX}건까지 처리할 수 있습니다.` });
+    return res.status(400).json({ error: `한 번에 최대 ${ORDER_BULK_MAX}건까지 처리할 수 있습니다.`, i18n: { key: "한 번에 최대 {n}건까지 처리할 수 있습니다.", vars: { n: ORDER_BULK_MAX } } });
   }
 
   const results = [];
@@ -2590,7 +2591,7 @@ app.post("/api/coupons/validate", couponLimiter, async (req, res) => {
     const coupon = await resolveCoupon(supabaseAdmin, code, { rawItems, items, subtotal });
     res.json(coupon);
   } catch (e) {
-    res.status(e.status || 400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message, i18n: e.i18n });
   }
 });
 

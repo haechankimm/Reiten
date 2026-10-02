@@ -57,7 +57,10 @@ function computeRefund(order, previousRefunds, selection, opts = {}) {
   for (const [index, qty] of merged) {
     const it = items[index];
     const remaining = (Number(it.qty) || 0) - (already.get(index) || 0);
-    if (qty > remaining) return { error: `'${it.name}'은(는) 최대 ${Math.max(0, remaining)}개까지 환불할 수 있습니다.` };
+    if (qty > remaining) {
+      const n = Math.max(0, remaining);
+      return { error: `'${it.name}'은(는) 최대 ${n}개까지 환불할 수 있습니다.`, i18n: { key: "'{name}'은(는) 최대 {n}개까지 환불할 수 있습니다.", vars: { name: it.name, n } } };
+    }
     const unit = Number(it.unit) || (Number(it.sum) || 0) / Math.max(1, Number(it.qty) || 1);
     lines.push({
       index, qty, unit, amount: Math.round(unit * qty),
@@ -136,13 +139,16 @@ async function executeRefund(deps, params) {
 
   const { rows: previousRefunds, tableMissing } = await loadPreviousRefunds(db, order.order_no);
   const calc = computeRefund(order, previousRefunds, selection, { kind, fault, shippingDeduction, shippingFee });
-  if (calc.error) return { ok: false, status: 400, error: calc.error };
+  if (calc.error) return { ok: false, status: 400, error: calc.error, i18n: calc.i18n };
 
   let refundCash = calc.refundCash;
   if (amountOverride !== undefined && amountOverride !== null && amountOverride !== "") {
     const v = Math.floor(Number(amountOverride));
     if (!Number.isFinite(v) || v < 0) return { ok: false, status: 400, error: "환불 금액이 올바르지 않습니다." };
-    if (v > calc.maxRefundable) return { ok: false, status: 400, error: `환불 가능한 최대 금액(${calc.maxRefundable.toLocaleString("ko-KR")}원)을 넘었습니다.` };
+    if (v > calc.maxRefundable) {
+      const amount = calc.maxRefundable.toLocaleString("ko-KR");
+      return { ok: false, status: 400, error: `환불 가능한 최대 금액(${amount}원)을 넘었습니다.`, i18n: { key: "환불 가능한 최대 금액({amount}원)을 넘었습니다.", vars: { amount } } };
+    }
     refundCash = v;
   }
 
@@ -161,7 +167,8 @@ async function executeRefund(deps, params) {
         });
         paymentCancelled = true;
       } catch (e) {
-        return { ok: false, status: 502, error: `카드 환불에 실패했습니다: ${e.message || "PG 오류"}`, method, cardError: e.message || String(e) };
+        const reason = e.message || "PG 오류";
+        return { ok: false, status: 502, error: `카드 환불에 실패했습니다: ${reason}`, i18n: { key: "카드 환불에 실패했습니다: {reason}", vars: { reason } }, method, cardError: e.message || String(e) };
       }
     } else if (order.payment_method === "virtual_account") {
       method = "virtual_account_manual";

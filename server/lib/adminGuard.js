@@ -243,7 +243,12 @@ async function adminGuard(req, res, next) {
     if (LEVEL_RANK[perms[area]] < LEVEL_RANK[requiredLevel(req.method)]) {
       const label = AREAS[area].label;
       const need = requiredLevel(req.method) === "view" ? "조회" : "수정";
-      return res.status(403).json({ error: `'${label}' ${need} 권한이 없습니다. 마스터 관리자에게 문의하세요.`, code: "FORBIDDEN_AREA", area });
+      return res.status(403).json({
+        error: `'${label}' ${need} 권한이 없습니다. 마스터 관리자에게 문의하세요.`,
+        i18n: { key: "'{label}' {need} 권한이 없습니다. 마스터 관리자에게 문의하세요.", vars: { label, need } },
+        code: "FORBIDDEN_AREA",
+        area,
+      });
     }
     next();
   } catch (err) {
