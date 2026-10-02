@@ -1434,6 +1434,18 @@ const I18N = {
   ["사유를 입력해 주세요", {"en": "Please enter a reason", "ja": "理由を入力してください"}]
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* 2026-10-02(2차) 등급 배지·기간 일정 번역 */
+[  ["메인 관리자", {"de": "Haupt-Admin"}],
+  ["운영자", {"de": "Betreiber"}],
+  ["일반회원", {"de": "Mitglied"}],
+  ["권한 설정", {"de": "Rechte festlegen"}],
+  ["시작일", {"de": "Startdatum"}],
+  ["종료일 (하루면 비워두기)", {"de": "Enddatum (leer = 1 Tag)"}],
+  ["종료일은 시작일보다 같거나 늦어야 합니다.", {"de": "Das Enddatum muss am oder nach dem Startdatum liegen."}],
+  ["메인 관리자 {m}명 · 운영자 {o}명 · 일반회원 {n}명", {"de": "Haupt-Admin {m} · Betreiber {o} · Mitglieder {n}"}],
+  ["일반회원 {n}명", {"de": "{n} Mitglieder"}]
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /* 2026-10-02 회원 탈퇴·보기 전용 번역 */
 [  ["보기 전용 — 이 화면은 조회만 할 수 있습니다. 수정이 필요하면 마스터 관리자에게 권한을 요청하세요.", {"de": "Nur Ansicht – dieser Bereich kann nur angesehen werden. Für Änderungen bitte beim Master-Admin Rechte anfragen."}],
   ["회원 탈퇴", {"en": "Delete account", "ja": "退会"}],

@@ -11,7 +11,7 @@
    비어 보이면 오히려 혼란스러움. */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
-const { requireAdmin, requireMasterAdmin } = require("../lib/auth");
+const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 
@@ -32,7 +32,12 @@ router.get("/api/admin/admins", requireAdmin, async (req, res) => {
      프로필에 이메일을 비정규화해 저장하는 방식으로 바꿔야 함). */
   const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map((userList?.users || []).map((u) => [u.id, u.email || ""]));
-  const items = profiles.map((p) => ({ id: p.id, name: p.name || "", email: emailById.get(p.id) || "", createdAt: p.created_at }));
+  const items = profiles
+    .map((p) => {
+      const email = emailById.get(p.id) || "";
+      return { id: p.id, name: p.name || "", email, createdAt: p.created_at, isMaster: email.toLowerCase() === MASTER_ADMIN_EMAIL };
+    })
+    .sort((a, b) => Number(b.isMaster) - Number(a.isMaster));
   res.json({ items });
 });
 

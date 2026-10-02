@@ -27,6 +27,7 @@
 
 <div class="shell">
   <aside class="sidebar" id="sidebar" hidden>
+    <div class="sidebar-me" id="sidebar-me" hidden></div>
     <button type="button" class="nav-item nav-item--home is-active" data-tab="home">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h5v-6h2v6h5v-9"/></svg>
       <span data-i18n="오늘">오늘</span>
@@ -178,7 +179,7 @@
         </div>
         <span class="admin-chip" id="admin-chip" hidden>
           <span class="admin-avatar" id="admin-avatar"></span>
-          <span><span class="admin-name" id="admin-name"></span><span class="admin-role" data-i18n=" · 관리자"> · 관리자</span></span>
+          <span><span class="admin-name" id="admin-name"></span><span class="admin-role" id="admin-role-text"> · 관리자</span></span>
         </span>
         <div class="seg" id="admin-lang-switch">
           <button type="button" data-admin-lang="ko" aria-pressed="true">KO</button>
@@ -792,8 +793,12 @@
                 <input id="cal-f-title" maxlength="100">
               </div>
               <div class="field" style="margin:0">
-                <label for="cal-f-date" data-i18n="날짜">날짜</label>
+                <label for="cal-f-date" data-i18n="시작일">시작일</label>
                 <input id="cal-f-date" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="cal-f-end" data-i18n="종료일 (하루면 비워두기)">종료일 (하루면 비워두기)</label>
+                <input id="cal-f-end" type="date">
               </div>
               <div class="field" style="margin:0">
                 <label data-i18n="색상">색상</label>

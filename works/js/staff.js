@@ -23,7 +23,7 @@
       <div class="panel" data-id="${esc(s.id)}">
         <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;justify-content:space-between">
           <div style="min-width:0">
-            <b>${esc(s.name || s.email)}</b>
+            <b>${esc(s.name || s.email)}</b> ${roleBadgeHTML("operator")}
             <div class="small tnum" style="color:var(--text-muted)">${esc(s.email)}</div>
             <div style="margin-top:4px">${badges}</div>
           </div>

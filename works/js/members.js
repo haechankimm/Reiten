@@ -10,14 +10,15 @@
      행에는 버튼을 아예 안 붙인다 — 눌러도 서버가 거부할 버튼을 보여주지 않기 위함. */
   function adminMemberRowHTML(m) {
     return `
-      <div class="panel member-admin-row" data-id="${esc(m.id)}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div class="panel member-admin-row member-row--${m.isMaster ? "main" : "op"}" data-id="${esc(m.id)}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
           <b>${esc(m.email)}</b>${m.name ? ` <span class="small" style="color:var(--text-muted)">(${esc(m.name)})</span>` : ""}
-          <span class="status-chip st-admin" style="margin-left:6px">${esc(t("관리자"))}</span>
+          <span style="margin-left:6px">${roleBadgeHTML(m.isMaster ? "main" : "operator")}</span>
           <div class="small tnum" style="color:var(--text-muted);margin-top:2px">
             ${esc(t("가입일"))} ${fmtDate(m.createdAt)}${m.phone ? ` · ${esc(m.phone)}` : ""}
           </div>
         </div>
+        ${!m.isMaster && isMasterAdmin ? `<button type="button" class="btn btn--sm btn--ghost member-open-staff">${esc(t("권한 설정"))}</button>` : ""}
       </div>`;
   }
 
@@ -27,6 +28,7 @@
       <div class="panel" data-id="${esc(m.id)}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
           <b>${esc(m.email)}</b>${m.name ? ` <span class="small" style="color:var(--text-muted)">(${esc(m.name)})</span>` : ""}
+          <span style="margin-left:6px">${roleBadgeHTML("member")}</span>
           ${m.banned ? `<span class="status-chip st-overdue" style="margin-left:6px">${esc(t("차단됨"))}</span>` : ""}
           <div class="small tnum" style="color:var(--text-muted);margin-top:2px">
             ${esc(t("가입일"))} ${fmtDate(m.createdAt)} ·
@@ -46,13 +48,19 @@
   }
 
   function renderAdminMembers() {
-    el("members-summary").textContent = t("총 {n}명", { n: membersState.total });
+    const admins = membersState.adminItems || [];
+    el("members-summary").textContent = admins.length
+      ? t("메인 관리자 {m}명 · 운영자 {o}명 · 일반회원 {n}명", { m: admins.filter((a) => a.isMaster).length, o: admins.filter((a) => !a.isMaster).length, n: membersState.total })
+      : t("일반회원 {n}명", { n: membersState.total });
     const hasMore = membersState.items.length < membersState.total;
     const adminRows = (membersState.adminItems || []).map(adminMemberRowHTML).join("");
     const customerRows = membersState.items.length
       ? membersState.items.map(memberRowHTML).join("") + loadMoreHTML(hasMore, "admin-members-more")
       : `<p class="small">${esc(t("조건에 맞는 회원이 없습니다"))}</p>`;
     el("admin-members-list").innerHTML = adminRows + customerRows;
+    el("admin-members-list").querySelectorAll(".member-open-staff").forEach((btn) =>
+      btn.addEventListener("click", () => { goToTab("staff"); paintAdminStaff(); })
+    );
 
     el("admin-members-list").querySelectorAll(".member-view-orders").forEach((btn) =>
       btn.addEventListener("click", () => {

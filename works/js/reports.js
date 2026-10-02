@@ -244,6 +244,7 @@
       g.hidden = !g.querySelector(".nav-item[data-tab]:not([hidden])");
     });
     applyReadOnly();
+    paintMyRole(profile);
 
     // "오늘" 탭은 로그인 직후 클릭 없이 바로 열리므로, 사이드바 클릭에 묻어가는 다른 탭들과
     // 달리 여기서 따로 한 번 기록해야 실제 조회 빈도가 통계에서 누락되지 않는다.

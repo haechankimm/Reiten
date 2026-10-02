@@ -240,3 +240,29 @@
       new MutationObserver(lock).observe(document.body, { childList: true, subtree: true });
     }
   }
+
+
+  /* ---------- 등급 배지: 메인 관리자 / 운영자 / 일반회원 ---------- */
+  const ROLE_META = {
+    main: { label: "메인 관리자", cls: "role-main", icon: "★ " },
+    operator: { label: "운영자", cls: "role-op", icon: "" },
+    member: { label: "일반회원", cls: "role-member", icon: "" },
+  };
+  function roleBadgeHTML(kind) {
+    const m = ROLE_META[kind] || ROLE_META.member;
+    return `<span class="role-badge ${m.cls}">${m.icon}${esc(t(m.label))}</span>`;
+  }
+
+  /* 사이드바 맨 위 "내 등급" 카드 + 상단 이름 옆 등급 표시 */
+  function paintMyRole(profile) {
+    const kind = adminMe && adminMe.isMaster ? "main" : "operator";
+    const name = (profile && (profile.name || profile.email)) || "";
+    const box = el("sidebar-me");
+    if (box) {
+      box.innerHTML = `<div class="sidebar-me-name">${esc(name)}</div>${roleBadgeHTML(kind)}`;
+      box.classList.toggle("sidebar-me--main", kind === "main");
+      box.hidden = false;
+    }
+    const roleText = el("admin-role-text");
+    if (roleText) roleText.textContent = " · " + t(ROLE_META[kind].label);
+  }

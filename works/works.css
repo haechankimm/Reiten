@@ -511,6 +511,19 @@
     .topbar-right { gap: 4px; }
   }
 
+  /* 등급 배지 — 메인 관리자(금색) / 운영자(포인트색) / 일반회원(회색) */
+  .role-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: .01em; vertical-align: middle; white-space: nowrap; }
+  .role-main { color: #8a6400; background: rgba(214, 167, 32, .18); border: 1px solid rgba(214, 167, 32, .55); }
+  :root[data-theme="dark"] .role-main { color: #f0c64b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .role-main { color: #f0c64b; } }
+  .role-op { color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; }
+  .role-member { color: var(--text-muted); background: var(--bg-surface-2); border: 1px solid var(--border); }
+  .member-row--main { border-left: 3px solid rgba(214, 167, 32, .8); }
+  .member-row--op { border-left: 3px solid var(--accent); }
+  .sidebar-me { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg-surface-2); border: 1px solid var(--border); display: grid; gap: 6px; justify-items: start; }
+  .sidebar-me--main { border-color: rgba(214, 167, 32, .55); }
+  .sidebar-me-name { font-weight: 700; font-size: 12.5px; color: var(--text-primary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* "보기만" 권한 탭 상단 안내 */
   .ro-banner { margin: 0 0 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface-2); color: var(--text-secondary); font-size: 12.5px; }
 
@@ -541,6 +554,11 @@
     font-size: 10px; font-weight: 600; color: #fff; padding: 1px 5px; border-radius: 4px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  #cal-today, #cal-prev, #cal-next { white-space: nowrap; }
+  /* 기간 일정 — 이어지는 날은 모서리를 펴서 막대처럼 */
+  .cal-pill--range { border-radius: 0; margin: 0 -4px; padding-left: 9px; }
+  .cal-pill--range.is-start { border-top-left-radius: 4px; border-bottom-left-radius: 4px; margin-left: 0; padding-left: 5px; }
+  .cal-pill--range.is-end { border-top-right-radius: 4px; border-bottom-right-radius: 4px; margin-right: 0; }
   .cal-pill-more { font-size: 10px; color: var(--text-muted); padding-left: 2px; }
   .cal-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
   .cal-color-picker { display: flex; gap: 8px; padding-top: 4px; }

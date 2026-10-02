@@ -68,6 +68,7 @@ async function loadMemberRows(roles, q) {
       emailConfirmed: !!(u && u.email_confirmed_at),
       lastSignInAt: (u && u.last_sign_in_at) || null,
       banned: !!(u && u.banned_until && new Date(u.banned_until) > new Date()),
+      isMaster: p.role === "admin" && ((u && u.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL,
     };
   });
 
@@ -99,7 +100,7 @@ router.get("/api/admin/members", requireAdmin, async (req, res) => {
   const items = customers.slice(from, to + 1);
 
   const response = { items, page, pageSize, total };
-  if (master) response.adminItems = allRows.filter((r) => r.role === "admin");
+  if (master) response.adminItems = allRows.filter((r) => r.role === "admin").sort((a, b) => Number(b.isMaster) - Number(a.isMaster));
   res.json(response);
 });
 

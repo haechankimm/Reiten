@@ -29,11 +29,13 @@
     ).join("");
   }
 
-  function calOpenForm({ id = null, date = calState.selectedDate, title = "", color = "blue", memo = "" } = {}) {
+  function calOpenForm({ id = null, date = calState.selectedDate, endDate = "", title = "", color = "blue", memo = "" } = {}) {
     calState.editingId = id;
     el("cal-form-panel").hidden = false;
     el("cal-f-title").value = title;
     el("cal-f-date").value = date;
+    el("cal-f-end").value = endDate && endDate !== date ? endDate : "";
+    el("cal-f-end").min = date;
     el("cal-f-memo").value = memo;
     el("cal-f-color").innerHTML = calColorPickerHTML(color);
     el("cal-f-color").dataset.value = color;
@@ -55,25 +57,32 @@
   el("cal-new").addEventListener("click", () => calOpenForm({ date: calState.selectedDate }));
   el("cal-add-for-day").addEventListener("click", () => calOpenForm({ date: calState.selectedDate }));
   el("cal-f-cancel").addEventListener("click", calCloseForm);
+  // 시작일을 바꾸면 종료일이 그보다 앞설 수 없게
+  el("cal-f-date").addEventListener("change", () => {
+    el("cal-f-end").min = el("cal-f-date").value;
+    if (el("cal-f-end").value && el("cal-f-end").value < el("cal-f-date").value) el("cal-f-end").value = "";
+  });
 
   el("cal-f-save").addEventListener("click", async () => {
     const title = el("cal-f-title").value.trim();
     const date = el("cal-f-date").value;
+    const endDate = el("cal-f-end").value || "";
     const color = el("cal-f-color").dataset.value || "blue";
     const memo = el("cal-f-memo").value.trim();
     if (!title) { toast(t("제목을 입력해 주세요.")); return; }
     if (!date) { toast(t("날짜를 선택해 주세요.")); return; }
+    if (endDate && endDate < date) { toast(t("종료일은 시작일보다 같거나 늦어야 합니다.")); return; }
 
     const btn = el("cal-f-save");
     btn.disabled = true;
     const result = calState.editingId
       ? await adminFetch(`/api/admin/calendar-events/${encodeURIComponent(calState.editingId)}`, {
           method: "PATCH",
-          body: JSON.stringify({ title, date, color, memo }),
+          body: JSON.stringify({ title, date, endDate, color, memo }),
         })
       : await adminFetch("/api/admin/calendar-events", {
           method: "POST",
-          body: JSON.stringify({ title, date, color, memo }),
+          body: JSON.stringify({ title, date, endDate, color, memo }),
         });
     btn.disabled = false;
     if (!result) return;
@@ -93,8 +102,14 @@
     await calLoadMonth();
   });
 
+  // 기간 일정은 시작일~종료일 사이 모든 날에 걸쳐 보인다
   function calEventsOnDate(date) {
-    return calState.events.filter((e) => e.date === date);
+    return calState.events.filter((e) => e.date <= date && date <= (e.endDate || e.date));
+  }
+  function calRangeLabel(e) {
+    if (!e.endDate || e.endDate === e.date) return "";
+    const f = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+    return `${f(e.date)} ~ ${f(e.endDate)}`;
   }
 
   function calDayEventRowHTML(e) {
@@ -102,7 +117,7 @@
       <div class="panel" data-id="${esc(e.id)}" style="padding:8px 12px;display:flex;align-items:center;gap:10px;cursor:pointer" tabindex="0">
         <span class="cal-dot" style="background:${CAL_COLOR_VAR[e.color] || CAL_COLOR_VAR.blue}"></span>
         <div style="flex:1;min-width:0">
-          <b>${esc(e.title)}</b>
+          <b>${esc(e.title)}</b>${calRangeLabel(e) ? ` <span class="small tnum" style="color:var(--text-muted)">${esc(calRangeLabel(e))}</span>` : ""}
           ${e.memo ? `<div class="small" style="color:var(--text-muted);margin-top:2px">${esc(e.memo)}</div>` : ""}
         </div>
       </div>`;
@@ -150,7 +165,14 @@
         <button type="button" class="cal-cell${date === today ? " cal-cell--today" : ""}${date === calState.selectedDate ? " cal-cell--selected" : ""}" data-date="${date}">
           <span class="cal-cell-num">${day}</span>
           <span class="cal-cell-events">
-            ${shown.map((e) => `<span class="cal-pill" style="background:${CAL_COLOR_VAR[e.color] || CAL_COLOR_VAR.blue}">${esc(e.title)}</span>`).join("")}
+            ${shown.map((e) => {
+              const multi = e.endDate && e.endDate !== e.date;
+              const isStart = date === e.date;
+              const isEnd = date === e.endDate;
+              const showTitle = !multi || isStart || new Date(date + "T00:00:00").getDay() === 0 || date.endsWith("-01");
+              const cls = multi ? ` cal-pill--range${isStart ? " is-start" : ""}${isEnd ? " is-end" : ""}` : "";
+              return `<span class="cal-pill${cls}" style="background:${CAL_COLOR_VAR[e.color] || CAL_COLOR_VAR.blue}">${showTitle ? esc(e.title) : "&nbsp;"}</span>`;
+            }).join("")}
             ${more > 0 ? `<span class="cal-pill-more">+${more}</span>` : ""}
           </span>
         </button>`;
