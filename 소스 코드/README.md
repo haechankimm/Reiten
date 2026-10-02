@@ -35,7 +35,41 @@
 > "지금 사이트에 뭐가 있는지"를 보는 문서입니다 — 고객이 체감하는 기능이나 Works 화면에 새
 > 메뉴/버튼이 추가되면 코드 용어 없이 그 문서에도 한 줄 추가할 것.
 
-### 🔜 다음 세션이 가장 먼저 할 일 (우선순위 순)
+### 📌 현재 상태 요약 (2026-10-02 기준 — 다음 세션은 여기부터)
+
+> 아래 "(지난 기록) 다음 세션이 가장 먼저 할 일"은 2026-08~09 작업 목록으로 대부분 끝났다. 지금 기준으로 남은 일만 여기 모았다.
+
+**🔴 바로 처리 (운영에 영향)**
+1. **운영 메일이 여전히 실패 중** — 10/1 09:00 월간 정산 리포트가 "You can only send testing emails to your own email address
+   (sovagsovag12570202@gmail.com)"로 실패(`system_error_log`). 이 에러는 **API 키 주인인 Resend 계정(sovag…)에 인증된 도메인이
+   하나도 없을 때** 난다 → reiten.kr은 다른 Resend 계정에서 인증된 것으로 보임. 조치: ① reiten.kr이 Verified인 Resend 계정에서
+   API 키를 새로 만들어 Render `RESEND_API_KEY`와 Supabase SMTP Password를 둘 다 교체, 또는 ② sovag 계정에서 reiten.kr 도메인을
+   추가·인증(후이즈 DNS에 Resend가 주는 레코드 등록). Supabase 인증 메일(가입 확인·비밀번호 재설정)도 같은 키를 쓰면 같이 실패한다.
+2. **텔레그램 긴급 알림 미연결** — 봇(@Reiten_alert_bot)이 받은 메시지 0건 → 텔레그램에서 봇에 /start → Works 정보 탭 "채팅 ID 찾기" →
+   Render `TELEGRAM_CHAT_ID`. 대화에 노출된 봇 토큰은 BotFather `/revoke`로 재발급 후 Render `TELEGRAM_BOT_TOKEN` 교체.
+3. **카드결제 개통** — 카드사 심사 완료. NHN KCP가 요구한 **SGI 서울보증 "이행(지급)보증보험"**(피보험자 NHN KCP) 가입·증권 제출 →
+   개통 후 본인 카드로 실결제 1건(결제→주문생성→웹훅→취소·환불)까지 확인.
+
+**🟠 Works에서 직접 정리할 데이터**
+4. 리플렉트 하트 후디(풀오버)에 "지퍼 참 커스텀 가능"이 켜져 있어 상품 페이지에 "이 집업은…" 문구가 뜨고 Zip Studio 베이스로 쓰임 → 해제.
+   (해제하면 판매 중 집업이 없어 Zip Studio는 "준비 중" 안내가 뜸 — 흰 화면 버그는 수정됨)
+5. 상품 사진에 컬러 지정(하트 후디 첫 사진이 옐로우, 티셔츠 블랙·스카이 미지정) / 티셔츠 실측표 빈칸·이름 오타(리플랙티브) /
+   룩북 8칸 사진 없음(채우거나 숨김) / 상품을 한 번씩 저장하면 DB에 남은 옛 수동 품절값(`sold_out`)이 비워짐(화면엔 이미 영향 없음).
+
+**🟡 실제 계정으로 한 번씩 확인 (로컬·가짜 데이터로만 검증됨)**
+6. 직원 계정(alinaschool@web.de) 로그인 → PIN 설정 → 권한 제한·"보기 전용" 화면 / 고객 셀프 탈퇴(테스트 계정) / 아이폰 홈 화면
+   앱 푸시(테스트 알림 버튼) / 리뷰 요청 메일(배송중 전환 5일 뒤, 메일 수정 후) / 컬러별 사진·상세 영상 실제 업로드.
+
+**🟢 확인·결정 필요**
+7. Supabase 백업: Database → Backups 확인(Free 플랜이면 자동 백업 없음 → Pro 업그레이드 또는 주문 포함 자동 백업 기능 추가).
+8. Render 리전: 서버 왕복 0.4~1.0초 → 지역 확인 후 Singapore 이전 검토(새 서비스 생성·도메인 이동·옛 서비스 즉시 Suspend — 크론 중복 주의).
+9. 간편결제(네이버페이·카카오페이): 현재 PG(NHN KCP)에 간편결제 추가 신청 → 승인되면 결제창 옵션만 추가.
+
+**상태 메모**: 마이그레이션 `001`~`042` 전부 실행 확인(039~042는 2026-10-02 REST로 컬럼 직접 확인). `npm audit` 3 moderate만 남음
+(`exceljs`·`node-cron` 내부 `uuid` — 메이저 업그레이드 필요, 실제 영향 경로 없음). Express `qs` 취약점은 `npm audit fix`로 4.22.3이 되며 해결.
+서버 테스트 187건.
+
+### (지난 기록) 다음 세션이 가장 먼저 할 일 (2026-08~09, 대부분 완료)
 
 > 2026-08-29 세션(6차, 최신)에서 카카오 로그인, Works 모바일 UI 수정, 정산 자동화,
 > GA4·채널톡(CS 채팅)·네이버 서치어드바이저 연동, Works 알림센터·사이드바 배지, 주문 취소
@@ -350,10 +384,10 @@
 | `036_assignee_and_notes.sql` | 담당자 지정·내부 메모 — `orders`/`return_requests`/`qna`에 `assigned_to`·`internal_note` 컬럼 | ✅ 사용자가 직접 실행 완료로 보고(2026-09-18) |
 | `037_handoff_notes_and_calendar.sql` | 인수인계 노트 `admin_handoff_notes` 테이블 + 사내 캘린더 `calendar_events` 테이블 | ✅ 실행 완료 + RLS 보정 완료(2026-09-18) — 마이그레이션 실행 시 이 세션의 실수로 빠져 있던 `enable row level security`를, 사용자가 `alter table admin_handoff_notes enable row level security;`·`alter table calendar_events enable row level security;`를 직접 실행해 확정(`Success. No rows returned` 확인) |
 | `038_admin_usage_log.sql` | Works 탭·기능 사용 통계 `admin_usage_log` 테이블 | ✅ 실행 완료, RLS 포함(2026-09-18) — Supabase가 띄운 "RLS 없이 생성" 경고에서 "Run and enable RLS"로 정상 실행 |
-| `039_abandoned_cart_reminder.sql` | 결제 이탈 리마인드 메일용 `pending_payments.reminder_sent_at` | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — 리마인드만 꺼짐) |
-| `040_admin_pin_and_permissions.sql` | 관리자 PIN(`admin_pins`) + 직원별 영역 권한(`admin_permissions`), RLS 포함 | ⚠️ 실행 필요(2026-09-24 추가, 미실행이어도 사이트 정상 — PIN·권한 제한만 꺼짐) |
-| `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ⚠️ 실행 필요(2026-09-26 추가, 미실행이어도 사이트 정상 — 상세 콘텐츠·모델 정보·리뷰 요청만 꺼짐) |
-| `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ⚠️ 실행 필요(2026-10-02 추가, 미실행이어도 기간 일정은 하루당 한 건으로 나눠 저장됨 — 최대 2개월) |
+| `039_abandoned_cart_reminder.sql` | 결제 이탈 리마인드 메일용 `pending_payments.reminder_sent_at` | ✅ 실행 확인(2026-10-02, `reminder_sent_at` 컬럼 확인) |
+| `040_admin_pin_and_permissions.sql` | 관리자 PIN(`admin_pins`) + 직원별 영역 권한(`admin_permissions`), RLS 포함 | ✅ 실행 확인(2026-10-02, 테이블 확인 — 마스터 PIN 설정됨) |
+| `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ✅ 실행 확인(2026-10-02, `products.media` 컬럼 확인) |
+| `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 가장 급한 항목들은 위 "다음 세션이 가장 먼저 할 일"에 이미 뽑아뒀습니다. 나머지는 그룹별로 정리했습니다.
@@ -493,6 +527,15 @@
 - **2026-09-25 디자인 시안(적용 전)**: `디자인 시안/construction-grid-home.html` — "construction grids" 레퍼런스
   (12열 격자선·교차 십자표식·거대 타이트 타이포·아웃라인 글자·모노 캡션)를 홈에 입힌 단독 시안. 실제 사이트 파일은
   건드리지 않았고, 승인되면 그때 `style.css`/각 페이지에 이식.
+
+**2026-10-02(3차) — 3차 전체 점검 + 운영자 화면 등급 숨김 + Zip Studio 흰 화면 버그 + 의존성 보안 업데이트.**
+- 운영자(마스터 아님)에게는 등급이 "운영자/일반회원"만 보이게 — `/api/admin/admins`가 마스터가 아닌 요청에는 `isMaster`를 전부 false로
+  내려주고 화면도 마스터일 때만 "메인 관리자" 배지(회원 목록의 관리자 행·직원 탭은 원래 마스터 전용).
+- **Zip Studio 흰 화면**: "지퍼 참 커스텀 가능" 상품이 하나도 없으면 `state.base`가 undefined라 페이지가 죽던 것 → "준비 중" 안내.
+- `npm audit fix`(비파괴): `@grpc/grpc-js`·`brace-expansion`(high) 등 6건 해결, 9→3 moderate. ⚠️ `npm audit fix --omit=dev`는 로컬
+  node_modules에서 개발용 패키지(supertest)를 지우므로 실행 후 `npm install`로 복구할 것.
+- 점검: 고객 18개 페이지·API·관리자 API 401·잘못된 입력 처리·Works 전 패널 375px 정상. 콘솔의 Datadog(`browser-intake-datadoghq.com`)
+  CSP 차단은 채널톡 위젯 내부 모니터링 요청이라 무시(사이트 기능 영향 없음).
 
 **2026-10-02(2차) — 캘린더 기간 일정 + 등급(메인 관리자/운영자/일반회원) 표시.**
 - **기간 일정**: 캘린더 폼에 "종료일" 추가 → 10/3~10/15 같은 기간을 한 건으로 저장(`calendar_events.end_date`, 042), 달력에 막대로
@@ -2348,7 +2391,7 @@ hoodie: {
 | 브라우저 | `color-mix()`를 씁니다. 2023년 이전 구형 브라우저에서는 일부 색이 어긋날 수 있습니다 |
 | 번역 완성도 | UI 전반과 상품 데이터는 번역됐지만, 판매자 정보(사업자명·주소 등)와 주문서 원문(판매자에게 전송되는 텍스트)은 의도적으로 항상 한국어입니다 |
 | `exceljs`(엑셀 내보내기)의 하위 의존성 `uuid` | `npm audit`에서 moderate 취약점으로 뜸("buf를 직접 넘길 때 버퍼 경계 체크 누락") — `exceljs`가 내부적으로 인자 없이 `uuid.v4()`만 호출해서 이 프로젝트에서 실제로 영향받는 경로는 아니라고 판단해 그대로 둠. `npm audit fix --force`는 `exceljs`를 훨씬 오래된 3.x로 낮춰서(breaking change) 득보다 실이 큼 — `exceljs`가 업스트림에서 고치면 그때 업데이트 |
-| `express`가 직접 고정한 `qs` | `npm audit`에서 moderate 취약점으로 뜸(2026-09-04 발견) — `body-parser` 경유분은 `npm audit fix`로 이미 해결했지만, `express` 자신이 `package.json`에 `qs@6.15.3`을 직접 지정하고 있어 이건 express 5 메이저 업그레이드 없이는 못 고침(express 5는 라우트 문법이 일부 달라 별도 작업 필요) — 위 "다음 세션이 가장 먼저 할 일" 참고 |
+| ~~`express`가 직접 고정한 `qs`~~ | ✅ 해결(2026-10-02) — `npm audit fix`로 express 4.22.3(qs 6.16)이 되며 해소 |
 
 ---
 

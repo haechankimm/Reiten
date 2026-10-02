@@ -38,6 +38,9 @@ router.get("/api/admin/admins", requireAdmin, async (req, res) => {
       return { id: p.id, name: p.name || "", email, createdAt: p.created_at, isMaster: email.toLowerCase() === MASTER_ADMIN_EMAIL };
     })
     .sort((a, b) => Number(b.isMaster) - Number(a.isMaster));
+  /* 등급 구분(메인 관리자/운영자)은 마스터에게만 보인다 — 운영자 화면에서는 관리자 전원이 "운영자"로 표시된다. */
+  const viewerIsMaster = (req.user.email || "").toLowerCase() === MASTER_ADMIN_EMAIL;
+  if (!viewerIsMaster) items.forEach((it) => { it.isMaster = false; });
   res.json({ items });
 });
 

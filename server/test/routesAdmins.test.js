@@ -131,3 +131,10 @@ test("DELETE /api/admin/admins/:id — 마스터 관리자도 본인 권한은 �
     .set("Authorization", `Bearer ${MASTER_TOKEN}`);
   assert.strictEqual(res.status, 400);
 });
+
+test("GET /api/admin/admins — 메인 관리자 표시는 마스터에게만(운영자에겐 전원 isMaster=false)", async () => {
+  const asOperator = await request(buildApp()).get("/api/admin/admins").set("Authorization", `Bearer ${TOKEN}`);
+  assert.ok(asOperator.body.items.every((a) => a.isMaster === false));
+  const asMaster = await request(buildApp()).get("/api/admin/admins").set("Authorization", `Bearer ${MASTER_TOKEN}`);
+  assert.ok(asMaster.body.items.some((a) => a.isMaster === true));
+});

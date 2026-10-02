@@ -155,6 +155,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   await Promise.all([loadProducts(), loadColors()]);
 
   const BASES = PRODUCTS.filter(p => p.charmReady);
+  /* 지금 판매 중인 집업이 하나도 없으면(전부 비공개 등) 흰 화면으로 죽지 않게 안내만 띄운다. */
+  if (!BASES.length) {
+    document.getElementById("main").innerHTML = `
+      <section class="sec"><div class="wrap" style="text-align:center;padding:60px 0">
+        <p class="eyebrow">Zip Charm Studio</p>
+        <h1 class="h-xl" style="margin-top:12px">${esc(t("스튜디오 준비 중입니다"))}</h1>
+        <p class="lede" style="margin:14px auto 0;max-width:44ch">${esc(t("지퍼 참을 달 수 있는 집업이 곧 다시 입고됩니다."))}</p>
+        <a class="btn" style="margin-top:22px" href="shop.html">${esc(t("상품 보러 가기"))}</a>
+      </div></section>`;
+    return;
+  }
 
   const state = {
     base: BASES.find(b => b.id === qs("id")) || BASES[0],

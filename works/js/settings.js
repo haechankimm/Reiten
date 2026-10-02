@@ -89,7 +89,7 @@
       <div class="panel" data-id="${esc(a.id)}" style="display:flex;gap:12px;align-items:center">
         <div style="flex:1;min-width:0">
           <b>${esc(a.name || a.email)}</b>${isSelf ? ` <span class="small" style="color:var(--text-muted)">(${esc(t("나"))})</span>` : ""}
-          <span style="margin-left:6px">${roleBadgeHTML(a.isMaster ? "main" : "operator")}</span>
+          <span style="margin-left:6px">${roleBadgeHTML(isMasterAdmin && a.isMaster ? "main" : "operator")}</span>
           <div class="small tnum" style="color:var(--text-muted)">${esc(a.email)}</div>
         </div>
         ${!isSelf && isMasterAdmin ? `<button type="button" class="btn btn--sm btn--danger admin-revoke">${esc(t("권한 해제"))}</button>` : ""}

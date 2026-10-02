@@ -1435,7 +1435,9 @@ const I18N = {
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
 /* 2026-10-02(2차) 등급 배지·기간 일정 번역 */
-[  ["메인 관리자", {"de": "Haupt-Admin"}],
+[
+  ["스튜디오 준비 중입니다", {"en":"Studio coming soon","ja":"スタジオ準備中です"}],
+  ["지퍼 참을 달 수 있는 집업이 곧 다시 입고됩니다.", {"en":"Zip-ups that take charms will be back in stock soon.","ja":"チャームを付けられるジップアップがまもなく再入荷します。"}],  ["메인 관리자", {"de": "Haupt-Admin"}],
   ["운영자", {"de": "Betreiber"}],
   ["일반회원", {"de": "Mitglied"}],
   ["권한 설정", {"de": "Rechte festlegen"}],
