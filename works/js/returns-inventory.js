@@ -194,6 +194,16 @@
   /* meta.qtyByColorSize가 바뀔 때마다(재고 저장 성공 직후) 그 상품 카드의 컬러 칩 점을
      다시 계산해서 실제 DOM에 반영한다 — 재고를 채웠는데도 빨간 점이 안 사라지던 버그 수정. */
   function refreshColorChipStatuses(card, meta) {
+    /* 고객 사이트가 이 상품을 어떻게 보여주는지 — 모든 컬러·사이즈 재고가 0이면 사이트는 숨기지
+       않고 "품절"로 표시한다(server.js withRealSoldOut과 같은 기준). 비공개 상품은 아예 안 보인다. */
+    const siteEl = card.querySelector(".inv-site-status");
+    if (siteEl) {
+      const allOut = meta.colors.every((c) => meta.sizes.every((s) => (meta.qtyByColorSize.get(`${c}:${s}`) ?? 0) <= 0));
+      const state = meta.active === false ? "hidden" : allOut ? "soldout" : "";
+      siteEl.className = "inv-site-status" + (state ? ` inv-site-status--${state}` : "");
+      siteEl.textContent = state === "hidden" ? t("사이트 비공개 상품(고객 화면에 안 보임)") : state === "soldout" ? t("사이트에 품절로 표시 중") : "";
+      siteEl.hidden = !state;
+    }
     card.querySelectorAll(".inv-color-chip").forEach((chip) => {
       const color = chip.dataset.color;
       const statusEl = chip.querySelector(".inv-color-chip-status");
@@ -223,6 +233,8 @@
       adminFetch("/api/admin/products?pageSize=100"),
     ]);
     if (!rows || !productsRes) return;
+    // 상품 탭 권한이 없는 직원에게는 바로가기를 숨긴다(pin.js canView).
+    if (el("inv-go-products")) el("inv-go-products").hidden = !!adminMe && !canView("products");
 
     const qtyByProduct = new Map();
     rows.forEach((r) => {
@@ -246,7 +258,7 @@
         if (!colors.length || !sizes.length) return "";
         const qtyByColorSize = qtyByProduct.get(p.id) || new Map();
         const img = (p.images || []).find(Boolean);
-        productMeta.set(p.id, { sizes, qtyByColorSize });
+        productMeta.set(p.id, { sizes, colors, qtyByColorSize, active: p.active });
 
         const activeColor = colors[0];
         /* 컬러 칩의 품절/부족 표시 점은 처음 그릴 때만 계산하면, 이후 재고를 채워도(전체 적용·
@@ -269,6 +281,7 @@
           <div class="inv-card-name">
             <b>${esc(t(p.nameKo))}</b>
             <span class="small">${esc(p.id)}</span>
+            <span class="inv-site-status" hidden></span>
           </div>
           <button type="button" class="btn btn--sm btn--ghost inv-log-toggle">${esc(t("이력 보기"))}</button>
         </div>
@@ -472,4 +485,6 @@
     return downloadExportFile(`/api/admin/inventory/export?format=${format}`, "reiten-inventory", format);
   }
   wireExportMenu("inv-export", "inv-export-menu", downloadInventoryExport);
+  // 재고 탭은 수량만 다룬다 — 상품 자체의 등록·수정·삭제는 "상품" 탭이 맡아서 바로가기만 둔다.
+  el("inv-go-products")?.addEventListener("click", () => goToTab("products"));
 

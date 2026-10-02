@@ -1158,9 +1158,17 @@ const I18N = {
   "차단 해제": { de: "Sperre aufheben" },
   "차단": { de: "Sperren" },
   "조건에 맞는 회원이 없습니다": { de: "Keine passenden Mitglieder gefunden" },
-  "이 계정을 차단할까요? 차단하면 이 이메일로 로그인할 수 없게 됩니다.": {
-    de: "Dieses Konto sperren? Danach kann sich diese E-Mail-Adresse nicht mehr anmelden.",
+  "이 계정을 사이트에서 차단할까요? 로그인이 바로 끊기고, 이 이메일로는 회원·비회원 주문과 문의 작성이 모두 막힙니다. (이미 한 주문의 반품 신청은 가능)": {
+    de: "Dieses Konto für die Website sperren? Die Anmeldung wird sofort beendet, und mit dieser E-Mail sind Bestellungen (mit oder ohne Konto) und Anfragen gesperrt. (Rücksendungen bereits gekaufter Ware bleiben möglich.)",
   },
+  "일반회원으로 강등": { de: "Zum Mitglied herabstufen" },
+  "{email} 님을 일반회원으로 강등할까요? Works에 더 이상 들어올 수 없게 되며, 계정과 주문 기록은 그대로 남습니다.": {
+    de: "{email} zum normalen Mitglied herabstufen? Der Zugang zu Works entfällt; Konto und Bestellverlauf bleiben erhalten.",
+  },
+  "일반회원으로 강등했습니다": { de: "Zum Mitglied herabgestuft" },
+  "사이트에 품절로 표시 중": { de: "Auf der Website als ausverkauft angezeigt" },
+  "사이트 비공개 상품(고객 화면에 안 보임)": { de: "Nicht öffentlich (auf der Website ausgeblendet)" },
+  "상품 등록·수정·삭제": { de: "Produkte anlegen/bearbeiten/löschen" },
   "계정을 차단했습니다": { de: "Konto gesperrt" },
   "차단을 해제했습니다": { de: "Sperre aufgehoben" },
   "이 회원 계정을 삭제하시겠습니까? 되돌릴 수 없습니다. 과거 주문·문의 기록은 회원 정보 없이 그대로 남습니다.": {
@@ -1181,6 +1189,11 @@ const I18N = {
     de: "{email} zum Admin befördern? Admins erhalten Zugriff auf alle Bestellungen, Rückerstattungen, Produkte und Mitgliedsdaten.",
   },
   "관리자로 승격했습니다": { de: "Zum Admin befördert" },
+  "운영자로 승격": { de: "Zum Operator befördern" },
+  "{email} 님을 운영자로 승격할까요? 메인 관리자가 아닌 운영자로 올라가며, 기본 권한(주문·반품·재고·Q&A·협업 수정)으로 시작합니다. 권한은 \"권한 설정\"에서 바꿀 수 있습니다.": {
+    de: "{email} zum Operator befördern? Das Konto wird Operator (nicht Haupt-Admin) und startet mit Standardrechten (Bestellungen, Rücksendungen, Lager, Q&A, Zusammenarbeit bearbeiten). Die Rechte können unter \"Rechte festlegen\" geändert werden.",
+  },
+  "운영자로 승격했습니다": { de: "Zum Operator befördert" },
 
   /* ---------- 사이드바 카테고리·오늘(홈)·결제 트랜잭션·공지·아웃박스 (Works 전용, 2026-09) ---------- */
   "오늘": { de: "Heute" },
@@ -1381,7 +1394,7 @@ const I18N = {
   ["폰 푸시: 실패 — {e}", {"de": "Push: fehlgeschlagen – {e}"}],
   ["찾기 실패 — {e}", {"de": "Suche fehlgeschlagen – {e}"}],
   ["아래 숫자를 Render 환경변수 TELEGRAM_CHAT_ID에 넣으세요:", {"de": "Diese Zahl in die Render-Umgebungsvariable TELEGRAM_CHAT_ID eintragen:"}],
-  ["아직 봇에게 온 메시지가 없습니다. 텔레그램에서 봇을 열고 /start 를 보낸 뒤 다시 눌러주세요.", {"de": "Der Bot hat noch keine Nachricht erhalten. Öffnen Sie den Bot in Telegram, senden Sie /start und versuchen Sie es erneut."}],
+  ["최근 24시간 안에 봇에게 온 메시지가 없습니다. 텔레그램은 24시간이 지난 메시지는 보여주지 않으니, 지금 봇에게 /start 를 한 번 더 보낸 뒤 바로 다시 눌러주세요. (봇은 답장을 하지 않는 게 정상입니다)", {"de": "In den letzten 24 Stunden hat der Bot keine Nachricht erhalten. Telegram zeigt ältere Nachrichten nicht an – senden Sie dem Bot jetzt erneut /start und tippen Sie direkt danach noch einmal hier. (Dass der Bot nicht antwortet, ist normal.)"}],
   ["발매일·행사·휴무 일정 확인", {"de": "Release-, Event- und Ruhetage ansehen"}],
   ["입금기한", {"de": "Zahlungsfrist"}],
   ["불러오는 중…", {"de": "Wird geladen…"}],

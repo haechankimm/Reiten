@@ -109,6 +109,7 @@ router.delete("/api/admin/admins/:id", requireMasterAdmin, async (req, res) => {
   }
   const { error } = await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "권한 해제에 실패했습니다." });
+  invalidateAdminCache(req.params.id); // 직원 권한·PIN 캐시에 남아 있던 값으로 잠깐 더 통과하지 않게
   logAdminAction(req, "admin.revoke", "admin", req.params.id);
   res.json({ ok: true });
 });

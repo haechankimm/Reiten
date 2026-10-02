@@ -22,6 +22,7 @@ const { deleteCustomerAccount } = require("../lib/accountDeletion");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
 const { toCsvGeneric } = require("../lib/orderExport");
+const { isUserBanned, invalidateBanCache } = require("../lib/bans");
 
 const router = express.Router();
 
@@ -67,7 +68,7 @@ async function loadMemberRows(roles, q) {
       createdAt: p.created_at,
       emailConfirmed: !!(u && u.email_confirmed_at),
       lastSignInAt: (u && u.last_sign_in_at) || null,
-      banned: !!(u && u.banned_until && new Date(u.banned_until) > new Date()),
+      banned: isUserBanned(u),
       isMaster: p.role === "admin" && ((u && u.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL,
     };
   });
@@ -154,6 +155,7 @@ router.patch("/api/admin/members/:id/ban", requireAdmin, async (req, res) => {
     ban_duration: banned ? PERMANENT_BAN : "none",
   });
   if (error) return res.status(500).json({ error: banned ? "차단에 실패했습니다." : "차단 해제에 실패했습니다." });
+  invalidateBanCache(); // 비회원 주문 차단 목록(lib/bans.js)에 바로 반영
 
   logAdminAction(req, banned ? "member.ban" : "member.unban", "member", id);
   res.json({ ok: true, banned });

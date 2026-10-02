@@ -576,26 +576,36 @@ const CARD_IMG_WIDTHS = [400, 600, 900];
    똑같은 계산이라 여기로 옮겨서 위시리스트(재입고 알림 CTA)와 같이 쓴다. soldOut(관리자가
    손으로 체크한 전체 품절)과 outOfStockByColor(서버가 계산한 컬러별 실재고)를 합쳐서 확인. */
 function isProductFullyOutOfStock(p) {
-  return p.sizes.every(
+  const sizes = p.sizes || [];
+  const colors = p.colors || [];
+  // 사이즈·컬러가 아직 비어 있는 상품은 "판매 준비 중"이지 품절로 판정하지 않는다(카드 배지 오표시 방지).
+  if (!sizes.length || !colors.length) return false;
+  return sizes.every(
     (size) =>
-      p.soldOut.includes(size) ||
-      p.colors.every((c) => ((p.outOfStockByColor && p.outOfStockByColor[c]) || []).includes(size))
+      (p.soldOut || []).includes(size) ||
+      colors.every((c) => ((p.outOfStockByColor && p.outOfStockByColor[c]) || []).includes(size))
   );
 }
 
 function productCard(p, delay = 0, extraBodyHTML = "") {
   const img = p.images.find(Boolean);
   const name = productName(p);
+  /* 모든 컬러·사이즈 재고가 0인 상품은 목록에서 숨기지 않고 "품절" 배지로 보여준다(2026-10-02) —
+     원래 배지(NEW 등) 자리를 대신 쓰고, 카드도 살짝 흐리게 한다. */
+  const soldOutAll = isProductFullyOutOfStock(p);
+  const badgeHTML = soldOutAll
+    ? `<span class="card__badge card__badge--soldout">${esc(t("품절"))}</span>`
+    : p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : "";
   const srcset = cloudinarySrcset(img, CARD_IMG_WIDTHS);
   const media = img
     ? `<div class="card__media beamable">
          <img src="${img}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 640px) 45vw, 300px"` : ""} alt="${esc(name)}" loading="lazy">
-         ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
+         ${badgeHTML}
          ${wishlistButtonHTML(p.id, "card__wishlist")}
        </div>`
     : `<div class="card__media ph">
          <span class="ph__label">${t("사진 준비중")}</span>
-         ${p.badge ? `<span class="card__badge">${esc(p.badge)}</span>` : ""}
+         ${badgeHTML}
          ${wishlistButtonHTML(p.id, "card__wishlist")}
        </div>`;
 
@@ -607,7 +617,7 @@ function productCard(p, delay = 0, extraBodyHTML = "") {
     .join("");
 
   return `
-<a class="card" href="product.html?id=${encodeURIComponent(p.id)}" data-reveal="${delay}">
+<a class="card${soldOutAll ? " card--soldout" : ""}" href="product.html?id=${encodeURIComponent(p.id)}" data-reveal="${delay}">
   ${media}
   <div class="card__body">
     <div class="card__name">${esc(name)}</div>

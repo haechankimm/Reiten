@@ -215,7 +215,9 @@ function createFakeSupabase(seed = {}) {
       async getUser(token) {
         const m = /^fake-token:([^:]+):(.+)$/.exec(token || "");
         if (!m) return { data: { user: null }, error: { message: "invalid token" } };
-        return { data: { user: { id: m[1], email: m[2] } }, error: null };
+        // authUsers에 같은 id가 있으면 banned_until 등 나머지 필드도 실제처럼 같이 돌려준다.
+        const known = authUsers.find((u) => u.id === m[1]) || {};
+        return { data: { user: { ...known, id: m[1], email: m[2] } }, error: null };
       },
       /* routes/members.js의 "인증 메일 재발송"이 쓰는 auth.resend() 흉내 — 실제 메일은
          당연히 안 보내고, 대상 이메일이 authUsers에 있는지만 확인한다. */

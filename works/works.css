@@ -135,8 +135,10 @@
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
+  /* 스크롤해도 상단바(로고·알림·언어·테마·로그아웃)가 항상 화면 위에 붙어 있게(2026-10-02) */
   .topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px;
-    background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+    background: var(--bg-surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 40; }
   .brand { display: flex; align-items: center; gap: 9px; }
   .brand-mark-img { height: 20px; width: auto; display: block; }
   :root[data-theme="dark"] .brand-mark-img { filter: invert(1); }
@@ -333,6 +335,9 @@
   .inv-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .inv-card-name { flex: 1 1 150px; min-width: 130px; }
   .inv-card-name b { display: block; font-size: 13px; line-height: 1.3; }
+  .inv-site-status { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+  .inv-site-status--soldout { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+  .inv-site-status--hidden { color: var(--text-muted); background: var(--bg-surface-2); border: 1px solid var(--border); }
   /* 카드마다 컬러 수가 달라서(1개~4개) 전부 펼쳐 보여주면 카드 높이가 제각각이라 그리드가
      지저분해 보였다(사용자가 스크린샷으로 신고) — 컬러를 칩으로 골라서 그 컬러의 사이즈 한
      줄만 보여주는 방식으로 바꿔 모든 카드가 비슷한 높이를 갖게 한다. 다만 "한눈에 훑어보기"가
@@ -488,7 +493,7 @@
   .content, .panel, .field { min-width: 0; }
   .content { overflow-x: hidden; }
   @media (max-width: 860px) {
-    .topbar { position: relative; }
+    .topbar { position: sticky; } /* 알림 패널(absolute)의 기준점 역할은 sticky도 그대로 한다 */
     .notif-wrap { position: static; }
     .notif-panel, .notif-panel--wide { position: absolute; top: calc(100% + 4px); left: 8px; right: 8px; width: auto; max-height: 70vh; overflow-y: auto; }
     .field input, .field select, .field textarea { min-width: 0; max-width: 100%; }

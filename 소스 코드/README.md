@@ -45,8 +45,9 @@
    하나도 없을 때** 난다 → reiten.kr은 다른 Resend 계정에서 인증된 것으로 보임. 조치: ① reiten.kr이 Verified인 Resend 계정에서
    API 키를 새로 만들어 Render `RESEND_API_KEY`와 Supabase SMTP Password를 둘 다 교체, 또는 ② sovag 계정에서 reiten.kr 도메인을
    추가·인증(후이즈 DNS에 Resend가 주는 레코드 등록). Supabase 인증 메일(가입 확인·비밀번호 재설정)도 같은 키를 쓰면 같이 실패한다.
-2. **텔레그램 긴급 알림 미연결** — 봇(@Reiten_alert_bot)이 받은 메시지 0건 → 텔레그램에서 봇에 /start → Works 정보 탭 "채팅 ID 찾기" →
-   Render `TELEGRAM_CHAT_ID`. 대화에 노출된 봇 토큰은 BotFather `/revoke`로 재발급 후 Render `TELEGRAM_BOT_TOKEN` 교체.
+2. **텔레그램 긴급 알림 미연결** — 봇(@Reiten_alert_bot)이 받은 메시지 0건 → 텔레그램에서 봇에 /start → **24시간 안에** Works 정보 탭 "채팅 ID 찾기" →
+   Render `TELEGRAM_CHAT_ID`. (봇은 발신 전용이라 /start에 답장하지 않는 게 정상. `getUpdates`는 24시간 지난 메시지를 안 돌려주므로
+   9/25에 보낸 /start는 이미 안 보임 — 다시 보내고 바로 누를 것.) 대화에 노출된 봇 토큰은 BotFather `/revoke`로 재발급 후 Render `TELEGRAM_BOT_TOKEN` 교체.
 3. **카드결제 개통** — 카드사 심사 완료. NHN KCP가 요구한 **SGI 서울보증 "이행(지급)보증보험"**(피보험자 NHN KCP) 가입·증권 제출 →
    개통 후 본인 카드로 실결제 1건(결제→주문생성→웹훅→취소·환불)까지 확인.
 
@@ -491,6 +492,27 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-10-02 (2) — 운영자 강등 버튼, 악성 회원 사이트 차단 강화, Works 상단바 고정, 전체 품절 상품 "품절" 표시, 재고→상품 바로가기.**
+- **강등**: `works/js/members.js` 회원 목록의 운영자 행에 "일반회원으로 강등"(마스터 전용) — 서버는 기존 `DELETE /api/admin/admins/:id`
+  재사용(새 엔드포인트 없음). 해제 시 `invalidateAdminCache()` 호출 추가(직원 권한·PIN 캐시 잔존 방지).
+- **차단 강화**: 새 `server/lib/bans.js`. 기존 차단(Supabase `ban_duration`)은 새 로그인만 막아서 ① 살아 있는 토큰은 최대 1시간 통과
+  ② 로그아웃 후 같은 이메일로 비회원 주문 가능했음 → ① `lib/auth.js` `requireAuth`가 `banned_until` 보고 403(`code:"banned"`),
+  `optionalAuth`는 비회원으로 내리고 `req.userBanned` 표시 ② `validateAndPriceOrder`(무통장·카드 공용)가 차단 표시·주문자 이메일
+  (`isEmailBanned`, listUsers 5분 캐시, 차단/해제 시 즉시 무효화)로 403. `POST /api/qna`도 차단 회원 거절. 반품 신청은 의도적으로 허용.
+  테스트 `test/bans.test.js` 3건(190건 통과). `fakeSupabase.getUser`가 authUsers의 `banned_until`도 돌려주게 보강.
+- **상단바 고정**: `works/works.css` `.topbar`를 `position: sticky; top:0; z-index:40`(모바일에서 `relative`였던 것도 sticky로 —
+  알림 패널 absolute 기준점 역할은 유지). 사이드바 서랍(z 55/60)보다 아래.
+- **전체 품절 표시**: 서버는 원래도 재고 0 상품을 숨기지 않았음(숨겨지는 건 `active=false` 비공개 상품뿐) — 다만 카드에 표시가 없었음.
+  `app.js productCard()`가 `isProductFullyOutOfStock()`이면 "품절" 배지 + 이미지 흐리게(`.card--soldout`). 사이즈·컬러가 빈 상품은 품절로 안 봄.
+  Works 재고 카드에 "사이트에 품절로 표시 중"/"사이트 비공개 상품" 상태 배지(`refreshColorChipStatuses`에서 저장 직후에도 갱신).
+- **재고 탭 → 상품 탭 바로가기**: 상품 등록·수정·삭제는 원래 "상품" 탭(상품·마케팅 그룹) 담당 — 재고 화면 상단에 버튼 추가(상품 권한 없는 직원은 숨김).
+
+**2026-10-02 — 회원 승격 후 목록에서 사라지던 표시 버그 수정, 승격 문구를 "운영자로"로 명확화, 텔레그램 채팅 ID 찾기 안내 보강.**
+- `works/js/members.js`: 승격 성공 시 일반회원 목록에서 빼기만 하고 관리자 행에 안 넣어서 새로고침 전까지 사라진 것처럼 보였음 →
+  `adminItems`에 운영자(`isMaster:false`)로 추가해 바로 위쪽 운영자 행으로 옮겨 그림(서버 데이터는 원래 정상).
+  승격은 원래도 `role='admin'` + 기본 직원 권한(운영자)이고 메인 관리자는 `MASTER_ADMIN_EMAIL` 한 명뿐 — 버튼·확인창·토스트 문구만 "운영자로 승격"으로 바꿈.
+- `works/js/alerts.js`: "채팅 ID 찾기"가 빈 결과일 때 "텔레그램은 24시간 지난 메시지를 안 보여준다 / 봇은 답장 안 하는 게 정상" 안내 추가.
 
 **2026-09-24 — README 개선 제안 6건 중 5건 구현(개인정보처리방침·직원 권한/PIN·이탈 메일·404/500·동시수정 충돌 방지), 1건은 이미 돼 있어 확인만.**
 - **개인정보처리방침(`privacy.html`)**: 제5조 위탁 표에 Google LLC(GA4)·Channel Corp.(채널톡) 추가, 제7조를
