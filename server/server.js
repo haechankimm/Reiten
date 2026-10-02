@@ -33,6 +33,7 @@ const {
   sendCustomerFirstPurchaseThanks,
   sendCustomerRepeatPurchaseThanks,
   sendCustomerRestockNotice,
+  sendAdminBackup,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
 const { orderNo, priceItem, shippingFor, hasPhysicalProduct } = require("./lib/pricing");
@@ -87,6 +88,7 @@ const refundsRoutes = require("./routes/refunds");
 const returnsRoutes = require("./routes/returns");
 const reportsRoutes = require("./routes/reports");
 const { sendMorningBriefing } = require("./lib/briefing");
+const { buildBackup } = require("./lib/backup");
 const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
 const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
 const { toCustomerOrderDto } = require("./lib/customerOrders");
@@ -2900,6 +2902,18 @@ async function sendMonthlySettlement() {
     console.error("[mailer] 정산 리포트 메일 발송 실패:", err.message)
   );
 }
+
+/* 주간 전체 백업 — 매주 월요일 04:20(KST), 관리자 메일로 gzip JSON(lib/backup.js). 끄려면 BACKUP_EMAIL=off */
+cron.schedule("20 4 * * 1", async () => {
+  if (process.env.BACKUP_EMAIL === "off") return;
+  try {
+    const backup = await buildBackup();
+    await sendAdminBackup(backup);
+  } catch (err) {
+    console.error("[backup] 주간 백업 실패:", err.message);
+    logSystemError("backup_failed", { error: err.message });
+  }
+}, { timezone: "Asia/Seoul" });
 
 /* 아침 업무 요약 — 매일 08:57(KST), 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(+텔레그램)로 */
 cron.schedule("57 8 * * *", () => {

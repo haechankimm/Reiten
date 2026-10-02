@@ -17,6 +17,7 @@ function briefingText(c) {
     c.openQna ? `미답변 문의 ${c.openQna}` : "",
     c.openReturns ? `반품·교환·취소 ${c.openReturns}` : "",
     c.systemErrors ? `시스템 오류 ${c.systemErrors}` : "",
+    c.opsErrors ? `설정 점검 필요 ${c.opsErrors}` : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
@@ -29,7 +30,9 @@ async function collectBriefingCounts(db = supabaseAdmin) {
     countWhere(db, "return_requests", (q) => q.in("status", ["접수", "수거중", "처리중", "재발송"])),
     countWhere(db, "system_error_log", (q) => q.eq("resolved", false)),
   ]);
-  return { pendingDeposit, toShip, openQna, openReturns, systemErrors };
+  // 메일 발송 설정 오류처럼 "지금 고객에게 영향 있는" 설정 문제도 아침 알림에 같이 띄운다(lib/opsCheck.js)
+  const ops = await require("./opsCheck").runOpsCheck({ db }).catch(() => ({ errors: 0 }));
+  return { pendingDeposit, toShip, openQna, openReturns, systemErrors, opsErrors: ops.errors || 0 };
 }
 
 async function sendMorningBriefing({ db = supabaseAdmin, force = false } = {}) {

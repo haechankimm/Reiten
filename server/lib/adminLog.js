@@ -22,6 +22,7 @@ const SYSTEM_ERROR_LABEL = {
   order_uncancel_inventory_conflict: "취소 되돌리기 시 재고 재차감 실패",
   order_uncancelled_card_payment_not_restored: "취소 되돌리기 시 카드 환불 복원 불가(수동 확인 필요)",
   admin_pin_locked: "관리자 PIN 잠김(6회 오입력)",
+  backup_failed: "주간 자동 백업 실패",
 };
 
 /* ---------- 관리자 감사 로그 ----------

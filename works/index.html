@@ -895,6 +895,17 @@
             <div id="alert-result" class="small" style="margin-top:10px;white-space:pre-wrap"></div>
           </div>
 
+          <!-- 운영 점검·전체 백업(마스터 전용, 2026-10-02) — 매일 아침 요약 알림도 같은 점검표를 본다 -->
+          <div class="panel" id="ops-panel" hidden>
+            <b data-i18n="운영 점검 · 자동 백업">운영 점검 · 자동 백업</b>
+            <p class="small" style="margin-top:6px" data-i18n="메일·알림·결제·배송조회 설정, DB 마이그레이션, 최근 발송 실패를 한 번에 점검합니다. 문제가 있으면 매일 아침 요약 알림에도 표시돼요. 주문·회원까지 포함한 전체 데이터는 매주 월요일 새벽 관리자 메일로 자동 백업됩니다.">메일·알림·결제·배송조회 설정, DB 마이그레이션, 최근 발송 실패를 한 번에 점검합니다. 문제가 있으면 매일 아침 요약 알림에도 표시돼요. 주문·회원까지 포함한 전체 데이터는 매주 월요일 새벽 관리자 메일로 자동 백업됩니다.</p>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn--sm" id="ops-check-run" data-i18n="지금 점검하기">지금 점검하기</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="ops-backup-full" data-i18n="전체 백업 받기(주문·회원 포함)">전체 백업 받기(주문·회원 포함)</button>
+            </div>
+            <div id="ops-check-result" class="small" style="margin-top:10px;display:grid;gap:4px"></div>
+          </div>
+
           <div class="panel">
             <b data-i18n="전체 데이터 백업">전체 데이터 백업</b>
             <p class="small" style="margin-top:6px" data-i18n="상품·쿠폰·이 페이지의 정보 항목을 하나의 JSON 파일로 내려받습니다. 결제·주문·재고 데이터는 포함되지 않습니다.">상품·쿠폰·이 페이지의 정보 항목을 하나의 JSON 파일로 내려받습니다. 결제·주문·재고 데이터는 포함되지 않습니다.</p>

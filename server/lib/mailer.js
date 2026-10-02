@@ -581,7 +581,26 @@ async function sendCustomerQnaAnswered({ email, name, question, answer }) {
   });
 }
 
+/* 주간 전체 백업(lib/backup.js) — 관리자 메일로 gzip JSON 첨부. 고객 개인정보가 들어 있어 관리자에게만. */
+async function sendAdminBackup({ filename, buffer, summary }) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) return;
+  const rows = Object.entries(summary || {}).map(([t, n]) => `<li>${escHtml(t)}: ${escHtml(n)}</li>`).join("");
+  await sendTracked("admin_backup", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] 주간 데이터 백업 — ${filename}`,
+    html: `
+      <h2>주간 데이터 백업</h2>
+      <p>주문·재고·상품·회원 등 주요 데이터 전체를 첨부했습니다(JSON, gzip 압축). 고객 개인정보가 들어 있으니 이 메일은 전달하지 말고 보관만 해 주세요.</p>
+      <ul>${rows}</ul>
+      <p style="color:#666">복구가 필요하면 이 파일을 개발 담당자(또는 Claude)에게 전달하면 됩니다.</p>
+    `,
+    attachments: [{ filename, content: buffer.toString("base64") }],
+  });
+}
+
 module.exports = {
+  sendAdminBackup,
   sendCustomerRefundIssued,
   sendCustomerExchangeShipped,
   sendCustomerQnaAnswered,
