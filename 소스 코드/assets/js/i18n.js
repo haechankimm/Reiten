@@ -1902,6 +1902,12 @@ const I18N = {
   ["쿠폰 생성에 실패했습니다.", {"de": "Gutschein konnte nicht erstellt werden."}],
   ["쿠폰 수정에 실패했습니다.", {"de": "Gutschein konnte nicht geändert werden."}],
   ["쿠폰 삭제에 실패했습니다.", {"de": "Gutschein konnte nicht gelöscht werden."}],
+  ["초대 이메일 발송에 실패했습니다.", {"de": "Einladungs-E-Mail konnte nicht gesendet werden."}],
+  ["차단에 실패했습니다.", {"de": "Sperren fehlgeschlagen."}],
+  ["차단 해제에 실패했습니다.", {"de": "Entsperren fehlgeschlagen."}],
+  ["권한 저장에 실패했습니다.", {"de": "Rechte konnten nicht gespeichert werden."}],
+  ["조회 실패", {"de": "Abfrage fehlgeschlagen"}],
+  ["네트워크 오류", {"de": "Netzwerkfehler"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
 /**

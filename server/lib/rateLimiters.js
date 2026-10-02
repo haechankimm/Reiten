@@ -7,7 +7,7 @@
    공유 IP(LTE·5G는 수많은 고객이 같은 공인 IP를 씀) 뒤의 정상 고객끼리 한도를 나눠 쓰는 문제가
    있었다. 이제 용도별로 카운터를 나누고, 로그인한 회원은 IP가 아니라 회원 id로 센다(라우트에서
    optionalAuth/requireAuth 뒤에 둬야 req.user가 채워져 있다 — 앞에 두면 그냥 IP로 센다).
-   한도 초과 응답에는 번역용 키를 같이 넣어 영어·일본어 화면에서도 번역돼 보이게 한다. */
+   한도 초과 문구는 번역 사전(i18n.js)에 들어 있어 영어·일본어 화면에서도 번역돼 보인다(apiErrorText). */
 const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
 const WINDOW_MS = 15 * 60 * 1000;
