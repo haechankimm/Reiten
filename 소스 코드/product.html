@@ -479,10 +479,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       itemCondition: "https://schema.org/NewCondition",
     },
   };
-  const ldScript = document.createElement("script");
-  ldScript.type = "application/ld+json";
-  ldScript.textContent = JSON.stringify(ld);
-  document.head.appendChild(ldScript);
+  // 서버가 이미 구조화 데이터를 넣어 보냈으면(server/lib/seo.js, 검색 로봇용) 같은 상품이 두 번 잡히지 않게 그대로 둔다.
+  if (!document.getElementById("ld-product")) {
+    const ldScript = document.createElement("script");
+    ldScript.type = "application/ld+json";
+    ldScript.id = "ld-product";
+    ldScript.textContent = JSON.stringify(ld);
+    document.head.appendChild(ldScript);
+  }
 
   // 추천
   const also = PRODUCTS.filter(x => x.id !== p.id).slice(0, 4);

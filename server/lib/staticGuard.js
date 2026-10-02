@@ -13,7 +13,7 @@ const PUBLIC_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".svg", ".ico",
   ".mp4", ".webm", ".mp3",
   ".woff", ".woff2", ".ttf", ".otf",
-  ".xml", ".txt",
+  ".xml", ".txt", ".tsv", // .tsv — 네이버쇼핑 EP 피드(/ep/naver.tsv, server.js 라우트)
 ]);
 
 /* 브라우저가 보낸 경로(퍼센트 인코딩 포함)를 express.static과 똑같이 한 번 디코딩한 뒤 판단한다 —

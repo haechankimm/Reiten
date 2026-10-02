@@ -92,6 +92,7 @@ const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConf
 const { toCustomerOrderDto } = require("./lib/customerOrders");
 const { buildSettlement } = require("./lib/settlement");
 const { getReviewPhotoPoints } = require("./lib/reviewRewards");
+const { productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, productUrl: seoProductUrl } = require("./lib/seo");
 const { adminGuard, hasAreaPermission } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
@@ -357,14 +358,64 @@ app.get("/product.html", async (req, res, next) => {
     `<meta name="twitter:card" content="summary_large_image">`,
   ].join("\n");
 
+  /* 검색 로봇용 사전 렌더링(lib/seo.js) — canonical·구조화 데이터(JSON-LD)와 상품명·가격·설명 HTML을 미리 넣는다.
+     브라우저에서는 product.html 자바스크립트가 #root를 그대로 덮어써 손님 화면은 예전과 같다(2026-10-02). */
+  const stats = await reviewStatsFor(product.id).catch(() => ({ reviewCount: 0, ratingAvg: 0 }));
+  const seoHead = [
+    `<link rel="canonical" href="${escapeHtmlAttr(seoProductUrl(product))}">`,
+    `<script type="application/ld+json" id="ld-product">${productJsonLd(product, stats)}</script>`,
+  ].join("\n");
   html = html
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtmlAttr(title)}</title>`)
     .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtmlAttr(description)}">`)
-    .replace("</head>", `${metaTags}\n</head>`);
+    .replace("</head>", `${metaTags}\n${seoHead}\n</head>`)
+    .replace('<div class="wrap" id="root"></div>', `<div class="wrap" id="root">${productSsrHtml(product)}</div>`);
 
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
+
+/* 상품 목록(shop.html)도 검색 로봇용으로 상품 링크·이름·가격 목록과 ItemList 구조화 데이터를 미리 넣는다(lib/seo.js).
+   브라우저에서는 shop.html 자바스크립트가 그리드를 덮어쓴다. 카테고리·검색어(?cat=, ?q=)가 있으면 손대지 않는다. */
+app.get("/shop.html", async (req, res, next) => {
+  if (req.query.cat || req.query.q) return next();
+  try {
+    const products = await getActiveProducts();
+    let html = await fs.promises.readFile(path.join(SITE_DIR, "shop.html"), "utf8");
+    if (!html.includes('id="grid"')) return next();
+    html = html
+      .replace("</head>", `<link rel="canonical" href="https://reiten.kr/shop.html">\n<script type="application/ld+json">${itemListJsonLd(products)}</script>\n</head>`)
+      .replace(/<div([^>]*)id="grid"([^>]*)><\/div>/, `<div$1id="grid"$2>${shopSsrHtml(products)}</div>`);
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (e) {
+    next();
+  }
+});
+
+/* 네이버쇼핑 EP(상품 목록 파일, TSV) — 네이버 쇼핑파트너센터 "상품정보 수신 URL"에 https://reiten.kr/ep/naver.tsv 를
+   등록하면 네이버가 주기적으로 가져간다(lib/seo.js). 사진 없거나 전부 품절인 상품은 뺀다. 10분 캐시. */
+let naverEpCache = { body: null, at: 0 };
+app.get("/ep/naver.tsv", async (req, res) => {
+  if (!naverEpCache.body || Date.now() - naverEpCache.at > 10 * 60 * 1000) {
+    const products = await getActiveProducts();
+    const { data: reviewRows } = await supabaseAdmin.from("reviews").select("product_id").eq("approved", true);
+    const reviewCountByProduct = new Map();
+    (reviewRows || []).forEach((r) => reviewCountByProduct.set(r.product_id, (reviewCountByProduct.get(r.product_id) || 0) + 1));
+    naverEpCache = { body: naverEpTsv(products, { shippingFee: SITE.shipping.fee, freeOver: SITE.shipping.freeOver, reviewCountByProduct }), at: Date.now() };
+  }
+  res.set("Content-Type", "text/tab-separated-values; charset=utf-8").set("Cache-Control", "public, max-age=600");
+  res.send(naverEpCache.body);
+});
+
+/* 상품별 승인 리뷰 수·평균 별점(구조화 데이터 aggregateRating용) */
+async function reviewStatsFor(productId) {
+  const { data } = await supabaseAdmin.from("reviews").select("rating").eq("product_id", productId).eq("approved", true);
+  const rows = data || [];
+  const reviewCount = rows.length;
+  const ratingAvg = reviewCount ? rows.reduce((s, r) => s + (Number(r.rating) || 0), 0) / reviewCount : 0;
+  return { reviewCount, ratingAvg };
+}
 
 /* sitemap.xml — 페이지 목록은 정적 파일에서 가져오되 상품 URL은 지금 판매 중인 상품으로 매번 새로 만든다
    (정적 파일에 박혀 있던 상품 목록이 비공개 전환을 못 따라가 판매 종료 상품 6개가 검색엔진에 계속 노출되던 문제). */
