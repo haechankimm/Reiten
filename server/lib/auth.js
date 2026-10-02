@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require("./supabase");
+const { isUserBanned, BANNED_MESSAGE } = require("./bans");
 
 /* Authorization: Bearer <jwt> 헤더를 Supabase로 검증하고 req.user에 세팅한다.
    프런트가 admin 패널을 숨기는 것과 별개로, 여기서 매 요청마다 다시 검증한다 —
@@ -14,6 +15,10 @@ async function requireAuth(req, res, next) {
   if (error || !data.user) {
     return res.status(401).json({ error: "로그인이 만료되었습니다. 다시 로그인해 주세요." });
   }
+  /* Works에서 차단된 회원은 토큰이 아직 살아 있어도 바로 막는다(lib/bans.js 참고). */
+  if (isUserBanned(data.user)) {
+    return res.status(403).json({ error: BANNED_MESSAGE, code: "banned" });
+  }
 
   req.user = data.user;
   next();
@@ -26,10 +31,15 @@ async function optionalAuth(req, res, next) {
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
     req.user = null;
+    req.userBanned = false;
     return next();
   }
   const { data } = await supabaseAdmin.auth.getUser(token);
-  req.user = (data && data.user) || null;
+  const user = (data && data.user) || null;
+  /* 차단된 회원은 비회원과 같은 취급으로 내리고 표시만 남긴다 — 주문·문의 작성은 그 표시를 보고
+     거절하고(server.js·routes/qna.js), 반품 신청처럼 이미 산 물건에 대한 권리는 비회원 경로로 남겨둔다. */
+  req.userBanned = isUserBanned(user);
+  req.user = req.userBanned ? null : user;
   next();
 }
 

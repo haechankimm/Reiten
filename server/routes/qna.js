@@ -2,6 +2,7 @@
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, optionalAuth } = require("../lib/auth");
+const { BANNED_MESSAGE } = require("../lib/bans");
 const { logAdminAction } = require("../lib/adminLog");
 const { writeLimiter } = require("../lib/rateLimiters");
 const { paginationParams } = require("../lib/pagination");
@@ -43,6 +44,7 @@ router.get("/api/qna", optionalAuth, async (req, res) => {
 });
 
 router.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
+  if (req.userBanned) return res.status(403).json({ error: BANNED_MESSAGE, code: "banned" });
   const { productId, name, question, secret } = req.body || {};
 
   const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);

@@ -13,6 +13,7 @@ const cron = require("node-cron");
 const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
+const { isEmailBanned, BANNED_MESSAGE } = require("./lib/bans");
 const {
   sendOrderNotification,
   sendCustomerOrderReceived,
@@ -470,14 +471,19 @@ const ORDER_DEVICE_TYPES = ["mobile", "tablet", "desktop"];
    가격 정책을 바꿀 때 한쪽만 고치고 다른 쪽을 놓치기 쉬운 지점이라 하나로 합친다. 이 함수는
    DB에 아무것도 쓰지 않고(coupon 조회만 함) 검증된 값 또는 에러만 돌려주므로, 호출부가
    재고 차감·저장 같은 각자의 나머지 절차를 이어서 하면 된다. */
-async function validateAndPriceOrder(body, products, userId) {
+async function validateAndPriceOrder(body, products, userId, { banned = false } = {}) {
   const { customer, items: rawItems, couponCode, device, pointsToUse: rawPointsToUse } = body || {};
+  if (banned) return { error: { status: 403, body: { error: BANNED_MESSAGE, code: "banned" } } };
   if (!customer || typeof customer !== "object") {
     return { error: { status: 400, body: { error: "customer 정보가 없습니다." } } };
   }
   const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
   if (missing.length) {
     return { error: { status: 400, body: { error: `필수 항목이 비었습니다: ${missing.join(", ")}` } } };
+  }
+  // 차단된 회원이 로그아웃하고 같은 이메일로 비회원 주문하는 길도 막는다(lib/bans.js).
+  if (await isEmailBanned(customer.email)) {
+    return { error: { status: 403, body: { error: BANNED_MESSAGE, code: "banned" } } };
   }
   if (!Array.isArray(rawItems) || !rawItems.length) {
     return { error: { status: 400, body: { error: "장바구니 항목이 없습니다." } } };
@@ -526,7 +532,7 @@ app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) =
   }
 
   const products = await getActiveProducts();
-  const priced = await validateAndPriceOrder(req.body, products, req.user ? req.user.id : null);
+  const priced = await validateAndPriceOrder(req.body, products, req.user ? req.user.id : null, { banned: req.userBanned });
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
   const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
@@ -1277,7 +1283,7 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
      재고만 축나고 주문은 안 만들어지는 상황을 피하기 위해서다. */
   const products = await getActiveProducts();
   const userId = req.user ? req.user.id : null;
-  const priced = await validateAndPriceOrder(req.body, products, userId);
+  const priced = await validateAndPriceOrder(req.body, products, userId, { banned: req.userBanned });
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
   const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;

@@ -18,7 +18,10 @@
             ${esc(t("가입일"))} ${fmtDate(m.createdAt)}${m.phone ? ` · ${esc(m.phone)}` : ""}
           </div>
         </div>
-        ${!m.isMaster && isMasterAdmin ? `<button type="button" class="btn btn--sm btn--ghost member-open-staff">${esc(t("권한 설정"))}</button>` : ""}
+        ${!m.isMaster && isMasterAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn--sm btn--ghost member-open-staff">${esc(t("권한 설정"))}</button>
+          <button type="button" class="btn btn--sm btn--danger member-demote">${esc(t("일반회원으로 강등"))}</button>
+        </div>` : ""}
       </div>`;
   }
 
@@ -60,6 +63,26 @@
     el("admin-members-list").innerHTML = adminRows + customerRows;
     el("admin-members-list").querySelectorAll(".member-open-staff").forEach((btn) =>
       btn.addEventListener("click", () => { goToTab("staff"); paintAdminStaff(); })
+    );
+
+    /* 운영자 → 일반회원 강등. 서버는 "정보" 탭의 "권한 해제"와 같은 엔드포인트(routes/admins.js)를
+       그대로 쓴다 — 계정·주문 기록은 그대로 두고 role만 customer로 되돌린다. */
+    el("admin-members-list").querySelectorAll(".member-demote").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = (membersState.adminItems || []).find((x) => x.id === id);
+        if (!item) return;
+        if (!confirm(t("{email} 님을 일반회원으로 강등할까요? Works에 더 이상 들어올 수 없게 되며, 계정과 주문 기록은 그대로 남습니다.", { email: item.email }))) return;
+        btn.disabled = true;
+        const result = await adminFetch(`/api/admin/admins/${encodeURIComponent(id)}`, { method: "DELETE" });
+        btn.disabled = false;
+        if (!result) return;
+        membersState.adminItems = membersState.adminItems.filter((x) => x.id !== id);
+        membersState.items = [{ ...item, role: "customer", isMaster: false }, ...membersState.items];
+        membersState.total += 1;
+        toast(t("일반회원으로 강등했습니다"));
+        renderAdminMembers();
+      })
     );
 
     el("admin-members-list").querySelectorAll(".member-view-orders").forEach((btn) =>
@@ -125,7 +148,7 @@
         const item = membersState.items.find((x) => x.id === id);
         if (!item) return;
         const nextBanned = !item.banned;
-        if (nextBanned && !confirm(t("이 계정을 차단할까요? 차단하면 이 이메일로 로그인할 수 없게 됩니다."))) return;
+        if (nextBanned && !confirm(t("이 계정을 사이트에서 차단할까요? 로그인이 바로 끊기고, 이 이메일로는 회원·비회원 주문과 문의 작성이 모두 막힙니다. (이미 한 주문의 반품 신청은 가능)"))) return;
         btn.disabled = true;
         const result = await adminFetch(`/api/admin/members/${encodeURIComponent(id)}/ban`, {
           method: "PATCH",

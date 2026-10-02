@@ -562,6 +562,8 @@ html[data-theme="night"] .thumb {
   background: color-mix(in srgb, var(--paper) 84%, transparent);
   backdrop-filter: blur(6px);
 }
+.card__badge--soldout { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.card--soldout .card__media img { opacity: .55; }
 
 /* 위시리스트 하트 버튼 — 상품 카드 우상단 오버레이(.card__wishlist) 또는 상세 페이지
    구매 버튼 옆 원형 버튼(.buy-row__wishlist) 두 곳에서 재사용한다. */

@@ -1158,9 +1158,17 @@ const I18N = {
   "차단 해제": { de: "Sperre aufheben" },
   "차단": { de: "Sperren" },
   "조건에 맞는 회원이 없습니다": { de: "Keine passenden Mitglieder gefunden" },
-  "이 계정을 차단할까요? 차단하면 이 이메일로 로그인할 수 없게 됩니다.": {
-    de: "Dieses Konto sperren? Danach kann sich diese E-Mail-Adresse nicht mehr anmelden.",
+  "이 계정을 사이트에서 차단할까요? 로그인이 바로 끊기고, 이 이메일로는 회원·비회원 주문과 문의 작성이 모두 막힙니다. (이미 한 주문의 반품 신청은 가능)": {
+    de: "Dieses Konto für die Website sperren? Die Anmeldung wird sofort beendet, und mit dieser E-Mail sind Bestellungen (mit oder ohne Konto) und Anfragen gesperrt. (Rücksendungen bereits gekaufter Ware bleiben möglich.)",
   },
+  "일반회원으로 강등": { de: "Zum Mitglied herabstufen" },
+  "{email} 님을 일반회원으로 강등할까요? Works에 더 이상 들어올 수 없게 되며, 계정과 주문 기록은 그대로 남습니다.": {
+    de: "{email} zum normalen Mitglied herabstufen? Der Zugang zu Works entfällt; Konto und Bestellverlauf bleiben erhalten.",
+  },
+  "일반회원으로 강등했습니다": { de: "Zum Mitglied herabgestuft" },
+  "사이트에 품절로 표시 중": { de: "Auf der Website als ausverkauft angezeigt" },
+  "사이트 비공개 상품(고객 화면에 안 보임)": { de: "Nicht öffentlich (auf der Website ausgeblendet)" },
+  "상품 등록·수정·삭제": { de: "Produkte anlegen/bearbeiten/löschen" },
   "계정을 차단했습니다": { de: "Konto gesperrt" },
   "차단을 해제했습니다": { de: "Sperre aufgehoben" },
   "이 회원 계정을 삭제하시겠습니까? 되돌릴 수 없습니다. 과거 주문·문의 기록은 회원 정보 없이 그대로 남습니다.": {
