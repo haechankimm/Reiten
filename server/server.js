@@ -36,7 +36,7 @@ const {
   sendCustomerRestockNotice,
 } = require("./lib/mailer");
 const kakao = require("./lib/kakao");
-const { orderNo, priceItem, shippingFor } = require("./lib/pricing");
+const { orderNo, priceItem, shippingFor, hasPhysicalProduct } = require("./lib/pricing");
 const { resolveCoupon, claimCouponUsage, releaseCouponUsage } = require("./lib/coupons");
 const { getPointsBalance, resolvePointsToUse, claimPointsUsage, previewEarnedPoints, creditPoints, awardPoints, reversePointsForOrder } = require("./lib/loyaltyPoints");
 const { toProductDto } = require("./lib/products");
@@ -492,6 +492,9 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   }
   if (!Array.isArray(rawItems) || !rawItems.length) {
     return { error: { status: 400, body: { error: "장바구니 항목이 없습니다." } } };
+  }
+  if (!hasPhysicalProduct(rawItems)) {
+    return { error: { status: 400, body: { error: "참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.", code: "CHARM_ONLY" } } };
   }
 
   const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
@@ -1263,7 +1266,11 @@ app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
        주석 참고, 위 웹훅 핸들러와 완전히 같은 분기). */
     let result;
     if (verified.status === "PAID") {
-      result = await finalizeCardOrder({ pending, paymentId, userId: req.user ? req.user.id : null });
+      /* 회원은 "결제를 준비한 계정"(pending.user_id) 기준으로 정한다 — 웹훅·가상계좌 경로와 같은 기준.
+         예전엔 이 확인 요청의 로그인 토큰(req.user)을 썼는데, 토큰 없이 확인 요청만 따로 보내면
+         적립금 할인을 받고도 차감이 건너뛰어져(finalizeCardOrder의 `pointsUsed && userId`) 같은
+         적립금을 계속 다시 쓸 수 있었고, 주문도 회원 계정에 안 붙었다(2026-10-02 점검에서 발견). */
+      result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null });
     } else if (verified.status === "VIRTUAL_ACCOUNT_ISSUED") {
       result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
     } else {

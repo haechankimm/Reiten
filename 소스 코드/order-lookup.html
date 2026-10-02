@@ -145,13 +145,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       });
 
       if (!res.ok) {
-        el("lk-notfound").hidden = false;
+        // 404(주문번호·연락처 불일치)만 "찾을 수 없음" 안내 — 요청 과다(429) 등 다른 실패는 그 이유를 그대로 보여준다.
+        if (res.status === 404) el("lk-notfound").hidden = false;
+        else toast(apiErrorText(await res.json().catch(() => ({})), t("조회에 실패했습니다. 잠시 후 다시 시도해 주세요.")));
         return;
       }
 
       const o = await res.json();
       el("lk-title").textContent = t("주문번호") + " " + o.no;
-      el("lk-status").textContent = t("주문 상태") + " · " + (o.status || "입금대기") + " · " + new Date(o.at).toLocaleDateString(
+      el("lk-status").textContent = t("주문 상태") + " · " + t(o.status || "입금대기") + " · " + new Date(o.at).toLocaleDateString(
         getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"
       );
 
@@ -226,7 +228,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("접수에 실패했습니다."));
+        toast(apiErrorText(body, t("접수에 실패했습니다.")));
         btn.disabled = false;
         return;
       }

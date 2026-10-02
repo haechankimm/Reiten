@@ -45,6 +45,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <!-- ============ 좌: 상품 + 주문서 ============ -->
           <div>
             <div id="items"></div>
+            <div class="notice" id="charm-only-notice" style="margin-top:16px" hidden>
+              <b data-i18n="참만으로는 주문할 수 없어요">참만으로는 주문할 수 없어요</b><br>
+              <span data-i18n="참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.">참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.</span>
+              <a class="link-u" href="shop.html" data-i18n="상품 보러 가기">상품 보러 가기</a>
+            </div>
 
             <h2 class="h-md" style="margin-top:56px" data-i18n="주문서">주문서</h2>
             <p class="small" style="margin-top:8px;margin-bottom:22px" data-i18n="아래 정보를 남기시면 주문번호가 발급됩니다. 입금이 확인되면 순차 출고됩니다.">
@@ -295,6 +300,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       })
     );
 
+    // 참만 담긴 장바구니는 주문할 수 없다(서버도 CHARM_ONLY로 거절) — 안내를 띄우고 제출 버튼을 막는다.
+    const charmOnly = !cartHasPhysicalProduct(items);
+    el("charm-only-notice").hidden = !charmOnly;
+    el("submit").disabled = charmOnly;
+
     const ship = Cart.shipping();
     const discount = appliedCoupon ? appliedCoupon.discount : 0;
     // 상품을 줄여서 상품 합계가 이미 적용한 포인트보다 작아지면(배송비까지 포인트로 못 내게)
@@ -411,7 +421,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       if (!res.ok) {
         appliedCoupon = null;
         msg.style.color = "var(--danger, #c00)";
-        msg.textContent = body.error || t("쿠폰을 적용할 수 없습니다.");
+        msg.textContent = apiErrorText(body, t("쿠폰을 적용할 수 없습니다."));
       } else {
         appliedCoupon = { code: body.code, discount: body.discount };
         msg.style.color = "";
@@ -517,6 +527,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     const items = Cart.read();
     if (!items.length) { toast(t("장바구니가 비어 있습니다")); return; }
+    if (!cartHasPhysicalProduct(items)) { toast(t("참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.")); return; }
 
     const method = payMethod();
     const isCard = cardPaymentEnabled && method === "card";
@@ -549,13 +560,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         });
         if (!prepRes.ok) {
           const body = await prepRes.json().catch(() => ({}));
-          toast(body.error || t("결제 준비에 실패했습니다"));
+          toast(apiErrorText(body, t("결제 준비에 실패했습니다")));
           btn.disabled = false;
           syncPayMethodUI();
           return;
         }
         const prep = await prepRes.json();
 
+        /* 휴대폰 브라우저에서는 결제창이 페이지 이동 방식으로 열려 이 아래 코드가 실행되지 않는다 — 결제가
+           끝나면 포트원이 redirectUrl(주문완료 페이지)로 ?paymentId=...를 붙여 돌려보내고, 그 페이지가
+           주문 확인·장바구니 비우기를 대신 처리한다(order-complete.html 참고). PC는 결과가 그대로 여기로 온다. */
+        const redirectUrl = new URL("order-complete.html", location.href).href;
         const payResult = await PortOne.requestPayment(isVbank ? {
           storeId: prep.storeId,
           channelKey: prep.channelKey,
@@ -565,6 +580,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           currency: "CURRENCY_KRW",
           payMethod: "VIRTUAL_ACCOUNT",
           customer: prep.customer,
+          redirectUrl,
           virtualAccount: {
             bank: virtualAccountBank,
             expiry: { validHours: virtualAccountValidHours },
@@ -579,6 +595,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           currency: "CURRENCY_KRW",
           payMethod: "CARD",
           customer: prep.customer,
+          redirectUrl,
         });
 
         if (!payResult || payResult.code !== undefined) {
@@ -598,7 +615,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           toast(
             body.error === "OUT_OF_STOCK"
               ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
-              : (body.error || t("결제 확인에 실패했습니다"))
+              : apiErrorText(body, t("결제 확인에 실패했습니다"))
           );
           btn.disabled = false;
           syncPayMethodUI();
@@ -638,7 +655,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     /* Node 백엔드(server/)가 같은 사이트를 서빙 중이면 /api/order가 응답한다.
        거기서 서버측 가격 재검증(+ 재고 차감)을 거친 주문을 그대로 신뢰하고 사용한다. */
+    /* 서버가 "응답한" 실패(쿠폰 소진·적립금 부족·재고 소진·차단·요청 과다·서버 오류 등)는 절대 주문 완료
+       화면으로 넘기지 않는다 — 예전엔 409 재고 소진만 따로 잡고 나머지는 전부 아래 "수동 접수" 폴백으로
+       흘러가서, 실제로는 주문이 없는데 "주문이 접수되었습니다" + 입금 계좌 안내가 뜨고 장바구니까지
+       비워졌다(고객이 없는 주문에 입금할 수 있었음 — 2026-10-02 점검). 수동 접수 폴백은 이제
+       server/ 자체가 없는 순수 정적 배포(응답이 JSON이 아니고 /api/config도 없던 경우)에서만 쓴다. */
     let verifiedByServer = false;
+    let serverAnswered = hasServer;
     try {
       const headers = { "Content-Type": "application/json" };
       const token = await getAccessToken();
@@ -649,22 +672,32 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         headers,
         body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, pointsToUse: appliedPoints || undefined, device: detectDeviceType() }),
       });
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      if (isJson) serverAnswered = true;
 
-      if (res.status === 409) {
-        const body = await res.json().catch(() => ({}));
-        if (body.error === "OUT_OF_STOCK") {
-          toast(t("{name} {size} 사이즈 재고가 소진되었습니다", { name: body.name, size: body.size }));
-          btn.disabled = false;
-          btn.textContent = t("주문서 제출");
-          return;
-        }
-      }
-
-      if (res.ok) {
+      if (res.ok && isJson) {
         order = await res.json();
         verifiedByServer = true;
+      } else if (serverAnswered) {
+        const body = await res.json().catch(() => ({}));
+        toast(
+          body.error === "OUT_OF_STOCK"
+            ? t("{name} {size} 사이즈 재고가 소진되었습니다", { name: body.name, size: body.size })
+            : apiErrorText(body, t("주문을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요."))
+        );
+        btn.disabled = false;
+        syncPayMethodUI();
+        return;
       }
-    } catch (err) {}
+    } catch (err) {
+      if (serverAnswered) {
+        // 서버가 있는 사이트인데 응답을 못 받음(네트워크 끊김·시간 초과) — 주문이 이미 들어갔을 수도 있어 확인을 안내한다.
+        toast(t("연결이 불안정해 주문 결과를 확인하지 못했습니다. 주문 조회 또는 메일함에서 접수 여부를 확인한 뒤 다시 시도해 주세요."));
+        btn.disabled = false;
+        syncPayMethodUI();
+        return;
+      }
+    }
 
     if (!verifiedByServer) {
       if (SITE.order.formEndpoint) {

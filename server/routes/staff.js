@@ -6,19 +6,61 @@ const express = require("express");
 const crypto = require("crypto");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
-const { logAdminAction } = require("../lib/adminLog");
+const { logAdminAction, logSystemError } = require("../lib/adminLog");
 const {
   AREAS, resolvePermissions, normalizePermissions,
   signPinToken, verifyPinToken, hashPin, isValidPin, pinVersionOf,
-  getPinRow, getStoredPermissions, invalidateAdminCache,
+  getPinRow, getStoredPermissions, invalidateAdminCache, isPinLocked, pinLockedResponse,
 } = require("../lib/adminGuard");
 const { isMissingSchemaError } = require("../lib/pgErrors");
 
 const router = express.Router();
 
-const MAX_PIN_FAILS = 5;
-const PIN_LOCK_MS = 15 * 60 * 1000;
+/* PIN 잠금 정책(2026-10-02 사용자 요청) — 6번째 오입력에서 잠근다.
+   ① 직원: 마스터 관리자가 "직원·권한" 탭에서 PIN을 초기화(또는 새로 지정)할 때까지 계속 잠김
+   ② 마스터: 풀어줄 상위 관리자가 없으므로 30분 시간 잠금
+   PIN 확인(verify)과 PIN 변경(change)이 같은 실패 횟수를 공유한다 — 예전엔 변경 쪽에 횟수 제한이
+   없어서, 비밀번호가 유출되면 "현재 PIN" 칸으로 무제한 대입해 2단계 인증을 뚫을 수 있었다.
+   잠기면 시스템 오류(알림센터·텔레그램·폰 푸시)로 마스터에게 바로 알린다. */
+const MAX_PIN_FAILS = 6;
+const MASTER_PIN_LOCK_MS = 30 * 60 * 1000;
+const STAFF_PIN_LOCK_UNTIL = "9999-12-31T00:00:00.000Z";
 const PIN_TABLE_MISSING = "PIN 기능용 DB 마이그레이션(040)이 아직 실행되지 않았습니다.";
+
+// adminGuard가 붙인 req.isMasterAdmin 대신 이메일로 직접 판단한다(라우터만 단독으로 붙인 테스트에서도 같은 결과).
+function isMasterUser(req) {
+  return (req.user && (req.user.email || "").toLowerCase()) === MASTER_ADMIN_EMAIL;
+}
+
+/* 틀린 PIN 한 번을 기록하고, 이번이 6번째면 잠근다. 응답으로 보낼 { status, body }를 돌려준다. */
+async function recordPinFailure(req, row) {
+  const isMaster = isMasterUser(req);
+  const failCount = (row.fail_count || 0) + 1;
+  const lock = failCount >= MAX_PIN_FAILS;
+  const lockedUntil = lock ? (isMaster ? new Date(Date.now() + MASTER_PIN_LOCK_MS).toISOString() : STAFF_PIN_LOCK_UNTIL) : null;
+  await supabaseAdmin.from("admin_pins").update({ fail_count: lock ? 0 : failCount, locked_until: lockedUntil }).eq("user_id", req.user.id);
+  invalidateAdminCache(req.user.id);
+  if (lock) {
+    logAdminAction(req, "admin.pin_locked", "admin", req.user.id, { email: req.user.email });
+    logSystemError("admin_pin_locked", { email: req.user.email, lockedUntil: isMaster ? lockedUntil : "마스터 초기화 전까지" });
+    return pinLockedResponse({ locked_until: lockedUntil }, isMaster);
+  }
+  const remaining = MAX_PIN_FAILS - failCount;
+  return {
+    status: 401,
+    body: {
+      error: `PIN이 올바르지 않습니다. (${remaining}회 남음 — ${MAX_PIN_FAILS}회 틀리면 잠깁니다)`,
+      i18n: { key: "PIN이 올바르지 않습니다. ({remaining}회 남음 — {max}회 틀리면 잠깁니다)", vars: { remaining, max: MAX_PIN_FAILS } },
+    },
+  };
+}
+
+async function clearPinFailures(req, row) {
+  if (row.fail_count || row.locked_until) {
+    await supabaseAdmin.from("admin_pins").update({ fail_count: 0, locked_until: null }).eq("user_id", req.user.id);
+    invalidateAdminCache(req.user.id);
+  }
+}
 
 async function savePin(userId, pin) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -42,7 +84,8 @@ router.get("/api/admin/me", requireAdmin, async (req, res) => {
     isMaster,
     permissions: resolvePermissions(stored, isMaster),
     tabAreas: Object.fromEntries(Object.entries(AREAS).flatMap(([key, a]) => a.tabs.map((tab) => [tab, key]))),
-    pin: { enabled: pinAvailable, set: pinAvailable && !!pinRow, verified: !pinAvailable || verified },
+    // 잠긴 계정은 PIN 토큰이 남아 있어도 "확인 안 됨"으로 보내 PIN 창(잠금 안내)이 다시 뜨게 한다.
+    pin: { enabled: pinAvailable, set: pinAvailable && !!pinRow, verified: !pinAvailable || (verified && !isPinLocked(pinRow)), locked: pinAvailable && isPinLocked(pinRow) },
   });
 });
 
@@ -66,24 +109,18 @@ router.post("/api/admin/pin/verify", requireAdmin, async (req, res) => {
   if (error) return res.status(isMissingSchemaError(error) ? 503 : 500).json({ error: isMissingSchemaError(error) ? PIN_TABLE_MISSING : "PIN 확인에 실패했습니다." });
   if (!row) return res.status(409).json({ error: "PIN이 아직 설정되지 않았습니다.", code: "PIN_SETUP_REQUIRED" });
 
-  if (row.locked_until && new Date(row.locked_until).getTime() > Date.now()) {
-    const minutes = Math.max(1, Math.ceil((new Date(row.locked_until).getTime() - Date.now()) / 60000));
-    return res.status(429).json({ error: `PIN을 여러 번 틀려 ${minutes}분간 잠겼습니다.` });
+  if (isPinLocked(row)) {
+    const locked = pinLockedResponse(row, isMasterUser(req));
+    return res.status(locked.status).json(locked.body);
   }
 
   const ok = isValidPin(pin) && crypto.timingSafeEqual(Buffer.from(hashPin(pin, row.salt)), Buffer.from(row.pin_hash));
   if (!ok) {
-    const failCount = (row.fail_count || 0) + 1;
-    const lock = failCount >= MAX_PIN_FAILS;
-    await supabaseAdmin.from("admin_pins").update({ fail_count: lock ? 0 : failCount, locked_until: lock ? new Date(Date.now() + PIN_LOCK_MS).toISOString() : null }).eq("user_id", req.user.id);
-    invalidateAdminCache(req.user.id);
-    return res.status(401).json({ error: lock ? "PIN을 5번 틀려 15분간 잠겼습니다." : `PIN이 올바르지 않습니다. (${MAX_PIN_FAILS - failCount}회 남음)` });
+    const failed = await recordPinFailure(req, row);
+    return res.status(failed.status).json(failed.body);
   }
 
-  if (row.fail_count || row.locked_until) {
-    await supabaseAdmin.from("admin_pins").update({ fail_count: 0, locked_until: null }).eq("user_id", req.user.id);
-    invalidateAdminCache(req.user.id);
-  }
+  await clearPinFailures(req, row);
   const signed = signPinToken(req.user.id, pinVersionOf(row));
   res.json({ ok: true, token: signed.token, expiresAt: signed.expiresAt });
 });
@@ -93,8 +130,15 @@ router.post("/api/admin/pin/change", requireAdmin, async (req, res) => {
   if (!isValidPin(newPin)) return res.status(400).json({ error: "새 PIN은 숫자 6자리여야 합니다." });
   const { data: row } = await supabaseAdmin.from("admin_pins").select("*").eq("user_id", req.user.id).maybeSingle();
   if (!row) return res.status(409).json({ error: "PIN이 아직 설정되지 않았습니다.", code: "PIN_SETUP_REQUIRED" });
+  if (isPinLocked(row)) {
+    const locked = pinLockedResponse(row, isMasterUser(req));
+    return res.status(locked.status).json(locked.body);
+  }
   const ok = isValidPin(currentPin) && crypto.timingSafeEqual(Buffer.from(hashPin(currentPin, row.salt)), Buffer.from(row.pin_hash));
-  if (!ok) return res.status(401).json({ error: "현재 PIN이 올바르지 않습니다." });
+  if (!ok) {
+    const failed = await recordPinFailure(req, row);
+    return res.status(failed.status).json(failed.body);
+  }
   const { row: saved, error } = await savePin(req.user.id, newPin);
   if (error) return res.status(500).json({ error: "PIN 저장에 실패했습니다." });
   logAdminAction(req, "admin.pin_change", "admin", req.user.id);

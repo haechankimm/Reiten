@@ -373,7 +373,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           body: JSON.stringify({ productId: p.id, color: state.color, size, email }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "");
+        if (!res.ok) throw new Error(apiErrorText(data, ""));
         form.innerHTML = `<p class="small">${esc(t("신청 완료! 재입고되면 알려드릴게요."))}</p>`;
       } catch (err) {
         toast(err.message || t("신청에 실패했습니다"));

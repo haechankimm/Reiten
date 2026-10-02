@@ -48,6 +48,15 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
   };
 }
 
+/* 참(charm)은 지퍼 슬라이더에 다는 무료 부속이라 실물 상품(후디·집업 등) 없이 참만 담긴 주문은 받지 않는다 —
+   참 가격이 0원이라 참만 담으면 상품 합계 0원 + 배송비 0원(shippingFor가 0원 주문엔 배송비를 안 붙임)인
+   공짜 주문이 됐는데, 화면에서 "참만 담기" 버튼만 숨겨 두고 서버는 그대로 받고 있었다(2026-10-02 점검). */
+function hasPhysicalProduct(rawItems) {
+  return (Array.isArray(rawItems) ? rawItems : []).some(
+    (raw) => raw && typeof raw.productId === "string" && raw.productId && !raw.productId.startsWith("charm-")
+  );
+}
+
 function shippingFor(subtotal, shippingCfg) {
   if (subtotal === 0) return 0;
   return subtotal >= shippingCfg.freeOver ? 0 : shippingCfg.fee;
@@ -71,4 +80,4 @@ function couponDiscount(coupon, { subtotal, items, rawItems }) {
   return Math.max(0, Math.min(raw, base));
 }
 
-module.exports = { orderNo, priceItem, shippingFor, couponDiscount };
+module.exports = { orderNo, priceItem, shippingFor, couponDiscount, hasPhysicalProduct };

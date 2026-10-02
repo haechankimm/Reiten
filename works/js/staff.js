@@ -7,7 +7,7 @@
   function staffCardHTML(s, areas) {
     const badges = [
       s.pinSet ? `<span class="small" style="color:var(--text-muted)">${esc(t("PIN 설정됨"))}</span>` : `<span class="small" style="color:var(--danger)">${esc(t("PIN 미설정(다음 로그인 때 직접 설정)"))}</span>`,
-      s.pinLocked ? `<span class="small" style="color:var(--danger)">${esc(t("PIN 잠김"))}</span>` : "",
+      s.pinLocked ? `<span class="small" style="color:var(--danger);font-weight:700">${esc(t("PIN 잠김(6회 오입력) — 'PIN 초기화' 또는 'PIN 지정'으로 풀어주세요"))}</span>` : "",
       s.customized ? "" : `<span class="small" style="color:var(--danger)">${esc(t("권한 미설정 — 현재 전체 허용 상태"))}</span>`,
     ].filter(Boolean).join(" · ");
 

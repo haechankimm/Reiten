@@ -115,7 +115,7 @@
         const bad = checkNewPin(pin1, pin2);
         if (bad) return bad;
         const r = await pinRequest("/api/admin/pin/setup", { pin: pin1 });
-        if (!r.ok) return r.data.error || t("PIN 설정에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 설정에 실패했습니다."));
         setPinToken(r.data.token);
         return "";
       },
@@ -131,7 +131,7 @@
       submitLabel: t("확인"),
       onSubmit: async ({ pin }) => {
         const r = await pinRequest("/api/admin/pin/verify", { pin });
-        if (!r.ok) return r.data.error || t("PIN 확인에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 확인에 실패했습니다."));
         setPinToken(r.data.token);
         return "";
       },
@@ -151,7 +151,7 @@
         const bad = checkNewPin(pin1, pin2);
         if (bad) return bad;
         const r = await pinRequest("/api/admin/pin/change", { currentPin: cur, newPin: pin1 });
-        if (!r.ok) return r.data.error || t("PIN 변경에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 변경에 실패했습니다."));
         setPinToken(r.data.token);
         toast(t("PIN을 변경했습니다"));
         return "";

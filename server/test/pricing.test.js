@@ -134,3 +134,12 @@ test("orderNo — UTC 서버에서도 KST 날짜로 찍힌다(KST 01시 = UTC �
   assert.ok(orderNo(1, new Date("2026-08-05T14:59:00Z")).startsWith("R260805-"));
   assert.ok(orderNo(1, new Date("2026-08-05T15:00:00Z")).startsWith("R260806-"));
 });
+
+test("hasPhysicalProduct — 참(charm-*)만 담긴 주문은 거절 대상", () => {
+  const { hasPhysicalProduct } = require("../lib/pricing");
+  assert.strictEqual(hasPhysicalProduct([{ productId: "charm-heart", charm: { key: "heart" }, qty: 3 }]), false);
+  assert.strictEqual(hasPhysicalProduct([]), false);
+  assert.strictEqual(hasPhysicalProduct(null), false);
+  assert.strictEqual(hasPhysicalProduct([{ productId: "" }]), false);
+  assert.strictEqual(hasPhysicalProduct([{ productId: "charm-star" }, { productId: "core-zip-hoodie", size: "M" }]), true);
+});

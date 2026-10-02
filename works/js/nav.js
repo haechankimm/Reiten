@@ -238,6 +238,14 @@
     } catch (e) {}
   }
 
+  /* 서버 오류 응답을 지금 언어(한국어/독일어)로 — 한국어 원문이 곧 사전 키라 t()로 바로 번역되고,
+     숫자가 끼는 문구는 서버가 함께 주는 번역 키·변수(i18n)로 번역한다(고객 사이트 apiErrorText와 같은 규칙). */
+  function serverMsg(body, fallback) {
+    if (body && body.i18n && typeof body.i18n.key === "string") return t(body.i18n.key, body.i18n.vars || {});
+    if (body && typeof body.error === "string" && body.error) return t(body.error);
+    return fallback;
+  }
+
   async function adminFetch(path, opts) {
     const token = await getAccessToken();
     if (!token) {
@@ -254,10 +262,10 @@
       } else {
         let message = "";
         let code = "";
-        try { const body = await res.json(); message = body.error || ""; code = body.code || ""; } catch (e) {}
+        try { const body = await res.json(); message = serverMsg(body, ""); code = body.code || ""; } catch (e) {}
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
         // PIN 토큰이 만료·무효가 되면 새로고침해서 PIN 입력 창부터 다시 띄운다.
-        if (res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) {
+        if ((res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) || code === "PIN_LOCKED") {
           clearPinToken();
           setTimeout(() => location.reload(), 900);
         }

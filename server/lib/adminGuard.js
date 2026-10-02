@@ -166,6 +166,27 @@ function pinVersionOf(row) {
   return row && row.updated_at ? new Date(row.updated_at).getTime() : 0;
 }
 
+/* PIN 6회 오입력 잠금(routes/staff.js) — 직원은 마스터가 초기화할 때까지, 마스터는 30분.
+   잠겨 있는 동안은 이미 받아둔 PIN 토큰이 있어도 모든 관리자 API를 막는다("계정 잠김"). */
+function isPinLocked(row) {
+  return !!(row && row.locked_until && new Date(row.locked_until).getTime() > Date.now());
+}
+
+function pinLockedResponse(row, isMaster) {
+  if (!isMaster) {
+    return { status: 423, body: { error: "PIN을 6회 잘못 입력해 계정이 잠겼습니다. 메인 관리자에게 잠금 해제(PIN 초기화)를 요청해 주세요.", code: "PIN_LOCKED" } };
+  }
+  const minutes = Math.max(1, Math.ceil((new Date(row.locked_until).getTime() - Date.now()) / 60000));
+  return {
+    status: 423,
+    body: {
+      error: `PIN을 6회 잘못 입력해 잠겼습니다. ${minutes}분 뒤에 다시 시도해 주세요.`,
+      i18n: { key: "PIN을 6회 잘못 입력해 잠겼습니다. {minutes}분 뒤에 다시 시도해 주세요.", vars: { minutes } },
+      code: "PIN_LOCKED",
+    },
+  };
+}
+
 async function adminGuard(req, res, next) {
   try {
     const sub = req.path;
@@ -190,6 +211,10 @@ async function adminGuard(req, res, next) {
     const pinRow = await getPinRow(req.user.id);
     if (!pinRow || !pinRow.unavailable) {
       if (!pinRow) return res.status(403).json({ error: "PIN을 먼저 설정해 주세요.", code: "PIN_SETUP_REQUIRED" });
+      if (isPinLocked(pinRow)) {
+        const locked = pinLockedResponse(pinRow, isMaster);
+        return res.status(locked.status).json(locked.body);
+      }
       if (!verifyPinToken(req.headers["x-admin-pin"], req.user.id, pinVersionOf(pinRow))) {
         return res.status(403).json({ error: "PIN 인증이 필요합니다.", code: "PIN_REQUIRED" });
       }
@@ -219,4 +244,5 @@ module.exports = {
   areaForPath, requiredLevel, resolvePermissions, normalizePermissions,
   signPinToken, verifyPinToken, hashPin, isValidPin, pinVersionOf,
   getPinRow, getStoredPermissions, invalidateAdminCache, adminGuard,
+  isPinLocked, pinLockedResponse,
 };

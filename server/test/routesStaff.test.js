@@ -82,13 +82,59 @@ test("PIN 설정 후: 토큰 없으면 PIN_REQUIRED, 토큰 있으면 통과, �
   assert.ok(good.body.token);
 });
 
-test("PIN 5회 틀리면 잠금(429)", async () => {
+test("마스터: PIN 6회 틀리면 30분 시간 잠금(423) — 5번째까지는 남은 횟수 안내", async () => {
   const app = buildApp();
   await setupPin(app, MT);
-  for (let i = 0; i < 5; i++) await request(app).post("/api/admin/pin/verify").set(auth(MT)).send({ pin: "111111" });
+  for (let i = 0; i < 5; i++) {
+    const r = await request(app).post("/api/admin/pin/verify").set(auth(MT)).send({ pin: "111111" });
+    assert.strictEqual(r.status, 401);
+    assert.match(r.body.error, new RegExp(`${5 - i}회 남음`));
+  }
+  const sixth = await request(app).post("/api/admin/pin/verify").set(auth(MT)).send({ pin: "111111" });
+  assert.strictEqual(sixth.status, 423);
+  assert.strictEqual(sixth.body.code, "PIN_LOCKED");
+  assert.match(sixth.body.error, /분 뒤에 다시 시도/);
   invalidateAdminCache();
   const locked = await request(app).post("/api/admin/pin/verify").set(auth(MT)).send({ pin: "123456" });
-  assert.strictEqual(locked.status, 429);
+  assert.strictEqual(locked.status, 423, "잠긴 동안은 맞는 PIN도 거절");
+});
+
+test("직원: PIN 6회 틀리면 마스터 초기화 전까지 잠김 — 관리자 문의 안내, 기존 토큰도 차단, 초기화 후 재설정 가능", async () => {
+  const app = buildApp();
+  const oldToken = await setupPin(app, ST);
+  for (let i = 0; i < 6; i++) await request(app).post("/api/admin/pin/verify").set(auth(ST)).send({ pin: "000000" });
+  invalidateAdminCache();
+  const locked = await request(app).post("/api/admin/pin/verify").set(auth(ST)).send({ pin: "123456" });
+  assert.strictEqual(locked.status, 423);
+  assert.match(locked.body.error, /메인 관리자에게/);
+  const blocked = await request(app).get("/api/admin/orders").set(auth(ST, oldToken));
+  assert.strictEqual(blocked.status, 423, "잠기기 전에 받은 PIN 토큰도 막힌다");
+  const me = await request(app).get("/api/admin/me").set(auth(ST, oldToken));
+  assert.strictEqual(me.body.pin.locked, true);
+  assert.strictEqual(me.body.pin.verified, false);
+
+  const masterToken = await setupPin(app, MT);
+  const list = await request(app).get("/api/admin/staff").set(auth(MT, masterToken));
+  assert.strictEqual(list.body.items.find((x) => x.id === STAFF.id).pinLocked, true);
+  const reset = await request(app).post(`/api/admin/staff/${STAFF.id}/pin`).set(auth(MT, masterToken)).send({ reset: true });
+  assert.strictEqual(reset.status, 200);
+  invalidateAdminCache();
+  const again = await request(app).post("/api/admin/pin/setup").set(auth(ST)).send({ pin: "222222" });
+  assert.strictEqual(again.status, 200, "초기화 후에는 직원이 새 PIN을 설정할 수 있다");
+});
+
+test("PIN 변경의 '현재 PIN' 오입력도 같은 횟수로 센다(무제한 대입 차단)", async () => {
+  const app = buildApp();
+  await setupPin(app, ST);
+  for (let i = 0; i < 5; i++) {
+    const r = await request(app).post("/api/admin/pin/change").set(auth(ST)).send({ currentPin: "999999", newPin: "654321" });
+    assert.strictEqual(r.status, 401);
+  }
+  const sixth = await request(app).post("/api/admin/pin/change").set(auth(ST)).send({ currentPin: "999999", newPin: "654321" });
+  assert.strictEqual(sixth.status, 423);
+  invalidateAdminCache();
+  const right = await request(app).post("/api/admin/pin/change").set(auth(ST)).send({ currentPin: "123456", newPin: "654321" });
+  assert.strictEqual(right.status, 423, "잠긴 뒤에는 맞는 현재 PIN으로도 못 바꾼다");
 });
 
 test("PIN을 바꾸면 이전 토큰은 무효", async () => {

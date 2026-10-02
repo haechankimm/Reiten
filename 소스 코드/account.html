@@ -318,7 +318,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       } else {
         let message = "";
-        try { message = (await res.json()).error || ""; } catch (e) {}
+        try { message = apiErrorText(await res.json(), ""); } catch (e) {}
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
       }
       return null;

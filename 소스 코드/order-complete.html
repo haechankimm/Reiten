@@ -8,7 +8,8 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-0GKE5QTQ31');
+  // 결제 복귀 주소의 ?paymentId=...가 분석 도구로 넘어가지 않게 주소에서 쿼리를 뺀 값으로 기록한다.
+  gtag('config', 'G-0GKE5QTQ31', { page_location: location.origin + location.pathname });
 </script>
 <!-- Channel Talk -->
 <script>
@@ -36,15 +37,78 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/data.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
 <script>
   applyI18n();
   renderHeader("");
 
-  let order = null;
-  try { order = JSON.parse(localStorage.getItem("reiten_last_order")); } catch (e) {}
-
   const root = document.getElementById("root");
 
+  /* 휴대폰에서는 포트원 결제창이 "페이지 이동(리디렉션)" 방식으로 열려서, cart.html의 결제 이후 코드
+     (주문 확인 요청 → 장바구니 비우기 → 이 페이지로 이동)가 실행되지 못한다. 그래서 결제창에
+     redirectUrl로 이 페이지를 넘겨두고, 포트원이 ?paymentId=...(실패 시 &code=...&message=...)를 붙여
+     돌려보내면 여기서 직접 주문을 확정한다(2026-10-02). PC는 예전처럼 cart.html에서 처리된다. */
+  const returnParams = new URLSearchParams(location.search);
+  if (returnParams.get("paymentId")) {
+    confirmReturnedPayment(returnParams);
+  } else {
+    renderOrder(readLastOrder());
+  }
+
+  function readLastOrder() {
+    try { return JSON.parse(localStorage.getItem("reiten_last_order")); } catch (e) { return null; }
+  }
+
+  async function confirmReturnedPayment(params) {
+    const paymentId = params.get("paymentId");
+    if (params.get("code")) {
+      // 고객이 결제를 취소했거나 카드사 승인이 거절된 경우 — 장바구니는 그대로 두고 돌아갈 길을 안내한다.
+      root.innerHTML = `
+        <div class="empty">
+          <p class="lede">${esc(params.get("message") || t("결제가 취소되었습니다"))}</p>
+          <p style="margin-top:20px"><a class="btn" href="cart.html">${t("장바구니로 돌아가기")}</a></p>
+        </div>`;
+      return;
+    }
+    root.innerHTML = `<div class="empty"><p class="lede">${t("결제를 확인하고 있어요…")}</p></div>`;
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (typeof getAccessToken === "function") {
+        const token = await getAccessToken().catch(() => null);
+        if (token) headers.Authorization = "Bearer " + token;
+      }
+      const res = await fetch("/api/order", { method: "POST", headers, body: JSON.stringify({ paymentId }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = body.error === "OUT_OF_STOCK"
+          ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
+          : apiErrorText(body, t("결제 확인에 실패했습니다"));
+        root.innerHTML = `
+          <div class="empty">
+            <p class="lede">${esc(msg)}</p>
+            <p class="small" style="margin-top:12px">${t("결제가 이미 끝났다면 주문 조회에서 접수 여부를 확인해 주세요.")}</p>
+            <p style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <a class="btn" href="order-lookup.html">${t("주문 조회")}</a>
+              <a class="btn btn--ghost" href="cart.html">${t("장바구니로 돌아가기")}</a>
+            </p>
+          </div>`;
+        return;
+      }
+      try { localStorage.setItem("reiten_last_order", JSON.stringify(body)); } catch (e) {}
+      Cart.clear();
+      // 새로고침해도 결제 확인을 다시 보내지 않도록 주소에서 paymentId를 지운다(주문은 위에서 저장됨).
+      history.replaceState(null, "", "order-complete.html");
+      renderOrder(body);
+    } catch (e) {
+      root.innerHTML = `
+        <div class="empty">
+          <p class="lede">${t("연결이 불안정해 주문 결과를 확인하지 못했습니다. 주문 조회 또는 메일함에서 접수 여부를 확인한 뒤 다시 시도해 주세요.")}</p>
+          <p style="margin-top:20px"><a class="btn" href="order-lookup.html">${t("주문 조회")}</a></p>
+        </div>`;
+    }
+  }
+
+  function renderOrder(order) {
   if (!order) {
     root.innerHTML = `
       <div class="empty">
@@ -168,6 +232,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         "?subject=" + encodeURIComponent(`[REITEN 주문] ${order.no} ${c.name}`) +
         "&body=" + encodeURIComponent(sheet);
     }
+  }
   }
 
   renderFooter();
