@@ -35,7 +35,7 @@
     if (!r.ok) { el("alert-result").textContent = t("찾기 실패 — {e}", { e: r.error || "" }); return; }
     el("alert-result").textContent = r.chats.length
       ? t("아래 숫자를 Render 환경변수 TELEGRAM_CHAT_ID에 넣으세요:") + "\n" + r.chats.map((c) => `${c.id}  (${c.name})`).join("\n")
-      : t("아직 봇에게 온 메시지가 없습니다. 텔레그램에서 봇을 열고 /start 를 보낸 뒤 다시 눌러주세요.");
+      : t("최근 24시간 안에 봇에게 온 메시지가 없습니다. 텔레그램은 24시간이 지난 메시지는 보여주지 않으니, 지금 봇에게 /start 를 한 번 더 보낸 뒤 바로 다시 눌러주세요. (봇은 답장을 하지 않는 게 정상입니다)");
   });
 
   /* 아이폰 Safari(홈 화면 앱이 아닌 상태)에서는 푸시 API 자체가 없어 알림 버튼이 안 보인다 — 이유를 안내한다. */

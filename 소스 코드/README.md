@@ -45,8 +45,9 @@
    하나도 없을 때** 난다 → reiten.kr은 다른 Resend 계정에서 인증된 것으로 보임. 조치: ① reiten.kr이 Verified인 Resend 계정에서
    API 키를 새로 만들어 Render `RESEND_API_KEY`와 Supabase SMTP Password를 둘 다 교체, 또는 ② sovag 계정에서 reiten.kr 도메인을
    추가·인증(후이즈 DNS에 Resend가 주는 레코드 등록). Supabase 인증 메일(가입 확인·비밀번호 재설정)도 같은 키를 쓰면 같이 실패한다.
-2. **텔레그램 긴급 알림 미연결** — 봇(@Reiten_alert_bot)이 받은 메시지 0건 → 텔레그램에서 봇에 /start → Works 정보 탭 "채팅 ID 찾기" →
-   Render `TELEGRAM_CHAT_ID`. 대화에 노출된 봇 토큰은 BotFather `/revoke`로 재발급 후 Render `TELEGRAM_BOT_TOKEN` 교체.
+2. **텔레그램 긴급 알림 미연결** — 봇(@Reiten_alert_bot)이 받은 메시지 0건 → 텔레그램에서 봇에 /start → **24시간 안에** Works 정보 탭 "채팅 ID 찾기" →
+   Render `TELEGRAM_CHAT_ID`. (봇은 발신 전용이라 /start에 답장하지 않는 게 정상. `getUpdates`는 24시간 지난 메시지를 안 돌려주므로
+   9/25에 보낸 /start는 이미 안 보임 — 다시 보내고 바로 누를 것.) 대화에 노출된 봇 토큰은 BotFather `/revoke`로 재발급 후 Render `TELEGRAM_BOT_TOKEN` 교체.
 3. **카드결제 개통** — 카드사 심사 완료. NHN KCP가 요구한 **SGI 서울보증 "이행(지급)보증보험"**(피보험자 NHN KCP) 가입·증권 제출 →
    개통 후 본인 카드로 실결제 1건(결제→주문생성→웹훅→취소·환불)까지 확인.
 
@@ -491,6 +492,12 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-10-02 — 회원 승격 후 목록에서 사라지던 표시 버그 수정, 승격 문구를 "운영자로"로 명확화, 텔레그램 채팅 ID 찾기 안내 보강.**
+- `works/js/members.js`: 승격 성공 시 일반회원 목록에서 빼기만 하고 관리자 행에 안 넣어서 새로고침 전까지 사라진 것처럼 보였음 →
+  `adminItems`에 운영자(`isMaster:false`)로 추가해 바로 위쪽 운영자 행으로 옮겨 그림(서버 데이터는 원래 정상).
+  승격은 원래도 `role='admin'` + 기본 직원 권한(운영자)이고 메인 관리자는 `MASTER_ADMIN_EMAIL` 한 명뿐 — 버튼·확인창·토스트 문구만 "운영자로 승격"으로 바꿈.
+- `works/js/alerts.js`: "채팅 ID 찾기"가 빈 결과일 때 "텔레그램은 24시간 지난 메시지를 안 보여준다 / 봇은 답장 안 하는 게 정상" 안내 추가.
 
 **2026-09-24 — README 개선 제안 6건 중 5건 구현(개인정보처리방침·직원 권한/PIN·이탈 메일·404/500·동시수정 충돌 방지), 1건은 이미 돼 있어 확인만.**
 - **개인정보처리방침(`privacy.html`)**: 제5조 위탁 표에 Google LLC(GA4)·Channel Corp.(채널톡) 추가, 제7조를
