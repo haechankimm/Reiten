@@ -82,6 +82,7 @@ const calendarRoutes = require("./routes/calendar");
 const usageLogRoutes = require("./routes/usageLog");
 const staffRoutes = require("./routes/staff");
 const alertsRoutes = require("./routes/alerts");
+const accountRoutes = require("./routes/account");
 const { adminGuard } = require("./lib/adminGuard");
 const { sendPushToAdmins } = require("./lib/push");
 
@@ -1761,6 +1762,7 @@ app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) 
 app.use(adminsRoutes);
 app.use(staffRoutes);
 app.use(alertsRoutes);
+app.use(accountRoutes);
 
 /* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
    이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */

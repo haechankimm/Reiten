@@ -142,6 +142,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <p class="lede" data-i18n="아직 주문 내역이 없습니다.">아직 주문 내역이 없습니다.</p>
         </div>
 
+        <details style="margin-top:64px;max-width:56ch">
+          <summary class="small" style="cursor:pointer;color:var(--muted)" data-i18n="회원 탈퇴">회원 탈퇴</summary>
+          <div style="margin-top:14px">
+            <p class="small" style="line-height:1.7" data-i18n="탈퇴하면 계정과 적립금이 즉시 삭제되며 되돌릴 수 없습니다. 주문 내역은 전자상거래법에 따라 정해진 기간 동안 보관되며, 비회원 주문 조회(주문번호+연락처)로 계속 확인할 수 있습니다. 진행 중인 주문이 있으면 탈퇴할 수 없습니다.">탈퇴하면 계정과 적립금이 즉시 삭제되며 되돌릴 수 없습니다. 주문 내역은 전자상거래법에 따라 정해진 기간 동안 보관되며, 비회원 주문 조회(주문번호+연락처)로 계속 확인할 수 있습니다. 진행 중인 주문이 있으면 탈퇴할 수 없습니다.</p>
+            <div class="field" style="margin-top:14px">
+              <label for="wd-confirm" data-i18n="확인을 위해 '탈퇴'를 입력해 주세요">확인을 위해 '탈퇴'를 입력해 주세요</label>
+              <input id="wd-confirm" autocomplete="off">
+            </div>
+            <button class="btn btn--ghost" type="button" id="wd-submit" data-i18n="회원 탈퇴하기">회원 탈퇴하기</button>
+          </div>
+        </details>
+
       </div>
     </div>
   </section>
@@ -526,6 +538,22 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     el("logout")?.addEventListener("click", async () => {
       await client.auth.signOut();
       location.reload();
+    });
+
+    el("wd-submit")?.addEventListener("click", async () => {
+      if (el("wd-confirm").value.trim() !== "탈퇴") {
+        toast(t("확인 문구로 '탈퇴'를 정확히 입력해 주세요."));
+        return;
+      }
+      if (!confirm(t("정말 탈퇴할까요? 계정과 적립금이 삭제되며 되돌릴 수 없습니다."))) return;
+      const btn = el("wd-submit");
+      btn.disabled = true;
+      const result = await adminFetch("/api/my/account", { method: "DELETE", body: JSON.stringify({ confirm: "탈퇴" }) });
+      btn.disabled = false;
+      if (!result) return;
+      await client.auth.signOut();
+      alert(t("탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다."));
+      location.href = "index.html";
     });
   })();
 

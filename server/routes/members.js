@@ -18,6 +18,7 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
+const { deleteCustomerAccount } = require("../lib/accountDeletion");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
 const { toCsvGeneric } = require("../lib/orderExport");
@@ -219,18 +220,12 @@ router.delete("/api/admin/members/:id", requireAdmin, async (req, res) => {
   const id = req.params.id;
   if (!(await requireCustomerTarget(id, res))) return;
 
-  const [{ error: ordersError }, { error: returnsError }, { error: qnaError }] = await Promise.all([
-    supabaseAdmin.from("orders").update({ user_id: null }).eq("user_id", id),
-    supabaseAdmin.from("return_requests").update({ user_id: null }).eq("user_id", id),
-    supabaseAdmin.from("qna").update({ user_id: null }).eq("user_id", id),
-  ]);
-  if (ordersError || returnsError || qnaError) {
-    console.error("[members] 삭제 전 연결 해제 실패:", ordersError?.message, returnsError?.message, qnaError?.message);
-    return res.status(500).json({ error: "연결된 주문·문의 기록 정리에 실패해 삭제를 중단했습니다." });
+  // 주문·문의 연결 해제 + 적립금·결제대기·품절알림 정리 후 삭제(고객 셀프 탈퇴와 같은 경로, lib/accountDeletion.js)
+  const result = await deleteCustomerAccount(id);
+  if (!result.ok) {
+    console.error("[members] 삭제 실패:", result.error);
+    return res.status(500).json({ error: "계정 삭제에 실패했습니다." });
   }
-
-  const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
-  if (error) return res.status(500).json({ error: "계정 삭제에 실패했습니다." });
 
   logAdminAction(req, "member.delete", "member", id);
   res.json({ ok: true });

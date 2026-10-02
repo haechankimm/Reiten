@@ -181,3 +181,62 @@
   }
 
   el("change-pin")?.addEventListener("click", changeMyPin);
+
+  /* ---------- "보기만" 권한 화면 처리 ----------
+     권한이 view인 탭에서는 수정·삭제 버튼과 입력 폼을 숨기거나 잠그고, 맨 위에 "보기 전용" 안내를 띄운다.
+     목록·검색·필터·내보내기는 그대로 쓸 수 있다. 화면 처리는 편의일 뿐 실제 차단은 서버(adminGuard)가 한다.
+     hide: 숨길 요소, hidePanel: 그 요소가 들어 있는 패널째 숨김, disable: 보이되 잠금(값 확인용). */
+  const READONLY_RULES = [
+    { tab: "orders", panel: "admin-orders", hide: ["#ord-bulk-toggle", "#ord-bulk-input", "#ord-bulk-submit", "#od-save"], disable: ["#od-status", "#od-courier", "#od-tracking", "#od-assignee", "#od-internal-note", "#od-cancel-reason"] },
+    { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
+    { tab: "inventory", panel: "admin-inventory", hide: ["#inv-save-btn", ".inv-bulk-qty-apply", ".inv-bulk-qty-input"], disable: [".admin-inv-qty"] },
+    { tab: "qna", panel: "admin-qna", hide: [".admin-qna-submit", ".admin-qna-save-meta", ".admin-qna-template-pick"], disable: [".admin-qna-answer", ".admin-qna-note", ".admin-qna-assignee"] },
+    { tab: "paymentlog", panel: null, hide: [".notif-error-resolve"] },
+    { tab: "reviews", panel: "admin-reviews", hide: ["#reviews-bulk-approve", "#reviews-bulk-hide", "#reviews-select-all", ".review-select", ".admin-review-delete", ".admin-review-toggle"] },
+    { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
+    { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
+    { tab: "lookbook", panel: "admin-lookbook", hidePanel: ["#lookbook-form"], hide: [".look-tile-add"], disable: [".look-tile"] },
+    { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-resend", ".member-verify"] },
+    { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },
+    { tab: "calendar", panel: "admin-home", hide: ["#handoff-submit", ".handoff-delete"], disable: ["#handoff-input"] },
+    { tab: "notices", panel: "admin-notices", hidePanel: ["#notice-form"], hide: [".notice-delete", ".notice-edit"] },
+    { tab: "outbox", panel: "admin-outbox", hide: [".outbox-resolve"] },
+    { tab: "settings", panel: "admin-settings", hidePanel: ["#settings-form", "#qna-template-form"], hide: [".admin-setting-edit", ".qt-delete"] },
+  ];
+
+  function applyReadOnly() {
+    if (!adminMe || adminMe.isMaster) return;
+    const hideSel = [];
+    const disableSel = [];
+    for (const r of READONLY_RULES) {
+      if (!canView(r.tab) || canEdit(r.tab)) continue;
+      const scope = r.panel ? `#${r.panel} ` : "";
+      const panel = r.panel && el(r.panel);
+      if (panel && r.panel !== "admin-home" && !panel.querySelector(".ro-banner")) {
+        panel.classList.add("is-readonly");
+        const banner = `<p class="ro-banner">${esc(t("보기 전용 — 이 화면은 조회만 할 수 있습니다. 수정이 필요하면 마스터 관리자에게 권한을 요청하세요."))}</p>`;
+        const head = panel.querySelector(".content-head");
+        if (head) head.insertAdjacentHTML("afterend", banner);
+        else panel.insertAdjacentHTML("afterbegin", banner);
+      }
+      (r.hidePanel || []).forEach((s) => {
+        const target = document.querySelector(scope + s);
+        const box = target && (target.closest(".panel") || target);
+        if (box) box.hidden = true;
+      });
+      (r.hide || []).forEach((s) => hideSel.push(scope + s));
+      (r.disable || []).forEach((s) => disableSel.push(scope + s));
+    }
+    if (!hideSel.length && !disableSel.length) return;
+    const style = document.createElement("style");
+    style.textContent =
+      (hideSel.length ? `${hideSel.join(",")}{display:none!important}` : "") +
+      (disableSel.length ? `${disableSel.join(",")}{pointer-events:none!important;opacity:.6}` : "");
+    document.head.appendChild(style);
+    // 목록은 나중에 다시 그려지므로, 새로 생긴 입력칸도 계속 잠근다
+    if (disableSel.length) {
+      const lock = () => document.querySelectorAll(disableSel.join(",")).forEach((e) => { if (!e.disabled) e.disabled = true; });
+      lock();
+      new MutationObserver(lock).observe(document.body, { childList: true, subtree: true });
+    }
+  }

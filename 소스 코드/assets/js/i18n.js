@@ -1434,6 +1434,17 @@ const I18N = {
   ["사유를 입력해 주세요", {"en": "Please enter a reason", "ja": "理由を入力してください"}]
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* 2026-10-02 회원 탈퇴·보기 전용 번역 */
+[  ["보기 전용 — 이 화면은 조회만 할 수 있습니다. 수정이 필요하면 마스터 관리자에게 권한을 요청하세요.", {"de": "Nur Ansicht – dieser Bereich kann nur angesehen werden. Für Änderungen bitte beim Master-Admin Rechte anfragen."}],
+  ["회원 탈퇴", {"en": "Delete account", "ja": "退会"}],
+  ["탈퇴하면 계정과 적립금이 즉시 삭제되며 되돌릴 수 없습니다. 주문 내역은 전자상거래법에 따라 정해진 기간 동안 보관되며, 비회원 주문 조회(주문번호+연락처)로 계속 확인할 수 있습니다. 진행 중인 주문이 있으면 탈퇴할 수 없습니다.", {"en": "Deleting your account removes it and your points immediately and cannot be undone. Order records are kept for the period required by Korean e-commerce law and remain viewable via guest order lookup (order number + phone). You cannot delete your account while an order is in progress.", "ja": "退会するとアカウントとポイントは即時削除され、元に戻せません。注文履歴は電子商取引法に基づき所定の期間保管され、非会員注文照会（注文番号＋連絡先）で引き続き確認できます。進行中の注文がある場合は退会できません。"}],
+  ["확인을 위해 '탈퇴'를 입력해 주세요", {"en": "Type '탈퇴' to confirm", "ja": "確認のため「탈퇴」と入力してください"}],
+  ["회원 탈퇴하기", {"en": "Delete my account", "ja": "退会する"}],
+  ["확인 문구로 '탈퇴'를 정확히 입력해 주세요.", {"en": "Please type '탈퇴' exactly to confirm.", "ja": "確認のため「탈퇴」と正確に入力してください。"}],
+  ["정말 탈퇴할까요? 계정과 적립금이 삭제되며 되돌릴 수 없습니다.", {"en": "Delete your account? Your account and points will be removed and this cannot be undone.", "ja": "本当に退会しますか？アカウントとポイントは削除され、元に戻せません。"}],
+  ["탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.", {"en": "Your account has been deleted. Thank you for riding with us.", "ja": "退会が完了しました。ご利用ありがとうございました。"}]
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /* 2026-09-26(4차) 컬러별 사진·상세 콘텐츠 번역 */
 [  ["모델 정보 (선택)", {"de": "Model-Info (optional)"}],
   ["품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).", {"de": "Ausverkauft wird automatisch aus dem Bestand-Tab angezeigt (0 Stück je Farbe/Größe = ausverkauft)."}],
