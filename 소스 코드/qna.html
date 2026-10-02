@@ -66,6 +66,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               <span data-i18n="비밀글로 남기기 (판매자와 작성자만 볼 수 있어요)">비밀글로 남기기 (판매자와 작성자만 볼 수 있어요)</span>
             </label>
           </div>
+          <!-- 비회원 비밀글은 작성자도 사이트에서 다시 열어볼 방법이 없어(로그인 계정이 없음) 답변을 이메일로 보낸다(2026-10-02) -->
+          <div class="field" id="q-email-field" hidden>
+            <label for="q-email" data-i18n-html data-i18n='답변 받을 이메일 <span class="req">*</span>'>답변 받을 이메일 <span class="req">*</span></label>
+            <input id="q-email" type="email" maxlength="200" autocomplete="email" inputmode="email">
+            <p class="small" style="margin-top:6px;color:var(--muted)" data-i18n="비회원으로 남긴 비밀글은 작성자도 사이트에서 다시 열어볼 수 없어요. 답변을 이메일로 보내드릴게요. (이메일은 답변 안내에만 쓰고 공개되지 않습니다)">비회원으로 남긴 비밀글은 작성자도 사이트에서 다시 열어볼 수 없어요. 답변을 이메일로 보내드릴게요. (이메일은 답변 안내에만 쓰고 공개되지 않습니다)</p>
+            <p class="err" data-i18n="답변 받을 이메일을 정확히 입력해 주세요.">답변 받을 이메일을 정확히 입력해 주세요.</p>
+          </div>
           <button class="btn" type="submit" id="q-submit" data-i18n="문의 등록">문의 등록</button>
         </form>
         <div class="notice" id="no-server-notice" hidden style="margin-top:8px">
@@ -143,10 +150,16 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     .map(id => `<option value="${id}">${esc(productLabel(id))}</option>`).join("");
   if (filterProduct && PRODUCTS.some(p => p.id === filterProduct)) el("q-product").value = filterProduct;
 
+  // 회원이면 내 문의 목록에서 비밀글 답변을 볼 수 있어 이메일이 필수가 아니다(비회원만 이메일 칸을 보여줌).
+  let isMember = false;
   (async () => {
     const profile = await getCurrentProfile();
+    isMember = !!profile;
     if (profile && profile.name) el("q-name").value = profile.name;
   })();
+  el("q-secret").addEventListener("change", () => {
+    el("q-email-field").hidden = !(el("q-secret").checked && !isMember);
+  });
 
   /* 비슷한 질문 먼저 보여주기 — 문의를 입력하는 동안 이미 답변된 과거 문의 중 겹치는 단어가
      있는 것을 미리 보여줘서, 같은 질문이 반복 등록되는 걸 줄이고 고객도 더 빨리 답을 얻게
@@ -204,6 +217,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     else { name.setAttribute("aria-invalid", "false"); name.closest(".field").querySelector(".err").classList.remove("on"); }
     if (!question.value.trim()) { question.setAttribute("aria-invalid", "true"); question.closest(".field").querySelector(".err").classList.add("on"); ok = false; }
     else { question.setAttribute("aria-invalid", "false"); question.closest(".field").querySelector(".err").classList.remove("on"); }
+    // 비회원 비밀글은 답변 받을 이메일이 필수(회원은 내 문의에서 답변을 볼 수 있어 선택).
+    const emailInput = el("q-email");
+    const needEmail = el("q-secret").checked && !isMember;
+    const emailVal = emailInput.value.trim();
+    const emailBad = (needEmail && !emailVal) || (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal));
+    emailInput.setAttribute("aria-invalid", String(emailBad));
+    emailInput.closest(".field").querySelector(".err").classList.toggle("on", emailBad);
+    if (emailBad) ok = false;
     if (!ok) return;
 
     const btn = el("q-submit");
@@ -221,13 +242,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           name: name.value.trim(),
           question: question.value.trim(),
           secret: el("q-secret").checked,
+          email: emailVal || undefined,
         }),
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        toast(apiErrorText(await res.json().catch(() => ({})), t("문의 등록에 실패했습니다")));
+        return;
+      }
       const created = await res.json();
       items = [created, ...items];
       question.value = "";
       el("q-secret").checked = false;
+      emailInput.value = "";
+      el("q-email-field").hidden = true;
       el("similar-qna").hidden = true;
       paintList();
       toast(t("문의가 등록되었습니다"));

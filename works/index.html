@@ -980,6 +980,21 @@
             </div>
           </div>
           <div id="dashboard-stats" class="stat-row"></div>
+          <!-- 월간 정산 리포트(매달 1일 자동 메일과 같은 엑셀) — 메일이 실패해도 여기서 바로 받거나 다시 보낸다(2026-10-02) -->
+          <div class="panel">
+            <b data-i18n="월간 정산 리포트">월간 정산 리포트</b>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매달 1일 자동으로 메일이 가는 정산 엑셀(주문·쿠폰·환불)을 원하는 달로 바로 받거나 다시 보낼 수 있어요. 부분 환불도 실제 환불액으로 계산됩니다.">매달 1일 자동으로 메일이 가는 정산 엑셀(주문·쿠폰·환불)을 원하는 달로 바로 받거나 다시 보낼 수 있어요. 부분 환불도 실제 환불액으로 계산됩니다.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input type="month" id="settle-month" style="max-width:180px">
+              <button type="button" class="btn btn--sm" id="settle-download" data-i18n="엑셀 받기">엑셀 받기</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="settle-send" data-i18n="메일로 다시 보내기">메일로 다시 보내기</button>
+            </div>
+          </div>
+          <div class="panel">
+            <b data-i18n="아침 업무 요약 알림">아침 업무 요약 알림</b>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.">매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.</p>
+            <button type="button" class="btn btn--sm btn--ghost" id="briefing-test" data-i18n="지금 요약 받아보기">지금 요약 받아보기</button>
+          </div>
           <div class="panel">
             <b data-i18n="최근 14일 매출">최근 14일 매출</b>
             <div id="dashboard-revenue-chart" class="chart-bars"></div>

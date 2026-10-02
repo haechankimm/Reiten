@@ -92,7 +92,7 @@
       </div>
       ${orderLifecycleHTML(o)}
       <div id="od-refunds"></div>
-      ${o.status === "입금확인" ? `
+      ${o.status === "입금확인" && hasAreaEdit("refunds") ? `
       <div class="detail-field" style="margin-top:10px">
         <button type="button" class="btn btn--sm btn--ghost" id="od-partial-cancel">${esc(t("부분 취소(일부 상품만)"))}</button>
         <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("출고 전 주문에서 일부 상품만 빼고 그만큼 환불합니다. 전부 취소하려면 상태를 '취소'로 바꾸세요."))}</p>

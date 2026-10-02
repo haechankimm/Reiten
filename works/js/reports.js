@@ -275,3 +275,34 @@
     return true;
   }
 
+
+
+  /* ---------- 월간 정산 리포트 · 아침 요약 (2026-10-02) ---------- */
+  (function initSettlementPanel() {
+    const monthInput = el("settle-month");
+    if (!monthInput) return;
+    // 기본값: 지난달(매달 1일 메일이 보내는 달과 같은 기준)
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    monthInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+    el("settle-download").addEventListener("click", () => {
+      if (!monthInput.value) { toast(t("월을 선택해 주세요")); return; }
+      downloadExportFile(`/api/admin/reports/settlement?month=${encodeURIComponent(monthInput.value)}`, `reiten-settlement-${monthInput.value}`, "xlsx");
+    });
+    el("settle-send").addEventListener("click", async () => {
+      if (!monthInput.value) { toast(t("월을 선택해 주세요")); return; }
+      const btn = el("settle-send");
+      btn.disabled = true;
+      const r = await adminFetch("/api/admin/reports/settlement/send", { method: "POST", body: JSON.stringify({ month: monthInput.value }) });
+      btn.disabled = false;
+      if (!r) return;
+      toast(t("정산 리포트 메일을 보냈습니다 — 실패하면 '발송 실패 아웃박스'에 표시됩니다"));
+    });
+    el("briefing-test").addEventListener("click", async () => {
+      const r = await adminFetch("/api/admin/reports/briefing/test", { method: "POST", body: "{}" });
+      if (!r) return;
+      toast(r.sent ? t("보냈습니다: {text}", { text: r.text }) : t("보내지 못했습니다 — 폰 푸시·텔레그램 연결을 확인해 주세요 ({text})", { text: r.text }));
+    });
+  })();

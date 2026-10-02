@@ -25,7 +25,7 @@ const AREAS = {
   outbox: { label: "발송 실패 아웃박스", tabs: ["outbox"], paths: ["outbox"] },
   settings: { label: "정보·백업", tabs: ["settings"], paths: ["settings", "backup"] },
   auditlog: { label: "활동 로그", tabs: ["auditlog"], paths: ["audit-log"] },
-  dashboard: { label: "대시보드·방문자·사용 통계", tabs: ["dashboard", "usagestats"], paths: ["dashboard", "analytics", "usage-log/stats"] },
+  dashboard: { label: "대시보드·방문자·사용 통계·정산 리포트", tabs: ["dashboard", "usagestats"], paths: ["dashboard", "analytics", "usage-log/stats", "reports"] },
   /* 돈이 실제로 나가는 처리만 따로 뗀 권한(2026-10-02) — 반품 환불·부분 취소(/api/admin/refunds), 입금된
      주문의 취소, 고객 주문취소 신청 승인. 주문·반품 탭을 "보기+수정"으로 줘도 이 권한이 없으면 환불은 못 한다.
      새 직원 기본값(DEFAULT_STAFF_PERMISSIONS)에는 일부러 넣지 않았다 — 마스터가 필요한 사람에게만 켠다. */

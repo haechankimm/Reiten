@@ -60,7 +60,7 @@ test("POST /api/qna — general 문의는 성공하고, 비밀글이 아니면 �
 
 test("POST /api/qna — 비밀글은 목록 조회 시 본인/관리자가 아니면 내용이 가려진다", async () => {
   const app = buildApp();
-  await request(app).post("/api/qna").send({ productId: "reflect-heart-hoodie", name: "익명", question: "환불 언제 되나요?", secret: true });
+  await request(app).post("/api/qna").send({ productId: "reflect-heart-hoodie", name: "익명", question: "환불 언제 되나요?", secret: true, email: "anon@example.com" });
 
   const publicView = await request(app).get("/api/qna");
   assert.strictEqual(publicView.body[0].question, null);
@@ -68,7 +68,7 @@ test("POST /api/qna — 비밀글은 목록 조회 시 본인/관리자가 아�
 
 test("GET /api/admin/qna — 인증 없으면 401, 있으면 비밀글 내용도 그대로 보인다", async () => {
   const app = buildApp();
-  await request(app).post("/api/qna").send({ productId: "general", name: "익명", question: "비밀 문의", secret: true });
+  await request(app).post("/api/qna").send({ productId: "general", name: "익명", question: "비밀 문의", secret: true, email: "anon@example.com" });
 
   const unauth = await request(app).get("/api/admin/qna");
   assert.strictEqual(unauth.status, 401);
@@ -144,4 +144,19 @@ test("GET /api/admin/qna — 관리자 목록에는 내부 메모·담당자가 
   assert.strictEqual(res.body.items[0].internalNote, "진상");
   assert.strictEqual(res.body.items[0].assignedTo, "staff-1");
   assert.strictEqual(res.body.items[0].question, "비밀");
+});
+
+test("POST /api/qna — 비회원 비밀글은 이메일 필수, 이메일은 저장되지만 공개 목록엔 안 나온다", async () => {
+  const app = buildApp();
+  const noEmail = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true });
+  assert.strictEqual(noEmail.status, 400);
+  const badEmail = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true, email: "not-an-email" });
+  assert.strictEqual(badEmail.status, 400);
+  const ok = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true, email: "guest@example.com" });
+  assert.strictEqual(ok.status, 200);
+  assert.ok(!("email" in ok.body));
+  const stored = (await supabaseAdmin.from("qna").select("*")).data[0];
+  assert.strictEqual(stored.email, "guest@example.com");
+  const admin = await request(app).get("/api/admin/qna").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(admin.body.items[0].email, "guest@example.com", "관리자 화면에는 연락 이메일이 보인다");
 });

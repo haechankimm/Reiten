@@ -10,6 +10,7 @@ const { applyKstDateRangeFilter } = require("../lib/kst");
 const { getAllProductIds } = require("../lib/productIds");
 const { isMissingColumnError } = require("../lib/pgErrors");
 const { updateWithOptionalColumnFallback } = require("../lib/dbUpdate");
+const { sendCustomerQnaAnswered } = require("../lib/mailer");
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ router.get("/api/qna", optionalAuth, async (req, res) => {
 
 router.post("/api/qna", optionalAuth, writeLimiter, async (req, res) => {
   if (req.userBanned) return res.status(403).json({ error: BANNED_MESSAGE, code: "banned" });
-  const { productId, name, question, secret } = req.body || {};
+  const { productId, name, question, secret, email } = req.body || {};
 
   const validProduct = productId === "general" || (await getAllProductIds()).includes(productId);
   if (!validProduct) {
@@ -70,17 +71,30 @@ router.post("/api/qna", optionalAuth, writeLimiter, async (req, res) => {
     return res.status(400).json({ error: "이름과 문의 내용을 입력해 주세요." });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("qna")
-    .insert({
-      product_id: productId,
-      user_id: req.user ? req.user.id : null,
-      name: nameStr,
-      question: questionStr,
-      secret: !!secret,
-    })
-    .select()
-    .single();
+  /* 비회원 비밀글은 작성자도 사이트에서 답변을 다시 볼 수 없어서 답변 받을 이메일을 필수로 받는다(2026-10-02).
+     회원은 내 문의로 볼 수 있어 선택. 이메일은 공개 목록에 절대 내려가지 않는다(toPublicQnaDto). */
+  const emailStr = String(email || "").trim().slice(0, 200);
+  if (emailStr && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+    return res.status(400).json({ error: "이메일 형식이 올바르지 않습니다." });
+  }
+  if (secret && !req.user && !emailStr) {
+    return res.status(400).json({ error: "비회원 비밀글은 답변 받을 이메일을 입력해 주세요." });
+  }
+
+  const row = {
+    product_id: productId,
+    user_id: req.user ? req.user.id : null,
+    name: nameStr,
+    question: questionStr,
+    secret: !!secret,
+    email: emailStr || null,
+  };
+  let { data, error } = await supabaseAdmin.from("qna").insert(row).select().single();
+  // email 컬럼이 아직 없음(043 미실행) — 이메일 없이 저장(문의 자체는 받는다)
+  if (isMissingColumnError(error)) {
+    const { email: _omit, ...rest } = row;
+    ({ data, error } = await supabaseAdmin.from("qna").insert(rest).select().single());
+  }
 
   if (error) {
     console.error("[qna] 저장 실패:", error.message);
@@ -89,6 +103,17 @@ router.post("/api/qna", optionalAuth, writeLimiter, async (req, res) => {
 
   res.json(toPublicQnaDto(data, { redact: false }));
 });
+
+/* 답변 안내 메일 — 비회원은 남긴 이메일로, 회원은 계정 이메일로(남긴 이메일이 있으면 그걸 우선). */
+async function notifyQnaAnswered(q) {
+  let to = q.email || null;
+  if (!to && q.user_id) {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(q.user_id);
+    to = (data && data.user && data.user.email) || null;
+  }
+  if (!to) return;
+  await sendCustomerQnaAnswered({ email: to, name: q.name, question: q.question, answer: q.answer });
+}
 
 /* 문의 목록 필터 — q는 작성자명·문의내용·상품ID 부분 일치, status는 "답변대기"/"답변완료". */
 function applyQnaFilters(query, reqQuery, requestUserId) {
@@ -136,7 +161,10 @@ router.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
 
   const { data, error } = await updateWithOptionalColumnFallback("qna", "id", req.params.id, patch);
   if (error || !data) return res.status(500).json({ error: "저장에 실패했습니다." });
-  if (answer !== undefined) logAdminAction(req, "qna.answer", "qna", req.params.id);
+  if (answer !== undefined) {
+    logAdminAction(req, "qna.answer", "qna", req.params.id);
+    notifyQnaAnswered(data).catch((err) => console.error("[qna] 답변 안내 메일 실패:", err.message));
+  }
   else logAdminAction(req, "qna.update", "qna", req.params.id, patch);
   res.json({ ok: true, item: toAdminQnaDto(data) });
 });

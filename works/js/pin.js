@@ -38,6 +38,13 @@
   }
   function canView(tab) { return permLevelForTab(tab) !== "none"; }
   function canEdit(tab) { return permLevelForTab(tab) === "edit"; }
+  /* 탭과 1:1로 대응하지 않는 영역(예: "refunds" 환불·주문취소) 권한 확인 — 화면에서 버튼을 숨기는 편의일 뿐,
+     실제 차단은 서버(adminGuard·hasAreaPermission)가 한다. 정보가 아직 없으면(로딩 전) 보여둔다. */
+  function hasAreaEdit(area) {
+    if (!adminMe) return true;
+    if (adminMe.isMaster) return true;
+    return (adminMe.permissions && adminMe.permissions[area]) === "edit";
+  }
 
   /* 범용 입력 대화상자. fields: [{id,label,type,numeric,maxlength}], onSubmit(values) → 에러 문자열이면 표시하고
      유지, 성공하면 falsy 반환. dismissible=false면 취소 불가(필수 PIN 입력). 닫히면 resolve(true/false). */
@@ -196,7 +203,7 @@
     { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
     { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
     { tab: "lookbook", panel: "admin-lookbook", hidePanel: ["#lookbook-form"], hide: [".look-tile-add"], disable: [".look-tile"] },
-    { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-resend", ".member-verify"] },
+    { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-demote", ".member-resend", ".member-verify"] },
     { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },
     { tab: "calendar", panel: "admin-home", hide: ["#handoff-submit", ".handoff-delete"], disable: ["#handoff-input"] },
     { tab: "notices", panel: "admin-notices", hidePanel: ["#notice-form"], hide: [".notice-delete", ".notice-edit"] },

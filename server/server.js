@@ -85,9 +85,12 @@ const alertsRoutes = require("./routes/alerts");
 const accountRoutes = require("./routes/account");
 const refundsRoutes = require("./routes/refunds");
 const returnsRoutes = require("./routes/returns");
+const reportsRoutes = require("./routes/reports");
+const { sendMorningBriefing } = require("./lib/briefing");
 const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
 const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
 const { toCustomerOrderDto } = require("./lib/customerOrders");
+const { buildSettlement } = require("./lib/settlement");
 const { adminGuard, hasAreaPermission } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
@@ -1803,6 +1806,8 @@ app.use(alertsRoutes);
 app.use(accountRoutes);
 /* 부분 반품·부분 취소 환불, 교환 재발송, 주문별 환불 이력(2026-10-02 — 금액 계산은 lib/refunds.js). */
 app.use(refundsRoutes);
+/* 정산 리포트 다운로드·재발송, 아침 요약 알림 테스트(2026-10-02) */
+app.use(reportsRoutes);
 
 /* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
    이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */
@@ -2823,116 +2828,25 @@ cron.schedule("0 9 * * 1", () => {
 }, { timezone: "Asia/Seoul" });
 
 /* ---------- 월간 정산 리포트 ----------
-   매달 1일 09:00에 "지난달"(KST 기준) 주문·쿠폰·환불 내역을 모아 엑셀(요약/주문상세/쿠폰/환불
-   4개 시트)로 정리해 관리자에게 첨부 메일로 보낸다. 세무사에게 그대로 전달하는 용도 —
-   신고를 대신하지 않는 원본 데이터 정리이므로 메일 본문에도 그렇게 명시한다(mailer.js 참고). */
+   매달 1일 09:00에 "지난달"(KST 기준) 주문·쿠폰·환불 내역 엑셀을 관리자에게 메일로 보낸다(세무사 전달용).
+   리포트 생성은 lib/settlement.js — Works "대시보드" 탭의 정산 리포트 다운로드·재발송 버튼(routes/reports.js)도
+   같은 함수를 쓴다(메일이 실패해도 Works에서 바로 받을 수 있게, 2026-10-02). */
 async function sendMonthlySettlement() {
-  const { startISO: start, endISO: end, monthKey, monthLabel } = kstMonthRangeISO(1);
-
-  const { data: orders, error: ordersError } = await supabaseAdmin
-    .from("orders")
-    .select("order_no, customer, items, subtotal, shipping, total, status, coupon_code, discount, created_at")
-    .gte("created_at", start)
-    .lt("created_at", end)
-    .order("created_at", { ascending: true });
-  if (ordersError) {
-    console.error("[settlement] 주문 조회 실패:", ordersError.message);
+  const { monthKey } = kstMonthRangeISO(1);
+  const report = await buildSettlement(monthKey);
+  if (report.error) {
+    console.error("[settlement] 생성 실패:", report.error);
     return;
   }
-
-  const { data: returns, error: returnsError } = await supabaseAdmin
-    .from("return_requests")
-    .select("order_no, refunded, reason, created_at")
-    .gte("created_at", start)
-    .lt("created_at", end);
-  if (returnsError) {
-    console.error("[settlement] 반품 조회 실패:", returnsError.message);
-    return;
-  }
-
-  const totalByOrderNo = new Map(orders.map((o) => [o.order_no, o.total]));
-  const refunded = returns.filter((r) => r.refunded);
-  const refundTotal = refunded.reduce((sum, r) => sum + (totalByOrderNo.get(r.order_no) || 0), 0);
-  const revenue = orders.filter((o) => o.status !== "취소").reduce((sum, o) => sum + o.total, 0);
-  const couponOrders = orders.filter((o) => o.coupon_code);
-  const couponDiscount = couponOrders.reduce((sum, o) => sum + (o.discount || 0), 0);
-
-  const summary = {
-    monthKey,
-    totalOrders: orders.length,
-    revenue,
-    couponOrders: couponOrders.length,
-    couponDiscount,
-    refundCount: refunded.length,
-    refundTotal,
-    netRevenue: revenue - refundTotal,
-  };
-
-  const won = (n) => Number(n || 0).toLocaleString("ko-KR") + "원";
-  const sheets = [
-    {
-      name: "요약",
-      columns: [{ key: "label", label: "항목" }, { key: "value", label: "값" }],
-      rows: [
-        { label: "기간", value: monthLabel },
-        { label: "총 주문 건수", value: `${summary.totalOrders}건` },
-        { label: "매출(취소 제외)", value: won(summary.revenue) },
-        { label: "쿠폰 사용 건수", value: `${summary.couponOrders}건` },
-        { label: "쿠폰 할인 합계", value: won(summary.couponDiscount) },
-        { label: "환불 건수", value: `${summary.refundCount}건` },
-        { label: "환불 합계", value: won(summary.refundTotal) },
-        { label: "순매출(매출-환불)", value: won(summary.netRevenue) },
-      ],
-    },
-    {
-      name: "주문상세",
-      columns: [
-        { key: "orderNo", label: "주문번호" }, { key: "at", label: "주문일시" }, { key: "name", label: "주문자" },
-        { key: "itemsText", label: "주문상품" }, { key: "subtotal", label: "소계" }, { key: "shipping", label: "배송비" },
-        { key: "couponCode", label: "쿠폰코드" }, { key: "discount", label: "할인액" }, { key: "total", label: "합계" },
-        { key: "status", label: "상태" },
-      ],
-      rows: orders.map((o) => ({
-        orderNo: o.order_no,
-        at: fmtExportDate(o.created_at),
-        name: (o.customer || {}).name || "",
-        itemsText: (o.items || []).map((it) => `${it.name} x${it.qty}`).join(", "),
-        subtotal: o.subtotal,
-        shipping: o.shipping,
-        couponCode: o.coupon_code || "",
-        discount: o.discount || 0,
-        total: o.total,
-        status: o.status,
-      })),
-    },
-    {
-      name: "쿠폰 사용 내역",
-      columns: [
-        { key: "couponCode", label: "쿠폰코드" }, { key: "orderNo", label: "주문번호" },
-        { key: "discount", label: "할인액" }, { key: "at", label: "주문일시" },
-      ],
-      rows: couponOrders.map((o) => ({ couponCode: o.coupon_code, orderNo: o.order_no, discount: o.discount || 0, at: fmtExportDate(o.created_at) })),
-    },
-    {
-      name: "환불 내역",
-      columns: [
-        { key: "orderNo", label: "주문번호" }, { key: "refundAmount", label: "환불액" },
-        { key: "reason", label: "사유" }, { key: "at", label: "처리일시" },
-      ],
-      rows: refunded.map((r) => ({
-        orderNo: r.order_no,
-        refundAmount: totalByOrderNo.get(r.order_no) || 0,
-        reason: r.reason || "",
-        at: fmtExportDate(r.created_at),
-      })),
-    },
-  ];
-
-  const buffer = await toXlsxBufferGeneric(sheets);
-  sendAdminSettlementReport({ monthLabel, summary, buffer }).catch((err) =>
+  sendAdminSettlementReport({ monthLabel: report.monthLabel, summary: report.summary, buffer: report.buffer }).catch((err) =>
     console.error("[mailer] 정산 리포트 메일 발송 실패:", err.message)
   );
 }
+
+/* 아침 업무 요약 — 매일 08:57(KST), 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(+텔레그램)로 */
+cron.schedule("57 8 * * *", () => {
+  sendMorningBriefing().catch((err) => console.error("[briefing] 실행 실패:", err.message));
+}, { timezone: "Asia/Seoul" });
 
 cron.schedule("0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));

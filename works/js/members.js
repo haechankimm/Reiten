@@ -40,6 +40,7 @@
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn--sm member-overview">${esc(t("한눈에 보기"))}</button>
           <button type="button" class="btn btn--sm member-view-orders">${esc(t("주문 보기"))}</button>
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm member-resend">${esc(t("인증 메일 재발송"))}</button>` : ""}
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm btn--ghost member-verify">${esc(t("수동으로 인증 처리"))}</button>` : ""}
@@ -83,6 +84,10 @@
         toast(t("일반회원으로 강등했습니다"));
         renderAdminMembers();
       })
+    );
+
+    el("admin-members-list").querySelectorAll(".member-overview").forEach((btn) =>
+      btn.addEventListener("click", () => openMemberOverview(btn.closest("[data-id]").dataset.id))
     );
 
     el("admin-members-list").querySelectorAll(".member-view-orders").forEach((btn) =>
@@ -209,3 +214,49 @@
     if (membersState.q) params.set("q", membersState.q);
     downloadExportFile(`/api/admin/members/export?${params.toString()}`, "reiten-members", "csv");
   });
+
+
+  /* ---------- 고객 한눈에 보기 (2026-10-02) ----------
+     회원 한 명의 계정 상태·주문·적립금·문의·반품을 한 창에서 — 상담 전화 받을 때 탭을 오가지 않게. 읽기 전용. */
+  const POINT_REASON_LABEL = { earn_purchase: "구매 적립", redeem_order: "주문에 사용", admin_adjust: "관리자 조정", refund_reversal: "취소·환불 정리", earn_review: "사진 리뷰 적립" };
+  const REQUEST_LABEL = { return: "반품", exchange: "교환", cancel: "주문취소 신청" };
+
+  async function openMemberOverview(id) {
+    const d = await adminFetch(`/api/admin/members/${encodeURIComponent(id)}/overview`);
+    if (!d) return;
+    const p = d.profile;
+    const section = (title, body) => `<div style="margin-top:14px"><b>${esc(title)}</b>${body}</div>`;
+    const empty = `<p class="small" style="color:var(--text-muted);margin:4px 0">${esc(t("없음"))}</p>`;
+    const overlay = document.createElement("div");
+    overlay.className = "dlg-overlay";
+    overlay.innerHTML = `
+      <div class="dlg-card dlg-card--wide">
+        <h3>${esc(p.name || p.email)} <span class="small" style="color:var(--text-muted)">${esc(p.email)}</span></h3>
+        <p class="small" style="color:var(--text-muted)">
+          ${esc(t("가입일"))} ${fmtDate(p.createdAt)} · ${esc(p.emailConfirmed ? t("이메일 인증됨") : t("이메일 미인증"))}
+          · ${esc(t("마지막 로그인"))} ${p.lastSignInAt ? fmtDate(p.lastSignInAt) : esc(t("로그인 기록 없음"))}${p.phone ? ` · ${esc(p.phone)}` : ""}
+          ${p.banned ? ` · <span style="color:var(--danger)">${esc(t("차단됨"))}</span>` : ""}
+        </p>
+        <div class="stat-row" style="margin-top:10px">
+          <div class="stat-tile"><div class="stat-tile-label">${esc(t("주문"))}</div><div class="stat-tile-value tnum">${d.stats.orderCount}</div><div class="stat-tile-sub">${esc(t("결제 {n}건 · 취소 {c}건", { n: d.stats.paidCount, c: d.stats.cancelledCount }))}</div></div>
+          <div class="stat-tile"><div class="stat-tile-label">${esc(t("누적 실결제(환불 제외)"))}</div><div class="stat-tile-value tnum">${money(d.stats.paidTotal)}</div></div>
+          <div class="stat-tile"><div class="stat-tile-label">${esc(t("적립금 잔액"))}</div><div class="stat-tile-value tnum">${money(d.stats.pointsBalance)}</div></div>
+        </div>
+        ${section(t("최근 주문"), d.orders.length ? d.orders.map((o) => `
+          <div class="small" style="padding:6px 0;border-bottom:1px solid var(--border)">
+            <span class="tnum">${esc(o.no)}</span> · ${fmtDate(o.at)} · ${orderStatusChip(o.status)} · <span class="tnum">${money(o.total)}</span>
+            ${o.refundedAmount ? ` <span style="color:var(--danger)">(${esc(t("환불"))} −${money(o.refundedAmount)})</span>` : ""}
+            ${o.confirmedAt ? ` · ${esc(t("구매확정"))}` : ""}<br><span style="color:var(--text-muted)">${esc(o.items)}</span>
+          </div>`).join("") : empty)}
+        ${section(t("적립금 내역(최근 20건)"), d.points.length ? d.points.map((r) => `
+          <div class="small tnum" style="padding:3px 0">${fmtDate(r.at)} · ${esc(t(POINT_REASON_LABEL[r.reason] || r.reason))}${r.orderNo ? ` · ${esc(r.orderNo)}` : ""} · <b>${r.delta > 0 ? "+" : ""}${r.delta.toLocaleString("ko-KR")}</b></div>`).join("") : empty)}
+        ${section(t("문의"), d.qna.length ? d.qna.map((q) => `
+          <div class="small" style="padding:3px 0">${fmtDate(q.at)} · ${esc(t(q.status))}${q.secret ? " · 🔒" : ""} · ${esc(String(q.question || "").slice(0, 60))}</div>`).join("") : empty)}
+        ${section(t("반품·교환·취소 신청"), d.returns.length ? d.returns.map((r) => `
+          <div class="small" style="padding:3px 0">${fmtDate(r.at)} · ${esc(t(REQUEST_LABEL[r.requestType] || r.requestType))} · ${esc(r.orderNo)} · ${esc(t(r.status))} · ${esc(r.reason || "")}</div>`).join("") : empty)}
+        <div class="dlg-actions" style="margin-top:16px"><button type="button" class="btn" id="mo-close">${esc(t("닫기"))}</button></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#mo-close").addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  }

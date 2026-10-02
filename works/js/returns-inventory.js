@@ -19,7 +19,8 @@
           <select class="admin-return-status">${(RETURN_STATUSES_BY_TYPE[requestType] || RETURN_STATUSES).map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
           <select class="mini-select admin-return-assignee">${adminAssigneeOptionsHTML(r.assignedTo)}</select>
           <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
-          ${requestType === "return" && !r.refunded ? `<button type="button" class="btn btn--sm admin-return-refund">${esc(t("환불 처리"))}</button>` : ""}
+          ${requestType === "return" && !r.refunded && hasAreaEdit("refunds") ? `<button type="button" class="btn btn--sm admin-return-refund">${esc(t("환불 처리"))}</button>` : ""}
+          ${requestType === "return" && !r.refunded && !hasAreaEdit("refunds") ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불은 '환불·주문취소' 권한이 있는 관리자가 처리합니다"))}</span>` : ""}
           ${requestType === "exchange" ? `<button type="button" class="btn btn--sm admin-return-reship">${esc(t("교환 재발송"))}</button>` : ""}
           ${requestType === "exchange" && !r.restocked ? `<button type="button" class="btn btn--sm btn--ghost admin-return-restock-lines">${esc(t("회수 상품 재고 복원"))}</button>` : ""}
           ${r.restocked ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>` : ""}

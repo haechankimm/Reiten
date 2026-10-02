@@ -146,6 +146,54 @@ async function requireCustomerTarget(id, res) {
   return true;
 }
 
+/* 고객 한눈에 보기(2026-10-02) — 회원 한 명의 계정 상태·주문·적립금·문의·반품을 한 번에. 상담 전화가 왔을 때
+   여러 탭을 오가지 않고 이 사람에 대해 필요한 걸 바로 보기 위한 읽기 전용 화면용. members 영역 "보기" 권한. */
+router.get("/api/admin/members/:id/overview", requireAdmin, async (req, res) => {
+  const id = req.params.id;
+  const { data: profile } = await supabaseAdmin.from("profiles").select("id, name, phone, role, created_at").eq("id", id).maybeSingle();
+  if (!profile) return res.status(404).json({ error: "회원을 찾을 수 없습니다." });
+  const { data: userData } = await supabaseAdmin.auth.admin.getUserById(id);
+  const u = (userData && userData.user) || {};
+
+  const [ordersRes, ledgerRes, qnaRes, returnsRes] = await Promise.all([
+    supabaseAdmin.from("orders").select("*").eq("user_id", id).order("created_at", { ascending: false }).limit(50),
+    supabaseAdmin.from("loyalty_points_ledger").select("delta, reason, order_no, created_at").eq("user_id", id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("qna").select("id, product_id, question, status, secret, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
+    supabaseAdmin.from("return_requests").select("*").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
+  ]);
+  const orders = ordersRes.error ? [] : ordersRes.data || [];
+  const ledger = ledgerRes.error ? [] : ledgerRes.data || [];
+  const paid = orders.filter((o) => o.status !== "취소" && o.status !== "입금대기");
+
+  res.json({
+    profile: {
+      id,
+      email: u.email || "",
+      name: profile.name || "",
+      phone: profile.phone || "",
+      role: profile.role,
+      createdAt: profile.created_at,
+      lastSignInAt: u.last_sign_in_at || null,
+      emailConfirmed: !!u.email_confirmed_at,
+      banned: isUserBanned(u),
+    },
+    stats: {
+      orderCount: orders.length,
+      paidCount: paid.length,
+      paidTotal: paid.reduce((s, o) => s + (Number(o.total) || 0) - (Number(o.refunded_amount) || 0), 0),
+      cancelledCount: orders.filter((o) => o.status === "취소").length,
+      pointsBalance: ledger.reduce((s, r) => s + (Number(r.delta) || 0), 0),
+    },
+    orders: orders.map((o) => ({
+      no: o.order_no, at: o.created_at, status: o.status, total: o.total, refundedAmount: o.refunded_amount || 0,
+      items: (o.items || []).map((it) => `${it.name} × ${it.qty}`).join(", "), confirmedAt: o.confirmed_at || null,
+    })),
+    points: ledger.slice(0, 20).map((r) => ({ delta: r.delta, reason: r.reason, orderNo: r.order_no, at: r.created_at })),
+    qna: (qnaRes.error ? [] : qnaRes.data || []).map((q) => ({ id: q.id, productId: q.product_id, question: q.question, status: q.status, secret: q.secret, at: q.created_at })),
+    returns: (returnsRes.error ? [] : returnsRes.data || []).map((r) => ({ id: r.id, orderNo: r.order_no, requestType: r.request_type || "return", status: r.status, reason: r.reason, at: r.created_at })),
+  });
+});
+
 router.patch("/api/admin/members/:id/ban", requireAdmin, async (req, res) => {
   const id = req.params.id;
   if (!(await requireCustomerTarget(id, res))) return;
