@@ -58,6 +58,16 @@
       </button>`;
   }
 
+  /* 출고·배송완료·구매확정 시각(043 배송추적·구매확정 기능) — 값이 있는 것만 한 줄로 보여준다. */
+  function orderLifecycleHTML(o) {
+    const parts = [
+      o.shippedAt ? `${t("출고")} ${fmtDate(o.shippedAt)}` : "",
+      o.deliveredAt ? `${t("배송완료")} ${fmtDate(o.deliveredAt)}` : "",
+      o.confirmedAt ? `${t("구매확정")} ${fmtDate(o.confirmedAt)}` : "",
+    ].filter(Boolean);
+    return parts.length ? `<p class="small" style="margin-top:8px;color:var(--text-muted)">${esc(parts.join(" · "))}</p>` : "";
+  }
+
   function orderDetailHTML(o) {
     return `
       <div class="detail-head">
@@ -78,7 +88,15 @@
       <div class="detail-items">
         ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)} (${esc(it.options)}) × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
+        ${o.refundedAmount ? `<div class="detail-total" style="color:var(--danger)"><span>${esc(t("환불된 금액"))}</span><span class="tnum">−${money(o.refundedAmount)}</span></div>` : ""}
       </div>
+      ${orderLifecycleHTML(o)}
+      <div id="od-refunds"></div>
+      ${o.status === "입금확인" ? `
+      <div class="detail-field" style="margin-top:10px">
+        <button type="button" class="btn btn--sm btn--ghost" id="od-partial-cancel">${esc(t("부분 취소(일부 상품만)"))}</button>
+        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("출고 전 주문에서 일부 상품만 빼고 그만큼 환불합니다. 전부 취소하려면 상태를 '취소'로 바꾸세요."))}</p>
+      </div>` : ""}
       <div class="detail-field" style="margin-top:16px">
         <label>${esc(t("상태"))}</label>
         <select class="mini-select" id="od-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
@@ -147,6 +165,20 @@
       el("od-status").addEventListener("change", () => {
         el("od-cancel-reason-field").hidden = el("od-status").value !== "취소";
       });
+
+      // 환불·부분취소 이력은 환불이 있었던 주문만 불러온다(목록 응답의 refundedAmount로 판단).
+      if (o.refundedAmount) {
+        adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}/refunds`).then((info) => {
+          const box = el("od-refunds");
+          if (info && box) box.innerHTML = refundHistoryHTML(info);
+        });
+      }
+      el("od-partial-cancel")?.addEventListener("click", () =>
+        openRefundDialog({
+          orderNo: o.no, kind: "partial_cancel",
+          onDone: () => paintAdminOrders(),
+        })
+      );
 
       el("od-history-toggle").addEventListener("click", async () => {
         const panel = el("od-history-panel");

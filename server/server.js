@@ -7,7 +7,6 @@ const express = require("express");
 require("./lib/asyncErrors");
 const helmet = require("helmet");
 const compression = require("compression");
-const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 const cron = require("node-cron");
 const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
@@ -46,7 +45,7 @@ const portone = require("./lib/portone");
 const { kstMonthRangeISO, applyKstDateRangeFilter } = require("./lib/kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./lib/inventory");
 const { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL } = require("./lib/adminLog");
-const { writeLimiter } = require("./lib/rateLimiters");
+const { writeLimiter, orderLimiter, lookupLimiter, couponLimiter, authLimiter, apiLimiter } = require("./lib/rateLimiters");
 const { remindAbandonedCarts } = require("./lib/abandonedCart");
 const { sendReviewRequests } = require("./lib/reviewRequest");
 const {
@@ -84,7 +83,10 @@ const usageLogRoutes = require("./routes/usageLog");
 const staffRoutes = require("./routes/staff");
 const alertsRoutes = require("./routes/alerts");
 const accountRoutes = require("./routes/account");
-const { adminGuard } = require("./lib/adminGuard");
+const refundsRoutes = require("./routes/refunds");
+const returnsRoutes = require("./routes/returns");
+const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
+const { adminGuard, hasAreaPermission } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
 const { sendPushToAdmins } = require("./lib/push");
 
@@ -174,10 +176,10 @@ app.use(
   })
 );
 
-// 전체 API 남용 방지 (기본): IP당 15분에 300회
-app.use("/api/", rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
+// 전체 API 남용 방지 (기본): IP당 15분에 1000회 — 용도별 세부 한도는 lib/rateLimiters.js
+app.use("/api/", apiLimiter);
 
-// writeLimiter(쓰기·조회 남용 방지, IP당 15분 20회)는 lib/rateLimiters.js에서 가져온다 —
+// 용도별 limiter(주문·조회·쿠폰·글쓰기·계정)는 lib/rateLimiters.js에서 가져온다 —
 // routes/qna.js 등 분리된 라우트 파일과 반드시 같은 인스턴스를 써야 카운터가 안 나뉜다.
 
 /* 포트원 웹훅은 서명 검증에 "파싱 전 원본 문자열"이 필요해서, 이 라우트만 아래
@@ -534,7 +536,7 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
    결제창에 넘긴다(사전검증) — 브라우저에서 금액을 조작해도 결제창에 표시되는 금액 자체가
    서버 계산값이라 소용없다. 결제가 끝나면 /api/order가 paymentId로 다시 포트원에 물어봐서
    실제로 그 금액만큼 결제됐는지 확인한 뒤에만 주문을 만든다(사후검증, 009_card_payments.sql 참고). */
-app.post("/api/payments/prepare", writeLimiter, optionalAuth, async (req, res) => {
+app.post("/api/payments/prepare", optionalAuth, orderLimiter, async (req, res) => {
   if (!portone.isConfigured()) {
     return res.status(503).json({ error: "카드결제가 아직 준비되지 않았습니다." });
   }
@@ -1221,7 +1223,7 @@ async function issueThanksCouponsIfEligible(order) {
   ]);
 }
 
-app.post("/api/order", writeLimiter, optionalAuth, async (req, res) => {
+app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
   if (req.body && req.body.paymentId) {
     const paymentId = String(req.body.paymentId).trim();
     const { data: pending, error: pendErr } = await supabaseAdmin
@@ -1481,7 +1483,7 @@ function loginLockKey(email, req) {
   return `${email}#${ipHash}`;
 }
 
-app.get("/api/admin/login-lock", writeLimiter, async (req, res) => {
+app.get("/api/admin/login-lock", authLimiter, async (req, res) => {
   const email = String(req.query.email || "").trim().toLowerCase().slice(0, 200);
   if (!email) return res.json({ locked: false });
 
@@ -1494,7 +1496,7 @@ app.get("/api/admin/login-lock", writeLimiter, async (req, res) => {
   res.json({ locked: false });
 });
 
-app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
+app.post("/api/admin/login-lock", authLimiter, async (req, res) => {
   const email = String((req.body || {}).email || "").trim().toLowerCase().slice(0, 200);
   const success = !!(req.body || {}).success;
   if (!email) return res.status(400).json({ error: "email이 필요합니다." });
@@ -1535,7 +1537,7 @@ app.post("/api/admin/login-lock", writeLimiter, async (req, res) => {
 });
 
 /* ---------- 비회원 주문 조회 (주문번호 + 연락처) ---------- */
-app.post("/api/orders/lookup", writeLimiter, async (req, res) => {
+app.post("/api/orders/lookup", lookupLimiter, async (req, res) => {
   const { orderNo: reqOrderNo, tel } = req.body || {};
   const orderNoStr = String(reqOrderNo || "").trim();
   const telDigits = normalizeTel(tel);
@@ -1608,7 +1610,7 @@ app.get("/api/my/orders", requireAuth, async (req, res) => {
    테이블을 분리하면 admin 목록·통계를 두 곳에서 따로 유지보수해야 하는 부담만 늘어난다.
    reason은 프리셋 중 하나(예: "단순변심", "기타")이고, "기타"를 고르면 customReason에 고객이
    직접 입력한 텍스트가 들어간다(사유 자체는 "기타"로 남겨 통계 카테고리가 잘게 안 쪼개짐). */
-app.post("/api/returns", writeLimiter, optionalAuth, async (req, res) => {
+app.post("/api/returns", optionalAuth, writeLimiter, async (req, res) => {
   const { orderNo: reqOrderNo, contactName, contactTel, reason, detail, requestType, customReason } = req.body || {};
 
   const orderNoStr = String(reqOrderNo || "").trim();
@@ -1793,6 +1795,8 @@ app.use(adminsRoutes);
 app.use(staffRoutes);
 app.use(alertsRoutes);
 app.use(accountRoutes);
+/* 부분 반품·부분 취소 환불, 교환 재발송, 주문별 환불 이력(2026-10-02 — 금액 계산은 lib/refunds.js). */
+app.use(refundsRoutes);
 
 /* 일반 회원 계정 관리(GET /api/admin/members, PATCH .../ban, DELETE) — admins.js와 같은
    이유로 별도 파일로 분리했다(2026-09-01, README "다음 세션이 가장 먼저 할 일" 19번). */
@@ -1831,6 +1835,7 @@ const ADMIN_ORDER_LIST_OPTIONAL_COLUMNS = [
   "points_used", "points_earned",
   "virtual_account_bank", "virtual_account_number", "virtual_account_holder", "virtual_account_due_at",
   "assigned_to", "internal_note",
+  "refunded_amount", "shipped_at", "delivered_at", "confirmed_at",
 ];
 
 async function selectOrdersWithFallback(buildQuery) {
@@ -1874,6 +1879,10 @@ function mapAdminOrderRow(o) {
       : null,
     assignedTo: o.assigned_to || null,
     internalNote: o.internal_note || null,
+    refundedAmount: o.refunded_amount || 0,
+    shippedAt: o.shipped_at || null,
+    deliveredAt: o.delivered_at || null,
+    confirmedAt: o.confirmed_at || null,
   };
 }
 
@@ -2114,6 +2123,10 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
   const isNewCancel = patch.status === "취소" && prev.status !== "취소";
+  // 입금된 주문을 취소하면 환불이 나가므로 "환불·주문취소" 권한이 따로 필요하다(입금 전 취소는 주문 권한만으로 가능).
+  if (isNewCancel && prev.status !== "입금대기" && !(await hasAreaPermission(req, "refunds"))) {
+    return res.status(403).json({ error: "'환불·주문취소' 권한이 없어 입금된 주문을 취소할 수 없습니다. 마스터 관리자에게 문의하세요.", code: "FORBIDDEN_AREA", area: "refunds" });
+  }
   /* 반대 방향(취소 → 다른 상태로 되돌림)도 대칭으로 처리해야 한다 — 안 하면 취소 시
      복원됐던 재고가 그대로 부풀려진 채 남는다(관리자가 실수로 취소했다가 바로 되돌리는
      경우 등). */
@@ -2138,71 +2151,8 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   let cancelResult = null;
   if (isNewCancel) {
-    const restoreItems = restoreItemsFromOrder(saved.items);
-    if (restoreItems.length) {
-      const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
-      if (restoreError) {
-        console.error("[admin/orders] 취소 시 재고 복원 실패:", saved.order_no, restoreError.message);
-      } else {
-        logInventoryChange(
-          restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "admin_cancel", ref: saved.order_no }))
-        );
-      }
-    }
-    // 재고 복원과 같은 원칙 — 이 주문으로 적립된 포인트는 회수하고, 사용한 포인트는 되돌려준다.
-    if (saved.points_used || saved.points_earned) {
-      reversePointsForOrder(supabaseAdmin, saved.order_no).catch((err) => console.error("[points] 취소 시 되돌리기 실패:", err.message));
-    }
-
-    if (saved.payment_method === "card" && saved.payment_id) {
-      try {
-        await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소");
-        cancelResult = { refund: "card", ok: true };
-      } catch (refundErr) {
-        console.error("[admin/orders] ⚠️ 취소 시 환불 실패 — 수동 확인 필요:", saved.order_no, refundErr.message);
-        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: refundErr.message }).catch((err) =>
-          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
-        );
-        logSystemError("refund_failed", { orderNo: saved.order_no, amount: saved.total, error: refundErr.message, source: "order_cancel" });
-        cancelResult = { refund: "card", ok: false };
-      }
-    } else if (saved.payment_method === "virtual_account" && saved.payment_id && prev.status === "입금대기") {
-      /* 아직 입금 전(입금대기)이었다면 돈이 오간 적이 없으므로 계좌를 "폐쇄"만 하면 된다.
-         이미 입금 확인된(입금확인) 뒤의 취소는 실제로 받은 돈을 환불해야 하므로, 카드결제와
-         똑같이 cancelPayment로 처리한다 — 포트원 취소 API는 결제수단과 무관하게 이미 결제
-         완료된 건이면 동일하게 동작한다(closeVirtualAccount를 여기서 잘못 쓰면 계좌만 닫히고
-         환불은 안 나가는, 오히려 더 위험한 상태가 된다). */
-      try {
-        await portone.closeVirtualAccount(saved.payment_id);
-        cancelResult = { refund: "virtual_account_closed", ok: true };
-      } catch (closeErr) {
-        console.error("[admin/orders] ⚠️ 취소 시 가상계좌 폐쇄 실패 — 수동 확인 필요:", saved.order_no, closeErr.message);
-        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: closeErr.message }).catch((err) =>
-          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
-        );
-        logSystemError("virtual_account_close_failed", { orderNo: saved.order_no, amount: saved.total, error: closeErr.message, source: "order_cancel" });
-        cancelResult = { refund: "virtual_account_closed", ok: false };
-      }
-    } else if (saved.payment_method === "virtual_account" && saved.payment_id) {
-      try {
-        await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소");
-        cancelResult = { refund: "virtual_account", ok: true };
-      } catch (refundErr) {
-        console.error("[admin/orders] ⚠️ 취소 시 환불 실패 — 수동 확인 필요:", saved.order_no, refundErr.message);
-        sendAdminRefundFailed({ orderNo: saved.order_no, amount: saved.total, error: refundErr.message }).catch((err) =>
-          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
-        );
-        logSystemError("refund_failed", { orderNo: saved.order_no, amount: saved.total, error: refundErr.message, source: "order_cancel" });
-        cancelResult = { refund: "virtual_account", ok: false };
-      }
-    } else if (saved.payment_method === "bank_transfer") {
-      cancelResult = { refund: "bank_manual", ok: false };
-    }
-
-    sendCustomerOrderCancelled(saved, cancelReasonStr).catch((err) =>
-      console.error("[mailer] 주문취소 안내 메일 발송 실패:", err.message)
-    );
-    kakao.sendAlimtalk("ORDER_CANCELLED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
+    // 관리자 주문취소와 고객 "주문취소 신청" 승인이 같은 후속 처리를 쓴다(applyOrderCancelSideEffects).
+    cancelResult = await applyOrderCancelSideEffects(saved, prev.status, cancelReasonStr);
   }
 
   let uncancelResult = null;
@@ -2237,156 +2187,9 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
   res.json({ ok: true, cancel: cancelResult, uncancel: uncancelResult });
 });
 
-/* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
-function applyReturnFilters(query, reqQuery, requestUserId) {
-  const { q, status, dateFrom, dateTo, assignedTo } = reqQuery;
-  if (q) {
-    const v = String(q).trim().slice(0, 60).replace(/[%,()]/g, "");
-    if (v) query = query.or(`order_no.ilike.%${v}%,contact_name.ilike.%${v}%,contact_tel.ilike.%${v}%`);
-  }
-  if (status) query = query.eq("status", status);
-  if (assignedTo === "me" && requestUserId) query = query.eq("assigned_to", requestUserId);
-  else if (assignedTo) query = query.eq("assigned_to", assignedTo);
-  query = applyKstDateRangeFilter(query, "created_at", dateFrom, dateTo);
-  return query;
-}
-
-const RETURN_REQUEST_BASE_COLUMNS = "id, order_no, contact_name, contact_tel, reason, detail, status, restocked, refunded, created_at";
-const RETURN_REQUEST_OPTIONAL_COLUMNS = ["request_type", "custom_reason", "assigned_to", "internal_note"];
-
-app.get("/api/admin/returns", requireAdmin, async (req, res) => {
-  const { page, pageSize, from, to } = paginationParams(req.query);
-  const { data, error, count } = await selectWithOptionalColumnFallback(RETURN_REQUEST_BASE_COLUMNS, RETURN_REQUEST_OPTIONAL_COLUMNS, (columns) => {
-    let query = supabaseAdmin.from("return_requests").select(columns.join(", "), { count: "exact" }).order("created_at", { ascending: false });
-    query = applyReturnFilters(query, req.query, req.user.id);
-    return query.range(from, to);
-  });
-
-  if (error) return res.status(500).json({ error: "반품 신청 목록을 불러오지 못했습니다." });
-
-  res.json({
-    items: data.map((r) => ({
-      id: r.id,
-      orderNo: r.order_no,
-      contactName: r.contact_name,
-      contactTel: r.contact_tel,
-      reason: r.reason,
-      detail: r.detail,
-      status: r.status,
-      restocked: r.restocked,
-      refunded: r.refunded,
-      requestType: r.request_type || "return",
-      customReason: r.custom_reason || null,
-      at: r.created_at,
-      assignedTo: r.assigned_to || null,
-      internalNote: r.internal_note || null,
-    })),
-    page,
-    pageSize,
-    total: count ?? data.length,
-  });
-});
-
-/* 반품 승인 시 카드결제 자동환불 — status가 (처음으로) "완료"가 되는 순간, 해당 주문이 카드결제
-   건이면 포트원 환불을 자동으로 시도한다. 무통장입금은 계좌로 직접 돈을 보내야 해서 API로 할 수
-   없다 — 그 경우 화면에 "직접 환불하라"고만 알려준다. 환불 시도 자체가 실패하면(카드 결제는 됐는데
-   자동환불도 실패) 관리자가 놓치기 쉬운 상황이라 즉시 긴급 메일을 보낸다(카드결제 이중실패 알림과
-   같은 원칙). refunded 플래그로 같은 반품을 두 번 환불 시도하지 않게 막는다. */
-app.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
-  const { status, assignedTo, internalNote, expectedStatus } = req.body || {};
-  const statusStr = status !== undefined ? String(status || "").trim() : undefined;
-  if (status !== undefined && !statusStr) {
-    return res.status(400).json({ error: "status가 필요합니다." });
-  }
-
-  const patch = {};
-  if (statusStr !== undefined) patch.status = statusStr;
-  if (assignedTo !== undefined) patch.assigned_to = assignedTo || null;
-  if (internalNote !== undefined) patch.internal_note = String(internalNote || "").trim().slice(0, 2000) || null;
-  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
-
-  const { data: prev, error: prevError } = await supabaseAdmin
-    .from("return_requests")
-    .select("id, order_no, status, refunded, contact_name, contact_tel")
-    .eq("id", req.params.id)
-    .single();
-  if (prevError || !prev) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
-  if (expectedStatus !== undefined && String(expectedStatus) !== String(prev.status)) {
-    return res.status(409).json({ error: "다른 관리자가 이 신청을 방금 수정했습니다. 목록을 새로고침해서 최신 내용을 확인한 뒤 다시 저장해 주세요.", code: "STALE", current: { status: prev.status } });
-  }
-
-  const { data: savedReturn, error } = await updateWithOptionalColumnFallback("return_requests", "id", req.params.id, patch);
-  if (error || !savedReturn) return res.status(500).json({ error: "저장에 실패했습니다." });
-  logAdminAction(req, "return.update", "return", req.params.id, patch);
-
-  let refund = null;
-  if (statusStr === "완료" && prev.status !== "완료" && !prev.refunded) {
-    const { data: order } = await supabaseAdmin
-      .from("orders")
-      .select("payment_method, payment_id, total")
-      .eq("order_no", prev.order_no)
-      .maybeSingle();
-
-    if (order && order.payment_method === "card" && order.payment_id) {
-      try {
-        await portone.cancelPayment(order.payment_id, "반품 승인에 따른 환불");
-        await supabaseAdmin.from("return_requests").update({ refunded: true }).eq("id", prev.id);
-        logAdminAction(req, "return.refund", "return", req.params.id, { orderNo: prev.order_no, amount: order.total });
-        kakao.sendAlimtalk("REFUND_COMPLETED", prev.contact_tel, { name: prev.contact_name, orderNo: prev.order_no, amount: order.total }).catch(() => {});
-        refund = { method: "card", ok: true };
-      } catch (refundErr) {
-        console.error("[return] ⚠️ 반품 승인 환불 실패 — 수동 확인 필요:", prev.order_no, refundErr.message);
-        sendAdminRefundFailed({ orderNo: prev.order_no, amount: order.total, error: refundErr.message }).catch((err) =>
-          console.error("[mailer] 환불 실패 긴급 알림 메일 발송 실패:", err.message)
-        );
-        logSystemError("refund_failed", { orderNo: prev.order_no, amount: order.total, error: refundErr.message, source: "return_approval" });
-        refund = { method: "card", ok: false };
-      }
-    } else if (order && order.payment_method === "bank_transfer") {
-      refund = { method: "bank_manual", ok: false };
-    }
-  }
-
-  res.json({ ok: true, refund });
-});
-
-/* 반품 승인 시 재고 복원 — return_requests는 주문번호만 갖고 있고 어떤 항목을 반품했는지는
-   따로 기록하지 않으므로(전체 반품 전제), 해당 주문의 전체 항목을 복원한다. 부분 반품이면
-   관리자가 이 버튼 대신 재고 탭에서 직접 수량을 조정해야 한다. 중복 복원(재고가 두 번 늘어나는
-   사고)을 막기 위해 restocked 플래그로 한 번만 허용한다. */
-app.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
-  const { data: ret, error: retError } = await supabaseAdmin
-    .from("return_requests")
-    .select("id, order_no, restocked")
-    .eq("id", req.params.id)
-    .single();
-  if (retError || !ret) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
-  if (ret.restocked) return res.status(400).json({ error: "이미 재고를 복원한 반품입니다." });
-
-  const { data: order, error: orderError } = await supabaseAdmin
-    .from("orders")
-    .select("order_no, items")
-    .eq("order_no", ret.order_no)
-    .single();
-  if (orderError || !order) return res.status(404).json({ error: "연결된 주문을 찾을 수 없습니다." });
-
-  const restoreItems = restoreItemsFromOrder(order.items);
-
-  if (!restoreItems.length) {
-    return res.status(400).json({ error: "이 주문에는 자동으로 복원할 재고 정보가 없습니다(이전 방식으로 만들어진 주문). 재고 탭에서 직접 조정해 주세요." });
-  }
-
-  const { error: restoreError } = await supabaseAdmin.rpc("restore_inventory", { p_items: restoreItems });
-  if (restoreError) return res.status(500).json({ error: "재고 복원에 실패했습니다." });
-
-  logInventoryChange(
-    restoreItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "return_restock", ref: ret.order_no }))
-  );
-  await supabaseAdmin.from("return_requests").update({ restocked: true }).eq("id", ret.id);
-  logAdminAction(req, "return.restock", "return", req.params.id, { orderNo: ret.order_no, items: restoreItems });
-
-  res.json({ ok: true });
-});
+/* 반품·교환·주문취소 신청 관리자 라우트(목록·상태 저장·재고 복원)는 routes/returns.js로 옮겼다(2026-10-02 —
+   유형별 처리 규칙을 테스트할 수 있게). 환불 실행은 routes/refunds.js + lib/refunds.js. */
+app.use(returnsRoutes);
 
 app.get("/api/admin/inventory", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin
@@ -2691,7 +2494,7 @@ app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
 /* 고객 화면(장바구니)에서 코드를 입력했을 때 실시간으로 할인액을 미리 보여주기 위한 공개 엔드포인트.
    실제 할인은 여기서 확정되는 게 아니라 /api/order·/api/payments/prepare가 다시 한번 resolveCoupon을
    불러 서버에서 재계산한다 — 이 엔드포인트는 순전히 미리보기용이라 위·변조돼도 결제 금액엔 영향 없다. */
-app.post("/api/coupons/validate", writeLimiter, async (req, res) => {
+app.post("/api/coupons/validate", couponLimiter, async (req, res) => {
   const { code, items: rawItems } = req.body || {};
   if (!Array.isArray(rawItems) || !rawItems.length) {
     return res.status(400).json({ error: "장바구니 항목이 없습니다." });

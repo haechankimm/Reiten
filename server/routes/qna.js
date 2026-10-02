@@ -55,7 +55,7 @@ router.get("/api/qna", optionalAuth, async (req, res) => {
   );
 });
 
-router.post("/api/qna", writeLimiter, optionalAuth, async (req, res) => {
+router.post("/api/qna", optionalAuth, writeLimiter, async (req, res) => {
   if (req.userBanned) return res.status(403).json({ error: BANNED_MESSAGE, code: "banned" });
   const { productId, name, question, secret } = req.body || {};
 

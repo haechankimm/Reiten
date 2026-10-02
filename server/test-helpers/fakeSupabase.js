@@ -337,6 +337,24 @@ function createFakeSupabase(seed = {}) {
           );
         return { data: null, error: null };
       }
+      /* restore_inventory/decrement_inventory(014_inventory_by_color.sql) 흉내 — 반품·취소 테스트용. */
+      if (fn === "restore_inventory" || fn === "decrement_inventory") {
+        if (!store.inventory) store.inventory = [];
+        for (const it of args.p_items || []) {
+          let row = store.inventory.find((r) => r.product_id === it.productId && (r.color || "") === (it.color || "") && r.size === it.size);
+          if (fn === "decrement_inventory") {
+            if (!row || row.qty < it.qty) return { data: null, error: { message: `OUT_OF_STOCK:${it.productId}:${it.color || ""}:${it.size}` } };
+            row.qty -= it.qty;
+          } else {
+            if (!row) {
+              row = { product_id: it.productId, color: it.color || "", size: it.size, qty: 0 };
+              store.inventory.push(row);
+            }
+            row.qty += it.qty;
+          }
+        }
+        return { data: null, error: null };
+      }
       return { data: null, error: { message: `fakeSupabase: unhandled rpc "${fn}"` } };
     },
     /* 테스트 beforeEach에서 매번 깨끗한 상태로 되돌릴 때 쓴다(server/lib/supabase.js가

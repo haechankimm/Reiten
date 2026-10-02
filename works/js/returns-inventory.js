@@ -16,16 +16,18 @@
         <p style="margin-top:8px">${esc(r.reason)}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
-          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+          <select class="admin-return-status">${(RETURN_STATUSES_BY_TYPE[requestType] || RETURN_STATUSES).map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
           <select class="mini-select admin-return-assignee">${adminAssigneeOptionsHTML(r.assignedTo)}</select>
           <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
-          ${
-            r.restocked
-              ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>`
-              : `<button type="button" class="btn btn--sm btn--ghost admin-return-restock">${esc(t("재고 복원"))}</button>`
-          }
-          ${r.refunded ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
+          ${requestType === "return" && !r.refunded ? `<button type="button" class="btn btn--sm admin-return-refund">${esc(t("환불 처리"))}</button>` : ""}
+          ${requestType === "exchange" ? `<button type="button" class="btn btn--sm admin-return-reship">${esc(t("교환 재발송"))}</button>` : ""}
+          ${requestType === "exchange" && !r.restocked ? `<button type="button" class="btn btn--sm btn--ghost admin-return-restock-lines">${esc(t("회수 상품 재고 복원"))}</button>` : ""}
+          ${r.restocked ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>` : ""}
+          ${r.refunded && requestType !== "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
+          ${r.refunded && requestType === "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("주문 취소 처리됨"))}</span>` : ""}
         </div>
+        ${r.reshipTrackingNo ? `<p class="small" style="margin-top:6px">${esc(t("재발송"))}: ${esc((COURIERS.find((c) => c.key === r.reshipCourier) || {}).label || r.reshipCourier || "")} ${esc(r.reshipTrackingNo)}</p>` : ""}
+        ${requestType === "cancel" && r.status !== "완료" && r.status !== "반려" ? `<p class="small" style="margin-top:6px;color:var(--text-muted)">${esc(t("'완료'로 저장하면 주문이 실제로 취소되고 재고 복원·환불까지 자동으로 처리됩니다(출고 전 주문만)."))}</p>` : ""}
         <textarea class="admin-return-note" rows="2" style="margin-top:8px" placeholder="${esc(t("내부 메모 (고객에게 보이지 않음)"))}" maxlength="2000">${esc(r.internalNote || "")}</textarea>
       </div>`;
   }
@@ -47,6 +49,14 @@
         const assignedTo = card.querySelector(".admin-return-assignee").value;
         const internalNote = card.querySelector(".admin-return-note").value.trim();
         const prevItem = returnsState.items.find((x) => x.id === id);
+        const type = (prevItem && prevItem.requestType) || "return";
+        if (type === "return" && status === "완료" && prevItem && !prevItem.refunded) {
+          toast(t("반품 완료는 '환불 처리' 버튼으로 진행해 주세요"));
+          return;
+        }
+        if (type === "cancel" && status === "완료" && prevItem && prevItem.status !== "완료") {
+          if (!confirm(t("주문 {orderNo}을(를) 실제로 취소합니다. 재고가 복원되고 결제된 금액은 환불됩니다(무통장은 직접 송금). 진행할까요?", { orderNo: prevItem.orderNo }))) return;
+        }
         btn.disabled = true;
         const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
@@ -61,13 +71,14 @@
         const item = returnsState.items.find((x) => x.id === id);
         if (item) { item.status = status; item.assignedTo = assignedTo || null; item.internalNote = internalNote || null; }
 
-        if (result.refund?.method === "card" && result.refund.ok) {
+        const c = result.cancel;
+        if (c) {
           if (item) item.refunded = true;
-          toast(t("상태를 저장하고 환불까지 완료했습니다"));
-        } else if (result.refund?.method === "card" && !result.refund.ok) {
-          toast(t("상태는 저장했지만 환불에 실패했습니다. 포트원에서 직접 확인해 주세요."));
-        } else if (result.refund?.method === "bank_manual") {
-          toast(t("상태를 저장했습니다. 무통장입금 건이라 계좌로 직접 환불해 주세요."));
+          if (c.refund === "card" && c.ok) toast(t("주문을 취소하고 카드 결제도 자동 환불했습니다"));
+          else if (c.refund === "card" && !c.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "bank_manual") toast(t("주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요"));
+          else if (c.refund === "already_cancelled") toast(t("이미 취소된 주문이라 신청만 완료 처리했습니다"));
+          else toast(t("주문을 취소했습니다"));
         } else {
           toast(t("상태를 저장했습니다"));
         }
@@ -83,16 +94,49 @@
       })
     );
 
-    el("admin-returns-list").querySelectorAll(".admin-return-restock").forEach((btn) =>
-      btn.addEventListener("click", async () => {
+    /* 반품 → 환불 처리 창(상품·수량·귀책·배송비 차감·재고 복원을 고르고 금액 확인 후 실행, works/js/refunds.js) */
+    el("admin-returns-list").querySelectorAll(".admin-return-refund").forEach((btn) =>
+      btn.addEventListener("click", () => {
         const id = btn.closest("[data-id]").dataset.id;
-        btn.disabled = true;
-        const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}/restock`, { method: "POST" });
-        if (!result) { btn.disabled = false; return; }
         const item = returnsState.items.find((x) => x.id === id);
-        if (item) item.restocked = true;
-        toast(t("재고를 복원했습니다"));
-        renderAdminReturns();
+        if (!item) return;
+        openRefundDialog({
+          orderNo: item.orderNo, kind: "return", returnId: id,
+          onDone: (result) => {
+            item.refunded = true;
+            item.status = "완료";
+            if (result.refund && result.refund.restocked) item.restocked = true;
+            renderAdminReturns();
+          },
+        });
+      })
+    );
+
+    /* 교환 → 재발송(운송장 입력·고객 안내, 환불 없음) */
+    el("admin-returns-list").querySelectorAll(".admin-return-reship").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = returnsState.items.find((x) => x.id === id);
+        openReshipDialog({
+          returnId: id,
+          onDone: (result) => {
+            if (item) Object.assign(item, { status: "재발송", reshipCourier: result.item.reshipCourier, reshipTrackingNo: result.item.reshipTrackingNo });
+            renderAdminReturns();
+          },
+        });
+      })
+    );
+
+    /* 교환으로 돌아온 상품 중 고른 것만 재고 복원 */
+    el("admin-returns-list").querySelectorAll(".admin-return-restock-lines").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = returnsState.items.find((x) => x.id === id);
+        if (!item) return;
+        openRestockLinesDialog({
+          orderNo: item.orderNo, returnId: id,
+          onDone: () => { item.restocked = true; renderAdminReturns(); },
+        });
       })
     );
 

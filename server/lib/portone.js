@@ -52,9 +52,15 @@ async function verifyWebhook(rawBody, headers) {
 
 /* 결제는 끝났는데(고객 카드에서 돈은 빠져나감) 그사이 재고가 소진돼 주문을 만들 수 없는 경우를 위한 것.
    실패하면 돈만 받고 물건은 못 주는 상태가 되므로, 호출부에서 반드시 성공 여부를 확인해야 한다. */
-async function cancelPayment(paymentId, reason) {
+/* options.amount를 주면 그 금액만 부분 취소(부분 반품·부분 취소, lib/refunds.js), 없으면 남은 금액 전액 취소.
+   options.currentCancellableAmount를 같이 주면 포트원이 "지금 취소 가능 잔액"이 그 값과 같을 때만 취소한다 —
+   같은 환불 버튼이 두 번 눌려도 이중 환불이 나가지 않게 하는 안전장치. */
+async function cancelPayment(paymentId, reason, options = {}) {
   if (!client) throw new Error("PORTONE_API_SECRET이 설정되지 않았습니다.");
-  return client.payment.cancelPayment({ paymentId, reason });
+  const body = { paymentId, reason };
+  if (Number.isFinite(options.amount) && options.amount > 0) body.amount = options.amount;
+  if (Number.isFinite(options.currentCancellableAmount) && options.currentCancellableAmount > 0) body.currentCancellableAmount = options.currentCancellableAmount;
+  return client.payment.cancelPayment(body);
 }
 
 /* 입금 기한이 지나도록 아무도 입금하지 않은 가상계좌를 더 이상 쓸 수 없게 막는다(cancelPayment와

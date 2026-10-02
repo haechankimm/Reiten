@@ -26,6 +26,10 @@ const AREAS = {
   settings: { label: "정보·백업", tabs: ["settings"], paths: ["settings", "backup"] },
   auditlog: { label: "활동 로그", tabs: ["auditlog"], paths: ["audit-log"] },
   dashboard: { label: "대시보드·방문자·사용 통계", tabs: ["dashboard", "usagestats"], paths: ["dashboard", "analytics", "usage-log/stats"] },
+  /* 돈이 실제로 나가는 처리만 따로 뗀 권한(2026-10-02) — 반품 환불·부분 취소(/api/admin/refunds), 입금된
+     주문의 취소, 고객 주문취소 신청 승인. 주문·반품 탭을 "보기+수정"으로 줘도 이 권한이 없으면 환불은 못 한다.
+     새 직원 기본값(DEFAULT_STAFF_PERMISSIONS)에는 일부러 넣지 않았다 — 마스터가 필요한 사람에게만 켠다. */
+  refunds: { label: "환불·주문취소(돈이 나가는 처리)", tabs: [], paths: ["refunds"] },
 };
 
 /* 권한 검사 없이(PIN·로그인만) 모든 관리자가 쓰는 경로: 알림 개수, 사용 기록, 푸시 구독, 담당자 목록 조회. */
@@ -166,6 +170,15 @@ function pinVersionOf(row) {
   return row && row.updated_at ? new Date(row.updated_at).getTime() : 0;
 }
 
+/* 경로 매핑과 별개로 "이 동작에는 이 영역 권한이 필요하다"를 라우트 안에서 직접 확인할 때 쓴다 — 예: 주문 상태
+   변경(orders 영역) 중에서도 "입금된 주문을 취소해 환불이 나가는 경우"만 refunds 권한을 추가로 요구. */
+async function hasAreaPermission(req, area, level = "edit") {
+  if (((req.user && req.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) return true;
+  const stored = await getStoredPermissions(req.user.id).catch(() => null);
+  const perms = resolvePermissions(stored, false);
+  return (LEVEL_RANK[perms[area]] || 0) >= LEVEL_RANK[level];
+}
+
 /* PIN 6회 오입력 잠금(routes/staff.js) — 직원은 마스터가 초기화할 때까지, 마스터는 30분.
    잠겨 있는 동안은 이미 받아둔 PIN 토큰이 있어도 모든 관리자 API를 막는다("계정 잠김"). */
 function isPinLocked(row) {
@@ -244,5 +257,5 @@ module.exports = {
   areaForPath, requiredLevel, resolvePermissions, normalizePermissions,
   signPinToken, verifyPinToken, hashPin, isValidPin, pinVersionOf,
   getPinRow, getStoredPermissions, invalidateAdminCache, adminGuard,
-  isPinLocked, pinLockedResponse,
+  isPinLocked, pinLockedResponse, hasAreaPermission,
 };

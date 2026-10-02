@@ -439,6 +439,15 @@
   .dlg-card .field { margin-bottom: 12px; }
   .dlg-card .pin-input { letter-spacing: .5em; text-align: center; font-size: 20px; }
   .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  /* 환불 처리·교환 재발송 창(works/js/refunds.js) — PIN 창보다 넓고, 내용이 길면 창 안에서 스크롤 */
+  .dlg-card--wide { width: min(94vw, 560px); max-height: 88vh; overflow-y: auto; }
+  .refund-lines { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+  .refund-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .refund-line select { width: 72px; flex: none; }
+  .refund-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; font-size: 12.5px; }
+  .refund-opts label { display: flex; gap: 6px; align-items: center; }
+  .refund-preview { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg-surface-2); margin: 8px 0; }
+  .refund-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
   .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px; margin-top: 12px; }
   .perm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
   .perm-row select { height: 30px; padding: 0 8px; }

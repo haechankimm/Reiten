@@ -519,7 +519,72 @@ async function sendCustomerReviewRequest({ customer, orderNo, items }) {
   });
 }
 
+/* 부분 반품·부분 취소 환불 안내(2026-10-02, lib/refunds.js) — 어떤 상품을 얼마 환불했는지, 반품 배송비를
+   얼마 뺐는지, 적립금은 어떻게 됐는지를 한 번에 알려준다. 무통장입금은 직접 송금 예정이라 문구가 다르다. */
+async function sendCustomerRefundIssued(order, refund) {
+  if (!resend || !order.customer || !order.customer.email) return;
+  const lines = (refund.lines || []).map((ln) => `<li>${escHtml(ln.name)} ${ln.options ? `(${escHtml(ln.options)})` : ""} × ${ln.qty}</li>`).join("");
+  const manual = refund.method === "bank_manual" || refund.method === "virtual_account_manual";
+  await sendTracked("customer_refund_issued", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] ${refund.kind === "partial_cancel" ? "주문 일부가 취소되었습니다" : "반품 환불이 처리되었습니다"} — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, ${refund.kind === "partial_cancel" ? "주문 일부 취소" : "반품 환불"} 안내</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <ul>${lines}</ul>
+      <p><b>환불 금액</b> ${won(refund.refund_amount)}${refund.shipping_deduction ? ` (반품 배송비 ${won(refund.shipping_deduction)} 차감)` : ""}</p>
+      ${refund.points_restored ? `<p>사용하신 적립금 ${won(refund.points_restored).replace("원", "P")}를 돌려드렸습니다.</p>` : ""}
+      ${refund.points_reclaimed ? `<p>이 상품으로 적립된 ${won(refund.points_reclaimed).replace("원", "P")}는 회수되었습니다.</p>` : ""}
+      <p style="margin-top:16px;color:#666">${manual
+        ? "무통장입금 주문은 주문 시 알려주신 정보로 영업일 기준 3일 안에 직접 송금해 드립니다. 환불 받을 계좌가 바뀌었다면 이 메일에 답장해 주세요."
+        : "카드 결제는 승인 취소로 처리되며, 카드사에 따라 반영까지 영업일 기준 3~7일 걸릴 수 있습니다."}</p>
+    `,
+  });
+}
+
+/* 교환 상품 재발송 안내 — Works 반품 탭 "교환 재발송"에서 운송장을 넣으면 보낸다. */
+async function sendCustomerExchangeShipped(order, { courier, trackingNo }) {
+  if (!resend || !order.customer || !order.customer.email) return;
+  const courierInfo = COURIERS.find((c) => c.key === courier);
+  const trackingUrl = courierInfo && trackingNo ? courierInfo.urlTemplate.replace("{tracking}", encodeURIComponent(trackingNo)) : null;
+  await sendTracked("customer_exchange_shipped", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] 교환 상품을 보내드렸습니다 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 교환 상품이 출발했습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
+      <p><b>택배사</b> ${escHtml(courierInfo ? courierInfo.label : courier || "")}</p>
+      <p><b>운송장번호</b> ${escHtml(trackingNo || "")}</p>
+      ${trackingUrl ? `<p><a href="${escHtml(trackingUrl)}">배송조회 바로가기</a></p>` : ""}
+    `,
+  });
+}
+
+/* 문의 답변 알림 — 비회원 비밀 문의는 사이트에서 답변을 다시 볼 방법이 없어서, 남겨주신 이메일로 답변을 보낸다. */
+async function sendCustomerQnaAnswered({ email, name, question, answer }) {
+  if (!resend || !email) return;
+  await sendTracked("customer_qna_answered", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: email,
+    replyTo: SITE.order.email,
+    subject: "[REITEN] 문의하신 내용에 답변을 드렸습니다",
+    html: `
+      <h2>${escHtml(name || "고객")}님, 답변 드립니다</h2>
+      <p style="color:#666"><b>문의</b><br>${escHtml(question || "").replace(/\n/g, "<br>")}</p>
+      <p style="margin-top:12px"><b>답변</b><br>${escHtml(answer || "").replace(/\n/g, "<br>")}</p>
+      <p style="margin-top:16px;color:#666">추가로 궁금한 점은 이 메일에 답장해 주세요.</p>
+    `,
+  });
+}
+
 module.exports = {
+  sendCustomerRefundIssued,
+  sendCustomerExchangeShipped,
+  sendCustomerQnaAnswered,
   sendCustomerReviewRequest,
   sendCustomerAbandonedCart,
   sendOrderNotification,
