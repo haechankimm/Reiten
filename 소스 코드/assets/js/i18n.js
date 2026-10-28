@@ -1910,6 +1910,25 @@ const I18N = {
   ["네트워크 오류", {"de": "Netzwerkfehler"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* ---------- 2026-10-28 정기 감사: 오류 페이지(404·500)·택배사 이름·스튜디오/상품 컬러 없음·사이즈 추천 ---------- */
+[
+  ["페이지를 찾을 수 없습니다", {"en": "Page not found", "ja": "ページが見つかりません"}],
+  ["길을 잃었어요", {"en": "You seem to be lost", "ja": "道に迷ったようです"}],
+  ["찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.", {"en": "The page you're looking for doesn't exist or has moved. Please use the buttons below to go back.", "ja": "お探しのページは存在しないか、アドレスが変更されました。下のボタンからお戻りください。"}],
+  ["일시적인 오류", {"en": "Temporary error", "ja": "一時的なエラー"}],
+  ["잠시 문제가 생겼어요", {"en": "Something went wrong", "ja": "問題が発生しました"}],
+  ["서버에 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. 계속되면 고객센터로 문의 부탁드립니다.", {"en": "A temporary server error occurred. Please try again in a moment. If it continues, please contact customer service.", "ja": "サーバーで一時的なエラーが発生しました。しばらくしてから再度お試しください。解決しない場合はカスタマーセンターまでお問い合わせください。"}],
+  ["홈으로 가기", {"en": "Go to home", "ja": "ホームへ"}],
+  ["다시 시도", {"en": "Try again", "ja": "再試行"}],
+  ["CJ대한통운", {"en": "CJ Logistics", "ja": "CJ大韓通運"}],
+  ["한진택배", {"en": "Hanjin Express", "ja": "韓進宅配"}],
+  ["롯데택배", {"en": "Lotte Global Logistics", "ja": "ロッテ宅配"}],
+  ["로젠택배", {"en": "Logen", "ja": "ロジェン宅配"}],
+  ["우체국택배", {"en": "Korea Post", "ja": "韓国郵便（郵便局宅配）"}],
+  ["구매할 수 있는 컬러가 없습니다", {"en": "No colors available", "ja": "購入できるカラーがありません"}],
+  ["이 상품은 사이즈 추천을 지원하지 않아요. 아래 사이즈 실측표를 확인해 주세요.", {"en": "Size recommendations aren't available for this item. Please check the size chart below.", "ja": "この商品はサイズ推薦に対応していません。下のサイズ実寸表をご確認ください。"}]
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

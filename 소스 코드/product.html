@@ -99,7 +99,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     return MEDIA.filter((m) => m.kind !== "gallery" && forColor(m, color));
   }
 
-  const initialColor = p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
+  /* 상품에 등록된 컬러가 팔레트(COLORS)에 하나도 없으면(관리자가 팔레트에서 삭제 등) 예전엔
+     팔레트의 첫 컬러로 대신 채워서, 이 상품에 없는 컬러로 장바구니에 담겼다. 이제는 컬러 없음(null)으로
+     두고 담기·바로 주문을 막는다(2026-10-28 정기 감사). */
+  const initialColor = p.colors.find(c => COLORS[c]) || null;
   let state = {
     color: initialColor,
     size: p.sizes.find(s => !p.soldOut.includes(s) && !outSizesForColor(initialColor).includes(s)) || p.sizes[0],
@@ -189,9 +192,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   }
 
   function render() {
+    // 관리자가 사이즈표를 지정하지 않았거나 없는 키면 st가 undefined — 실측표 아코디언만 빼고 그린다(2026-10-28 정기 감사).
     const st = SIZE_TABLES[p.sizeTable];
     const outForColor = outSizesForColor(state.color);
-    const soldAll = p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s));
+    /* 사이즈가 아직 비어 있는 상품은 품절이 아니라 "판매 준비 중"으로 본다 — isProductFullyOutOfStock()과
+       같은 기준(빈 배열의 every()는 true라 예전엔 품절로 표시됐다). 고를 수 있는 컬러가 없으면 담을 수 없다. */
+    const noColor = !state.color;
+    const soldAll = noColor || (p.sizes.length > 0 && p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s)));
     const name = productName(p);
     const gallery = galleryFor(state.color);
     if (state.img >= gallery.length) state.img = 0;
@@ -257,7 +264,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
         <div class="buy-row">
           <button class="btn" type="button" id="add" ${soldAll ? "disabled" : ""}>
-            ${soldAll ? t("품절") : t("장바구니 담기")}
+            ${noColor ? t("구매할 수 있는 컬러가 없습니다") : soldAll ? t("품절") : t("장바구니 담기")}
           </button>
           <button class="btn btn--ghost" type="button" id="buy" ${soldAll ? "disabled" : ""}>${t("바로 주문")}</button>
           ${wishlistButtonHTML(p.id, "buy-row__wishlist")}
@@ -268,7 +275,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
              없다 — 그래서 "지금 고른 사이즈"가 아니라 "이 컬러에서 품절인 사이즈 전체"를 따로
              모아서 드롭다운으로 고르게 한다(다른 사이즈는 정상 구매 가능해도 신청 가능). */
           const outSizesNow = p.sizes.filter((s) => p.soldOut.includes(s) || outForColor.includes(s));
-          if (!outSizesNow.length) return "";
+          if (noColor || !outSizesNow.length) return "";
           return `
         <div class="notice" id="restock-notify-box" style="margin-top:20px">
           <b>${t("품절된 사이즈가 있나요?")}</b>
@@ -288,11 +295,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <button class="acc__btn" type="button" aria-expanded="true"><span>${t("제품 정보")}</span><span>+</span></button>
             <div class="acc__panel open">
               <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
-                ${p.details.map(d => `<li>${esc(t(d))}</li>`).join("")}
+                ${(p.details || []).map(d => `<li>${esc(t(d))}</li>`).join("")}
               </ul>
             </div>
           </div>
-          <div class="acc__item">
+          ${st ? `<div class="acc__item">
             <button class="acc__btn" type="button" aria-expanded="false"><span>${t("사이즈 실측 (cm)")}</span><span>+</span></button>
             <div class="acc__panel">
               <table class="spec">
@@ -302,7 +309,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               <p class="small" style="margin-top:12px">${t("측정 방식에 따라 1~3cm 오차가 있을 수 있습니다.")}</p>
               <div class="ride-guide">${rideGuideHTML(p.sizeTable)}</div>
             </div>
-          </div>
+          </div>` : ""}
           <div class="acc__item">
             <button class="acc__btn" type="button" aria-expanded="false"><span>${t("세탁 · 관리")}</span><span>+</span></button>
             <div class="acc__panel">
@@ -349,7 +356,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       <button class="color-dot" type="button" data-c="${c}"
               aria-pressed="${c === state.color}" aria-label="${esc(t(COLORS[c].label))}"
               style="background:${COLORS[c].hex}"></button>`).join("");
-    document.getElementById("color-name").textContent = t(COLORS[state.color].label);
+    document.getElementById("color-name").textContent = state.color ? t(COLORS[state.color].label) : "";
     colorsEl.querySelectorAll(".color-dot").forEach(b =>
       b.addEventListener("click", () => {
         state.color = b.dataset.c;
@@ -457,11 +464,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   render();
 
+  /* 위시리스트의 "재입고 알림 신청"은 product.html#restock-notify-box로 들어오는데, 이 상자는
+     상품을 받아온 뒤 render()가 비동기로 그려서 브라우저의 기본 앵커 스크롤 시점엔 아직 없다 —
+     그려진 뒤에 직접 스크롤한다(2026-10-28 정기 감사). */
+  if (location.hash === "#restock-notify-box") {
+    document.getElementById("restock-notify-box")?.scrollIntoView({ block: "center" });
+  }
+
   /* 검색엔진용 구조화 데이터(Product) — 컬러·사이즈를 바꿀 때마다 다시 만들 필요는 없어서
      render()가 아니라 여기서 한 번만 넣는다. 재고 0(품절)은 모든 컬러·사이즈 조합을 다 확인해서
      — soldOut(관리자가 손으로 체크한 전체 품절)과 outOfStockByColor(컬러별 실재고)를 합쳐 —
      진짜로 살 수 있는 조합이 하나도 없을 때만 OutOfStock으로 표시한다. */
-  const fullyOutOfStock = p.sizes.every((size) => p.soldOut.includes(size) || p.colors.every((c) => outSizesForColor(c).includes(size)));
+  // 카드 배지·위시리스트와 같은 판정(app.js isProductFullyOutOfStock — 사이즈·컬러가 비어 있으면 품절 아님)을 쓴다(2026-10-28 정기 감사).
+  const fullyOutOfStock = isProductFullyOutOfStock(p);
   const ld = {
     "@context": "https://schema.org/",
     "@type": "Product",

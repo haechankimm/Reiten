@@ -29,11 +29,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   <section class="sec sec--tight">
     <div class="wrap" style="text-align:center;padding:60px 0">
       <p class="eyebrow">404</p>
-      <h1 class="h-xl" style="margin-top:12px">길을 잃었어요</h1>
-      <p class="lede" style="margin:14px auto 0;max-width:46ch">찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="길을 잃었어요">길을 잃었어요</h1>
+      <p class="lede" style="margin:14px auto 0;max-width:46ch" data-i18n="찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.">찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.</p>
       <div style="margin-top:26px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <a class="btn" href="/">홈으로 가기</a>
-        <a class="btn" href="/shop.html">상품 보러 가기</a>
+        <a class="btn" href="/" data-i18n="홈으로 가기">홈으로 가기</a>
+        <a class="btn" href="/shop.html" data-i18n="상품 보러 가기">상품 보러 가기</a>
       </div>
     </div>
   </section>
@@ -43,6 +43,9 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="/assets/js/i18n.js"></script>
 <script src="/assets/js/app.js"></script>
 <script>
+  /* 예전엔 applyI18n()을 부르지 않아 영어·일본어 사용자에게도 한국어로만 보였다(2026-10-28 정기 감사).
+     오류 페이지라 스크립트 하나가 실패해도 본문은 보이도록 각각 감싼다. */
+  try { applyI18n(); document.title = t("페이지를 찾을 수 없습니다") + " — REITEN"; } catch (e) {}
   try { renderHeader(""); } catch (e) {}
 </script>
 </body>

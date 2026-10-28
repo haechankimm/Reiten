@@ -31,21 +31,32 @@ function estimateUsualSize(heightCm, weightKg) {
 function recommendSize(input, product) {
   const base = estimateUsualSize(input && input.heightCm, input && input.weightKg);
   if (!base) return { error: "키(cm)와 몸무게(kg)를 확인해 주세요." };
-  const reasons = [];
-  let idx = SIZE_ORDER.indexOf(base);
-  if (input.fit === "relaxed") { idx += 1; reasons.push("fit_up"); }
-  else if (input.fit === "fitted") { idx -= 1; reasons.push("fit_down"); }
-  const usual = SIZE_ORDER[clampSizeIndex(idx)];
+  /* 상품 사이즈가 하나도 SIZE_ORDER(XS~XXL)에 없으면(예: FREE·숫자 사이즈) 예전엔 이 상품이 팔지 않는
+     사이즈를 그대로 추천했다 — 추천하지 않고 안내만 한다(2026-10-28 정기 감사). */
+  const available = ((product && product.sizes) || []).filter((s) => SIZE_ORDER.includes(s));
+  if (!available.length) return { error: "이 상품은 사이즈 추천을 지원하지 않아요. 아래 사이즈 실측표를 확인해 주세요." };
 
-  let recommended = usual;
+  /* usual은 화면에 "평소 사이즈"로 보여주는 값이라 키·몸무게로 어림잡은 그대로여야 한다 — 예전엔 핏 보정을
+     한 뒤의 값을 usual로 돌려줘서 "평소 사이즈"가 틀리게 나왔다. fit_up/fit_down도 실제로 한 칸 움직였을
+     때만 넣는다(XS에서 "딱 맞게"면 더 작아질 수 없는데 "한 치수 작게 봤어요"가 나왔다)(2026-10-28 정기 감사). */
+  const usual = base;
+  const reasons = [];
+  const baseIdx = SIZE_ORDER.indexOf(base);
+  let idx = baseIdx;
+  if (input.fit === "relaxed") idx = clampSizeIndex(baseIdx + 1);
+  else if (input.fit === "fitted") idx = clampSizeIndex(baseIdx - 1);
+  if (idx > baseIdx) reasons.push("fit_up");
+  else if (idx < baseIdx) reasons.push("fit_down");
+  const fitted = SIZE_ORDER[idx];
+
+  let recommended = fitted;
   if (input.protector) {
-    const row = product && product.guide && Array.isArray(product.guide.rows) ? product.guide.rows.find((r) => r[0] === usual) : null;
-    recommended = row ? row[1] : SIZE_ORDER[clampSizeIndex(SIZE_ORDER.indexOf(usual) + 1)];
-    if (recommended !== usual) reasons.push("protector_up");
+    const row = product && product.guide && Array.isArray(product.guide.rows) ? product.guide.rows.find((r) => r[0] === fitted) : null;
+    recommended = row ? row[1] : SIZE_ORDER[clampSizeIndex(idx + 1)];
+    if (recommended !== fitted) reasons.push("protector_up");
   }
 
-  const available = ((product && product.sizes) || []).filter((s) => SIZE_ORDER.includes(s));
-  if (available.length && !available.includes(recommended)) {
+  if (!available.includes(recommended)) {
     const target = SIZE_ORDER.indexOf(recommended);
     // 가장 가까운 사이즈, 같은 거리면 큰 쪽(오버핏 상의라 작은 쪽보다 낫다)
     const nearest = available

@@ -115,7 +115,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(trackingNo));
     return `
       <b>${esc(t("배송 조회"))}</b><br>
-      ${esc(courier.label)} · <span class="tnum">${esc(trackingNo)}</span><br>
+      ${esc(t(courier.label))} · <span class="tnum">${esc(trackingNo)}</span><br>
       <a class="btn btn--sm" style="margin-top:10px" href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회하기"))}</a>`;
   }
 

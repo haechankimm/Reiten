@@ -25,3 +25,19 @@ test("보호대 착용이면 PROTECTOR_GUIDE 권장 사이즈, 판매하지 않�
   assert.equal(crop.recommended, "S");
   assert.ok(recommendSize({ heightCm: "", weightKg: 60 }, hoodie).error);
 });
+
+test("usual은 핏 보정 전 평소 사이즈, fit_* 사유는 실제로 움직였을 때만, 추천 가능한 사이즈가 없으면 오류", () => {
+  const hoodie = { sizes: ["S", "M", "L", "XL"], guide: PROTECTOR_GUIDE.hoodie };
+  const relaxed = recommendSize({ heightCm: 170, weightKg: 63, fit: "relaxed" }, hoodie);
+  assert.equal(relaxed.usual, "M");
+  assert.equal(relaxed.recommended, "L");
+  assert.ok(relaxed.reasons.includes("fit_up"));
+  // XS에서 "딱 맞게"는 더 작아질 수 없으니 fit_down이 없어야 한다
+  const xs = recommendSize({ heightCm: 150, weightKg: 40, fit: "fitted" }, { sizes: ["XS", "S"] });
+  assert.equal(xs.usual, "XS");
+  assert.equal(xs.recommended, "XS");
+  assert.ok(!xs.reasons.includes("fit_down"));
+  // XS~XXL 체계가 아닌 사이즈만 파는 상품은 추천하지 않는다
+  assert.ok(recommendSize({ heightCm: 170, weightKg: 63 }, { sizes: ["FREE"] }).error);
+  assert.ok(recommendSize({ heightCm: 170, weightKg: 63 }, { sizes: [] }).error);
+});

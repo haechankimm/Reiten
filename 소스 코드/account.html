@@ -255,7 +255,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (!courier || !o.trackingNo) return "";
     const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(o.trackingNo));
     return `<p class="small" style="margin-top:8px">
-      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(courier.label)} ${esc(o.trackingNo)}</a>
+      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(t(courier.label))} ${esc(o.trackingNo)}</a>
     </p>`;
   }
 

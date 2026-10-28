@@ -115,13 +115,16 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         ${id === "all" ? esc(t("전체")) : esc(productLabel(id))}
       </button>`).join("");
     el("filters").querySelectorAll(".chip").forEach(b =>
-      b.addEventListener("click", () => { activeFilter = b.dataset.id; paintList(); }));
+      // 필터 칩도 다시 그려야 aria-pressed(선택 표시)가 바뀐다 — 예전엔 목록만 다시 그렸다(2026-10-28 정기 감사).
+      b.addEventListener("click", () => { activeFilter = b.dataset.id; paintFilters(); paintList(); }));
   }
 
   function fmtDate(iso) {
     return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
   }
 
+  /* 아래 템플릿 문구는 data-i18n 대신 t()로 바로 번역한다 — applyI18n()은 페이지 로드 때 한 번만 돌아서
+     나중에 innerHTML로 그린 data-i18n 문구는 영어·일본어에서도 한국어로 남았다(2026-10-28 정기 감사). */
   function paintList() {
     const list = activeFilter === "all" ? items : items.filter(q => q.productId === activeFilter);
     el("list").innerHTML = list.map(q => `
@@ -138,7 +141,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         }</p>
         ${q.answer ? `
           <div class="notice" style="margin-top:12px">
-            <b data-i18n="판매자 답변">판매자 답변</b>
+            <b>${esc(t("판매자 답변"))}</b>
             <p style="margin-top:6px">${esc(q.answer)}</p>
           </div>` : ""}
       </div>`).join("");
@@ -190,7 +193,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     box.hidden = false;
     box.innerHTML = `
       <div class="notice">
-        <b data-i18n="이미 비슷한 질문에 답변드린 적이 있어요">이미 비슷한 질문에 답변드린 적이 있어요</b>
+        <b>${esc(t("이미 비슷한 질문에 답변드린 적이 있어요"))}</b>
         <div style="margin-top:10px;display:grid;gap:10px">
           ${matches.map((q) => `
             <div>
@@ -198,7 +201,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               <p class="small" style="margin-top:4px">${esc(q.answer)}</p>
             </div>`).join("")}
         </div>
-        <p class="small" style="margin-top:10px;color:var(--muted,#888)" data-i18n="원하는 답을 못 찾으셨다면 그대로 등록해 주세요.">원하는 답을 못 찾으셨다면 그대로 등록해 주세요.</p>
+        <p class="small" style="margin-top:10px;color:var(--muted,#888)" >${esc(t("원하는 답을 못 찾으셨다면 그대로 등록해 주세요."))}</p>
       </div>`;
   }
 

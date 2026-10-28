@@ -350,7 +350,8 @@ app.get("/product.html", async (req, res, next) => {
   const imageUrl = image
     ? cloudinaryOgImage(new URL(image, `${req.protocol}://${req.get("host")}`).href)
     : "https://reiten.kr/assets/img/og-image.png";
-  const pageUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  // og:url은 공유 링크의 utm 등 쿼리가 그대로 박히지 않도록 canonical과 같은 정식 상품 주소를 쓴다(2026-10-28 정기 감사).
+  const pageUrl = seoProductUrl(product);
 
   const metaTags = [
     `<meta property="og:title" content="${escapeHtmlAttr(title)}">`,
@@ -368,11 +369,14 @@ app.get("/product.html", async (req, res, next) => {
     `<link rel="canonical" href="${escapeHtmlAttr(seoProductUrl(product))}">`,
     `<script type="application/ld+json" id="ld-product">${productJsonLd(product, stats)}</script>`,
   ].join("\n");
+  /* 바꿔 넣을 값은 전부 함수로 넘긴다 — 문자열로 넘기면 String.replace가 그 안의 $&·$`·$'·$1을 특수 패턴으로
+     해석해서, 관리자가 입력한 상품명·설명에 "$&" 같은 글자가 있으면 원래 HTML 조각이 끼어들어 페이지가 깨졌다
+     (2026-10-28 정기 감사). */
   html = html
-    .replace(/<title>.*?<\/title>/, `<title>${escapeHtmlAttr(title)}</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtmlAttr(description)}">`)
-    .replace("</head>", `${metaTags}\n${seoHead}\n</head>`)
-    .replace('<div class="wrap" id="root"></div>', `<div class="wrap" id="root">${productSsrHtml(product)}</div>`);
+    .replace(/<title>.*?<\/title>/, () => `<title>${escapeHtmlAttr(title)}</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, () => `<meta name="description" content="${escapeHtmlAttr(description)}">`)
+    .replace("</head>", () => `${metaTags}\n${seoHead}\n</head>`)
+    .replace('<div class="wrap" id="root"></div>', () => `<div class="wrap" id="root">${productSsrHtml(product)}</div>`);
 
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -387,8 +391,9 @@ app.get("/shop.html", async (req, res, next) => {
     let html = await fs.promises.readFile(path.join(SITE_DIR, "shop.html"), "utf8");
     if (!html.includes('id="grid"')) return next();
     html = html
-      .replace("</head>", `<link rel="canonical" href="https://reiten.kr/shop.html">\n<script type="application/ld+json">${itemListJsonLd(products)}</script>\n</head>`)
-      .replace(/<div([^>]*)id="grid"([^>]*)><\/div>/, `<div$1id="grid"$2>${shopSsrHtml(products)}</div>`);
+      // 상품 페이지와 같은 이유로 함수 치환자를 쓴다(상품명에 $& 등이 있어도 안전, 2026-10-28 정기 감사).
+      .replace("</head>", () => `<link rel="canonical" href="https://reiten.kr/shop.html">\n<script type="application/ld+json">${itemListJsonLd(products)}</script>\n</head>`)
+      .replace(/<div([^>]*)id="grid"([^>]*)><\/div>/, (_m, a, b) => `<div${a}id="grid"${b}>${shopSsrHtml(products)}</div>`);
     res.set("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (e) {

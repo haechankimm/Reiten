@@ -38,16 +38,19 @@ const uid = () => "u" + Date.now().toString(36) + (uidSeed++).toString(36);
    `const PRODUCTS`를 그대로 쓰는 코드가 전부 갱신된 값을 본다).
    서버가 없거나 요청이 실패하면 data.js의 정적 목록이 그대로 남는다.
    ========================================================= */
+// 서버 목록으로 교체했으면 true를 돌려준다 — 위시리스트가 "목록에 없는 id"를 정리해도 되는지 판단할 때 쓴다(2026-10-28 정기 감사).
 async function loadProducts() {
   try {
     const res = await fetch("/api/products");
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const data = await res.json();
     if (Array.isArray(data)) {
       PRODUCTS.length = 0;
       PRODUCTS.push(...data);
+      return true;
     }
   } catch (e) {}
+  return false;
 }
 
 /* 룩북 슬롯 — server/가 떠 있으면 관리자 패널에서 등록·수정한 DB 목록으로

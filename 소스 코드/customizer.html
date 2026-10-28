@@ -177,8 +177,26 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     qty: 1,
     light: false,
   };
-  state.color = state.base.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
-  state.size = state.base.sizes[1] || state.base.sizes[0];
+  /* 재고 판정은 product.html과 같다 — soldOut(관리자가 체크한 전체 품절) + outOfStockByColor(서버가 계산한
+     컬러별 실재고 0). 예전 스튜디오는 soldOut만 보고, 처음 사이즈·집업/컬러를 바꿀 때는 그것조차 안 봐서
+     품절 사이즈가 선택된 채로 담겼다(서버에서 재고 부족으로 거절됨). 상품 컬러가 팔레트에 하나도 없으면
+     팔레트 첫 컬러로 대신 채우지 않고 null로 두고 담기를 막는다(2026-10-28 정기 감사). */
+  function sizeOut(base, color, s) {
+    return (base.soldOut || []).includes(s) ||
+      ((base.outOfStockByColor && base.outOfStockByColor[color]) || []).includes(s);
+  }
+  // 원하는 사이즈가 살 수 있으면 그대로, 아니면 첫 번째 재고 있는 사이즈, 그것도 없으면 원하는 사이즈(품절 표시용)
+  function pickSize(prefer) {
+    const sizes = state.base.sizes || [];
+    if (sizes.includes(prefer) && !sizeOut(state.base, state.color, prefer)) return prefer;
+    return sizes.find(s => !sizeOut(state.base, state.color, s)) || (sizes.includes(prefer) ? prefer : sizes[0] || null);
+  }
+  function pickColor() {
+    return state.base.colors.find(c => COLORS[c]) || null;
+  }
+
+  state.color = pickColor();
+  state.size = pickSize(state.base.sizes[1] || state.base.sizes[0]);
 
   const el = (id) => document.getElementById(id);
 
@@ -188,14 +206,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   function paintPreview() {
     el("preview").innerHTML = hoodieSVG({
-      colorHex: COLORS[state.color].hex,
+      colorHex: state.color ? COLORS[state.color].hex : undefined,
       charmKey: state.charm,
       finishKey: state.finish,
       type: state.base.type,
     });
     const c = getCharm(state.charm);
     el("stage-caption").textContent =
-      `${productName(state.base)} · ${t(COLORS[state.color].label)}` +
+      `${productName(state.base)}${state.color ? " · " + t(COLORS[state.color].label) : ""}` +
       (state.charm === "none" ? " · " + t("참 없음") : ` · ${t(c.label)} (${t(getFinish(state.finish).label)})`);
   }
 
@@ -211,7 +229,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       `<button class="color-dot" type="button" data-c="${c}" aria-pressed="${c === state.color}"
                aria-label="${esc(t(COLORS[c].label))}" style="background:${COLORS[c].hex}"></button>`
     ).join("");
-    el("color-name").textContent = t(COLORS[state.color].label);
+    el("color-name").textContent = state.color ? t(COLORS[state.color].label) : "";
 
     // charms
     el("charms").innerHTML = CHARMS.map(c => `
@@ -240,9 +258,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     // size
     el("sizes").innerHTML = state.base.sizes.map(s => {
-      const out = state.base.soldOut.includes(s);
-      return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""} aria-pressed="${s === state.size}">${s}</button>`;
+      const out = sizeOut(state.base, state.color, s);
+      return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""} aria-pressed="${s === state.size}"
+                ${out ? `aria-label="${esc(t("{size} 품절", { size: s }))}" title="${esc(t("품절"))}"` : ""}>${s}</button>`;
     }).join("");
+
+    // 담기·바로 주문 — 고를 컬러가 없거나 지금 컬러의 모든 사이즈가 품절이면 막는다(사이즈가 비어 있는 상품은 품절 아님)
+    const sizes = state.base.sizes || [];
+    const noColor = !state.color;
+    const soldAll = noColor || (sizes.length > 0 && sizes.every(s => sizeOut(state.base, state.color, s)));
+    el("add").disabled = soldAll;
+    el("buy").disabled = soldAll;
+    el("add").textContent = noColor ? t("구매할 수 있는 컬러가 없습니다") : soldAll ? t("품절") : t("장바구니 담기");
 
     el("qty").textContent = state.qty;
 
@@ -265,13 +292,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     el("bases").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
       state.base = getProduct(b.dataset.b);
       if (!state.base.colors.includes(state.color) || !COLORS[state.color]) {
-        state.color = state.base.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
+        state.color = pickColor();
       }
-      if (!state.base.sizes.includes(state.size)) state.size = state.base.sizes[0];
+      state.size = pickSize(state.size);
       paint();
     }));
     el("colors").querySelectorAll(".color-dot").forEach(b => b.addEventListener("click", () => {
-      state.color = b.dataset.c; paint();
+      state.color = b.dataset.c;
+      state.size = pickSize(state.size); // 이 컬러에서 품절인 사이즈였으면 살 수 있는 사이즈로 옮긴다
+      paint();
     }));
     el("charms").querySelectorAll(".charm-btn").forEach(b => b.addEventListener("click", () => {
       state.charm = b.dataset.k; paint();
@@ -321,7 +350,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       });
     }
     return {
-      sig: [state.base.id, state.color, state.size, state.charm, state.finish, ...state.extras].join("|"),
+      /* 같은 조합이면 같은 줄로 합쳐지도록 정규화한다 — 참 없음이면 마감은 의미가 없고(예전엔 마감만 바꿔도
+         다른 줄로 담겼다), 추가 아이템은 고른 순서와 무관하게 정렬한다(2026-10-28 정기 감사). */
+      sig: [state.base.id, state.color, state.size,
+            state.charm === "none" ? "none" : state.charm + "|" + state.finish,
+            ...[...state.extras].sort()].join("|"),
       productId: state.base.id,
       name: productName(state.base),
       image: state.base.images.find(Boolean) || null,
@@ -336,10 +369,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   }
 
   el("add").addEventListener("click", () => {
+    if (el("add").disabled) return;
     Cart.add(comboItem());
     toast(t("조합을 장바구니에 담았습니다"));
   });
-  el("buy").addEventListener("click", () => { Cart.add(comboItem()); location.href = "cart.html"; });
+  el("buy").addEventListener("click", () => { if (el("buy").disabled) return; Cart.add(comboItem()); location.href = "cart.html"; });
 
   el("add-charm").addEventListener("click", () => {
     if (state.charm === "none") { toast(t("먼저 참을 선택해 주세요")); return; }

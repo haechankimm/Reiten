@@ -221,12 +221,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
      안 바뀐다. productId/color/size/charm/extras 같은 원본 키만 저장해두고, 화면에 그릴 때마다
      현재 언어로 다시 번역한다. 상품이 그 사이 삭제됐거나(관리자) 참(charm) 단독 담기처럼
      구조화된 정보가 없는 옛 데이터는 담을 때 저장해둔 문자열로 대체 표시한다. */
+  /* 관리자가 색상·참·마감·추가 아이템을 삭제하거나 키를 바꾸면 장바구니에 남은 옛 키로는
+     정의를 못 찾는다 — 예전엔 .label을 바로 읽다가 TypeError로 장바구니 전체가 빈 화면이 됐다.
+     정의가 없으면 저장된 키를 그대로 보여준다(2026-10-28 정기 감사). */
+  function labelOf(def, fallbackKey) {
+    return def && def.label ? t(def.label) : String(fallbackKey == null ? "" : fallbackKey);
+  }
+
   function itemDisplay(it) {
     if (typeof it.productId === "string" && it.productId.startsWith("charm-") && it.charm) {
       const c = getCharm(it.charm.key);
       return {
         name: c ? t("지퍼 참 — {charm}", { charm: t(c.label) }) : it.name,
-        opts: c ? [{ label: t("마감"), value: t(getFinish(it.charm.finish).label) }] : it.opts,
+        opts: c ? [{ label: t("마감"), value: labelOf(getFinish(it.charm.finish), it.charm.finish) }] : it.opts,
       };
     }
 
@@ -234,19 +241,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (!product || !it.color) return { name: it.name, opts: it.opts };
 
     const opts = [
-      { label: t("컬러"), value: t(COLORS[it.color].label) },
+      { label: t("컬러"), value: labelOf(COLORS[it.color], it.color) },
       { label: t("사이즈"), value: it.size },
     ];
     if (it.charm !== undefined) {
       opts.push({
         label: t("지퍼 참"),
-        value: it.charm ? `${t(getCharm(it.charm.key).label)} · ${t(getFinish(it.charm.finish).label)}` : t("선택 안 함"),
+        value: it.charm ? `${labelOf(getCharm(it.charm.key), it.charm.key)} · ${labelOf(getFinish(it.charm.finish), it.charm.finish)}` : t("선택 안 함"),
       });
     }
     if (it.extras && it.extras.length) {
       opts.push({
         label: t("추가 아이템"),
-        value: it.extras.map((k) => t(EXTRAS.find((x) => x.key === k).label)).join(", "),
+        value: it.extras.map((k) => labelOf(EXTRAS.find((x) => x.key === k), k)).join(", "),
       });
     }
     return { name: productName(product), opts };
@@ -739,7 +746,32 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   /* itemDisplay()가 COLORS[it.color]를 직접 참조하므로(관리자가 새로 추가한 색상일 수 있음),
      화면을 그리기 전에 최신 팔레트를 먼저 받아온다. 실패해도 loadColors()는 조용히 넘어가고
      data.js의 정적 목록이 남으므로 여기서 별도 처리는 필요 없다. */
-  loadColors().then(paint);
+  /* 상품 목록도 같이 받아온다 — 예전엔 팔레트만 받아와서 관리자 패널(DB)에만 있는 상품은
+     getProduct()가 못 찾아 담을 당시 저장한 이름·가격(it.unit)이 그대로 보였고, 그 사이 가격이
+     바뀌었으면 화면 합계와 서버가 다시 계산한 결제 금액이 달랐다. 상품을 찾으면 서버
+     priceItem(lib/pricing.js)과 같은 규칙(상품가 + 참 가격 + 추가 아이템 수 × EXTRA_PRICE)으로
+     개당 가격을 다시 계산해 저장하고, 못 찾으면 저장된 값을 그대로 둔다(2026-10-28 정기 감사). */
+  function currentUnit(it) {
+    const extrasTotal = (Array.isArray(it.extras) ? it.extras.length : 0) * EXTRA_PRICE;
+    const hasCharm = !!(it.charm && it.charm.key && it.charm.key !== "none");
+    if (typeof it.productId === "string" && it.productId.startsWith("charm-")) {
+      return hasCharm ? CHARM_PRICE + extrasTotal : null;
+    }
+    const product = getProduct(it.productId);
+    if (!product || typeof product.price !== "number") return null;
+    return product.price + (hasCharm ? CHARM_PRICE : 0) + extrasTotal;
+  }
+  function refreshUnits() {
+    const items = Cart.read();
+    let changed = false;
+    items.forEach((it) => {
+      const unit = currentUnit(it);
+      if (unit != null && unit !== it.unit) { it.unit = unit; changed = true; }
+    });
+    if (changed) Cart.write(items);
+  }
+
+  Promise.all([loadColors(), loadProducts()]).then(() => { refreshUnits(); paint(); });
   renderFooter();
 </script>
 </body>
