@@ -30,17 +30,24 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
   const extrasTotal = extraKeys.length * extraPrice;
 
   let unit;
+  let serverName = null;
   if (typeof raw.productId === "string" && raw.productId.startsWith("charm-")) {
     if (!charmKey) return null;
     unit = charmPrice + extrasTotal;
   } else {
     const product = products.find((p) => p.id === raw.productId);
     if (!product) return null;
+    /* 사이즈가 있는 상품인데 사이즈가 없거나 목록에 없는 값이면 거부 — 사이즈가 빠진 줄은 재고 차감 대상에서
+       빠져서 품절이어도 주문이 들어가고, 무슨 사이즈를 보낼지도 알 수 없었다(2026-10-28 정기 감사). */
+    const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+    if (sizes.length && !(typeof raw.size === "string" && sizes.includes(raw.size))) return null;
     unit = product.price + (charmKey ? charmPrice : 0) + extrasTotal;
+    // 상품명은 화면 언어(영어·일본어)나 조작된 값이 아니라 서버의 한글 상품명으로 저장한다(관리자 메일·출고 문서용).
+    serverName = product.nameKo || product.name || null;
   }
 
   return {
-    name: String(raw.name || "").slice(0, 200),
+    name: String(serverName || raw.name || "").slice(0, 200),
     options: Array.isArray(raw.opts) ? raw.opts.map((o) => `${o.label} ${o.value}`).join(" / ") : "",
     qty,
     unit,

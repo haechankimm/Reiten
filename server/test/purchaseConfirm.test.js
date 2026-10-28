@@ -90,3 +90,14 @@ test("canConfirm — 배송중·완료이고 아직 확정 전일 때만", () =>
   assert.equal(pc.canConfirm({ status: "입금확인", confirmed_at: null }), false);
   assert.equal(pc.canConfirm({ status: "완료", confirmed_at: "2026-10-01" }), false);
 });
+
+test("자동 구매확정 — 출고·배송완료 기록 없는 옛 주문이 많아도 기한 지난 새 주문은 확정된다(2026-10-28)", async () => {
+  const legacy = Array.from({ length: 250 }, (_, i) => ({ order_no: `OLD${i}`, status: "완료", user_id: null, points_earned: 0, shipped_at: null, delivered_at: null, confirmed_at: null }));
+  supabaseAdmin.__reset({
+    orders: [...legacy, { order_no: "NEW", status: "완료", user_id: "u1", points_earned: 100, shipped_at: daysAgo(10), delivered_at: daysAgo(8), confirmed_at: null }],
+    return_requests: [],
+    loyalty_points_ledger: [],
+  });
+  const r = await pc.autoConfirmOrders({ now: NOW });
+  assert.equal(r.confirmed, 1);
+});

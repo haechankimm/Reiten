@@ -5,7 +5,6 @@ const portone = require("./portone");
 const kakao = require("./kakao");
 const { restoreItemsFromOrder } = require("./inventory");
 const { loadPreviousRefunds } = require("./refunds");
-const { reversePointsForOrder } = require("./loyaltyPoints");
 const { logInventoryChange, logSystemError } = require("./adminLog");
 const { isMissingColumnError } = require("./pgErrors");
 const { sendAdminRefundFailed, sendCustomerOrderCancelled } = require("./mailer");
@@ -23,8 +22,9 @@ async function applyOrderCancelSideEffects(saved, prevStatus, cancelReasonStr) {
   const { rows: prevRefunds } = await loadPreviousRefunds(supabaseAdmin, saved.order_no);
 
   const restockedQty = new Map();
+  /* 환불한 줄은 재고 복원 여부와 상관없이 뺀다 — 환불 때 "재고 복원"을 끈 줄(불량품 등)을 취소가 다시 재고로
+     되돌리면 안 된다(2026-10-28 정기 감사). */
   for (const r of prevRefunds) {
-    if (!r.restocked) continue;
     for (const ln of r.lines || []) restockedQty.set(ln.index, (restockedQty.get(ln.index) || 0) + (Number(ln.qty) || 0));
   }
   const remainingItems = (saved.items || [])
@@ -42,14 +42,20 @@ async function applyOrderCancelSideEffects(saved, prevStatus, cancelReasonStr) {
     }
   }
   // 재고 복원과 같은 원칙 — 이 주문으로 적립된 포인트는 회수하고, 사용한 포인트는 되돌려준다.
-  if (saved.points_used || saved.points_earned) {
+  /* 취소된 주문은 이 주문으로 오간 적립금(사용·적립·부분 환불 때의 반환·회수)의 합이 0이 돼야 한다. 그 합을 보고
+     모자란 만큼만 한 줄로 맞춘다 — 예전엔 취소할 때마다 전체를 다시 뒤집어서 "취소 → 되돌리기 → 다시 취소"하면
+     사용한 적립금을 두 번 돌려줬다(2026-10-28 정기 감사). 사진 리뷰 적립(earn_review)은 주문과 별개라 제외. */
+  if (saved.user_id && (saved.points_used || saved.points_earned)) {
     try {
-      await reversePointsForOrder(supabaseAdmin, saved.order_no);
-      // 부분 환불 때 이미 돌려준 사용분(+)·회수한 적립분(−)은 위 전체 되돌리기와 겹치므로 상쇄한다.
-      const restored = prevRefunds.reduce((sum, r) => sum + (Number(r.points_restored) || 0), 0);
-      const reclaimed = prevRefunds.reduce((sum, r) => sum + (Number(r.points_reclaimed) || 0), 0);
-      if (saved.user_id && restored - reclaimed !== 0) {
-        await supabaseAdmin.from("loyalty_points_ledger").insert({ user_id: saved.user_id, order_no: saved.order_no, delta: reclaimed - restored, reason: "refund_reversal" });
+      const { data: rows, error: ledgerErr } = await supabaseAdmin
+        .from("loyalty_points_ledger")
+        .select("delta, reason")
+        .eq("order_no", saved.order_no)
+        .in("reason", ["earn_purchase", "redeem_order", "refund_reversal"]);
+      if (ledgerErr) throw new Error(ledgerErr.message);
+      const net = (rows || []).reduce((sum, r) => sum + (Number(r.delta) || 0), 0);
+      if (net !== 0) {
+        await supabaseAdmin.from("loyalty_points_ledger").insert({ user_id: saved.user_id, order_no: saved.order_no, delta: -net, reason: "refund_reversal" });
       }
     } catch (err) {
       console.error("[points] 취소 시 되돌리기 실패:", err.message);
@@ -93,9 +99,16 @@ async function applyOrderCancelSideEffects(saved, prevStatus, cancelReasonStr) {
       logSystemError("virtual_account_close_failed", { orderNo: saved.order_no, amount: saved.total, error: closeErr.message, source: "order_cancel" });
       cancelResult = { refund: "virtual_account_closed", ok: false };
     }
+  } else if (saved.payment_method === "virtual_account" && saved.payment_id && remainingAmount <= 0) {
+    cancelResult = { refund: "virtual_account", ok: true, amount: 0 };
   } else if (saved.payment_method === "virtual_account" && saved.payment_id) {
+    /* 가상계좌 부분 환불은 직접 송금으로만 처리돼 PG에는 결제 전액이 그대로 남아 있다 — 금액 없이 취소하면 이미 송금한
+       몫까지 PG가 또 환불했다(2026-10-28 정기 감사). 남은 금액만 취소한다. */
     try {
-      await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소");
+      await portone.cancelPayment(saved.payment_id, cancelReasonStr || "관리자 주문 취소", {
+        amount: remainingAmount,
+        currentCancellableAmount: Number(saved.total) || undefined,
+      });
       cancelResult = { refund: "virtual_account", ok: true, amount: remainingAmount };
     } catch (refundErr) {
       console.error("[admin/orders] ⚠️ 취소 시 환불 실패 — 수동 확인 필요:", saved.order_no, refundErr.message);

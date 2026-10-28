@@ -548,6 +548,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     btn.textContent = t("처리 중…");
 
     if (isCard || isVbank) {
+      let paidAlready = false;
+      let prepPaymentId = null;
       try {
         const headers = { "Content-Type": "application/json" };
         const token = await getAccessToken();
@@ -566,6 +568,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           return;
         }
         const prep = await prepRes.json();
+        prepPaymentId = prep.paymentId;
 
         /* 휴대폰 브라우저에서는 결제창이 페이지 이동 방식으로 열려 이 아래 코드가 실행되지 않는다 — 결제가
            끝나면 포트원이 redirectUrl(주문완료 페이지)로 ?paymentId=...를 붙여 돌려보내고, 그 페이지가
@@ -605,6 +608,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           return;
         }
 
+        /* 여기부터는 결제(또는 계좌 발급)가 이미 끝난 상태다. 확인 요청이 일시적으로 실패했다고 결제 버튼을
+           다시 켜면 손님이 또 눌러 두 번 결제될 수 있었다(2026-10-28 정기 감사) — 재고 부족(자동 취소됨)이
+           아니면 주문완료 화면으로 넘겨 그 화면이 같은 결제를 다시 확인하게 한다(휴대폰 복귀와 같은 처리). */
+        paidAlready = true;
         const confirmRes = await fetch("/api/order", {
           method: "POST",
           headers,
@@ -612,6 +619,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         });
         if (!confirmRes.ok) {
           const body = await confirmRes.json().catch(() => ({}));
+          if (body.error !== "OUT_OF_STOCK") {
+            location.href = "order-complete.html?paymentId=" + encodeURIComponent(prep.paymentId);
+            return;
+          }
           toast(
             body.error === "OUT_OF_STOCK"
               ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
@@ -627,6 +638,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         Cart.clear();
         location.href = "order-complete.html";
       } catch (err) {
+        if (paidAlready && prepPaymentId) {
+          location.href = "order-complete.html?paymentId=" + encodeURIComponent(prepPaymentId);
+          return;
+        }
         toast(t(isVbank ? "계좌 발급 중 오류가 발생했습니다" : "결제 중 오류가 발생했습니다"));
         btn.disabled = false;
         syncPayMethodUI();

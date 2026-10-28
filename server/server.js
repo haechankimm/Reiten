@@ -90,6 +90,7 @@ const reportsRoutes = require("./routes/reports");
 const { sendMorningBriefing } = require("./lib/briefing");
 const { buildBackup } = require("./lib/backup");
 const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
+const { loadPreviousRefunds, refundedQtyByIndex } = require("./lib/refunds");
 const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
 const { toCustomerOrderDto } = require("./lib/customerOrders");
 const { buildSettlement } = require("./lib/settlement");
@@ -579,6 +580,11 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   const pointsUsed = await resolvePointsToUse(supabaseAdmin, userId, rawPointsToUse, Math.max(0, subtotal - coupon.discount));
 
   const total = subtotal - coupon.discount - pointsUsed + shipping;
+  /* 무료배송 금액 이상 + 전액 쿠폰(또는 적립금)이면 0원 주문이 됐다 — 카드결제창은 0원을 받지 않고, 무통장은
+     "0원 입금 대기"로 남았다가 24시간 뒤 자동 취소됐다(2026-10-28 정기 감사). 결제할 금액이 있게 안내한다. */
+  if (total <= 0) {
+    return { error: { status: 400, body: { error: "결제 금액이 0원인 주문은 접수할 수 없습니다. 적립금 사용액을 줄이거나 관리자에게 문의해 주세요.", code: "ZERO_TOTAL" } } };
+  }
   return {
     rawItems,
     items,
@@ -764,7 +770,49 @@ async function decrementInventoryForItems(inventoryItems, products, ref) {
    주문 확정" 로직 — 재고 차감, 주문 저장, 알림 메일까지 한 번에 처리한다. 두 곳에 각각 복붙하면
    나중에 한쪽만 고치고 다른 쪽을 놓치기 쉬운, 돈이 걸린 로직이라 함수로 묶어 하나만 유지한다.
    실패해도 예외를 던지지 않고 { ok:false, status, body }로 반환한다(호출부가 그대로 res에 흘려보냄). */
-async function finalizeCardOrder({ pending, paymentId, userId }) {
+/* 같은 결제(paymentId)의 주문 확정을 한 번에 하나씩만 돌린다(2026-10-28 정기 감사).
+   포트원 웹훅과 결제 직후 브라우저 확인 요청이 거의 동시에 오면 둘 다 재고를 빼러 들어가는데, 재고가
+   주문 수량의 2배보다 적으면 나중 쪽이 "재고 부족"으로 판정돼 **먼저 만들어진 정상 주문의 결제를 취소**
+   (가상계좌는 계좌 폐쇄)해버렸다. 서버는 한 대(Render 단일 인스턴스 — 크론도 이 전제로 돎)라 프로세스
+   안의 잠금으로 순서를 세우고, 잠금을 얻은 뒤 이미 만들어진 주문이 있으면 그 주문을 그대로 돌려준다. */
+const finalizeLocks = new Map();
+async function withPaymentLock(paymentId, fn) {
+  const prev = finalizeLocks.get(paymentId) || Promise.resolve();
+  let release;
+  const mine = new Promise((r) => (release = r));
+  const chain = prev.then(() => mine);
+  finalizeLocks.set(paymentId, chain);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (finalizeLocks.get(paymentId) === chain) finalizeLocks.delete(paymentId);
+  }
+}
+
+async function existingOrderForPayment(paymentId) {
+  const { data } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
+  return data || null;
+}
+
+async function finalizeCardOrder(args) {
+  return withPaymentLock(args.paymentId, async () => {
+    const existing = await existingOrderForPayment(args.paymentId);
+    if (existing) return { ok: true, saved: existing };
+    return finalizeCardOrderUnlocked(args);
+  });
+}
+
+async function finalizeVirtualAccountOrder(args) {
+  return withPaymentLock(args.paymentId, async () => {
+    const existing = await existingOrderForPayment(args.paymentId);
+    if (existing) return { ok: true, saved: existing };
+    return finalizeVirtualAccountOrderUnlocked(args);
+  });
+}
+
+async function finalizeCardOrderUnlocked({ pending, paymentId, userId }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
   const pointsUsed = pending.points_used || 0;
@@ -774,8 +822,12 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
      끝난 뒤라(돈을 이미 받음) 여기서 소진됐다고 판정돼도 주문 생성 자체를 막지는 않는다(그러면
      "결제는 됐는데 주문은 없는" 사고가 남). 극히 드문 경합으로 usage_limit을 1건 넘기는 것보다
      낫다고 판단 — 대신 시스템 오류 로그로 남겨 관리자가 알 수 있게 한다. */
+  /* 이번 실행이 실제로 사용 횟수를 올렸을 때만 실패 시 되돌린다 — 못 올렸는데 되돌리면 used_count가
+     실제보다 줄어 사용 한도 쿠폰을 또 쓸 수 있게 된다(2026-10-28 정기 감사). */
+  let couponClaimed = false;
   if (couponCode) {
     const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    couponClaimed = !!claimed;
     if (!claimed) {
       console.warn("[order] 쿠폰 사용 횟수 소진 후 카드결제 확정 — 결제가 이미 끝나 주문은 그대로 생성:", couponCode, paymentId);
       logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_card_order" });
@@ -823,7 +875,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
           );
           logSystemError("card_cancel_failed", { paymentId, productId, size, error: cancelErr.message });
         }
-        if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+        if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
         if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
         return { ok: false, status: 409, body: { error: "OUT_OF_STOCK", productId, color, size, name } };
       }
@@ -836,7 +888,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
         console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
       );
       logSystemError("order_finalize_failed", { paymentId, stage: "inventory_decrement", error: decResult.dbError, paymentCancelled: cancelled });
-      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
       if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       return { ok: false, status: 500, body: { error: "재고 확인 중 오류가 발생했습니다." } };
     }
@@ -891,7 +943,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
         }
       }
       // 재고와 같은 이유로, 이 중복 실행분이 방금 차감한 쿠폰 사용 횟수·포인트도 되돌린다(위 claimCouponUsage 참고).
-      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
       if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
       if (existing) return { ok: true, saved: existing };
@@ -921,7 +973,7 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       console.error("[mailer] 주문 확정 실패 긴급 알림 메일 발송 실패:", err.message)
     );
     logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message, paymentCancelled: cancelled });
-    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
     if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
   }
@@ -954,14 +1006,16 @@ async function finalizeCardOrder({ pending, paymentId, userId }) {
       (markVirtualAccountPaid, 무통장입금 관리자 확인과 같은 지점)에 준다.
    verified.method는 PaymentMethodVirtualAccount 형태(bank/accountNumber/remitteeName/
    expiredAt) — 실제 발급된 계좌 정보를 고객에게 보여주기 위해 주문에 그대로 저장한다. */
-async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
+async function finalizeVirtualAccountOrderUnlocked({ pending, paymentId, verified }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
   const pointsUsed = pending.points_used || 0;
   const orderNumber = orderNo(await nextOrderSeq());
 
+  let couponClaimed = false;
   if (couponCode) {
     const claimed = await claimCouponUsage(supabaseAdmin, couponCode);
+    couponClaimed = !!claimed;
     if (!claimed) {
       console.warn("[order] 쿠폰 사용 횟수 소진 후 가상계좌 발급 확정 — 계좌는 이미 발급돼 주문은 그대로 생성:", couponCode, paymentId);
       logSystemError("coupon_usage_exceeded", { couponCode, paymentId, stage: "finalize_virtual_account_order" });
@@ -988,7 +1042,7 @@ async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
     } catch (closeErr) {
       console.error("[order] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", paymentId, closeErr.message);
     }
-    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
     if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
   }
 
@@ -1044,7 +1098,7 @@ async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
         if (restoreError) console.error("[order] ⚠️ 중복 저장 정리 중 재고 복원 실패 — 수동 확인 필요:", paymentId, restoreError.message);
         else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_duplicate", ref: paymentId })));
       }
-      if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+      if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
       if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
       const { data: existing } = await supabaseAdmin.from("orders").select("*").eq("payment_id", paymentId).maybeSingle();
       if (existing) return { ok: true, saved: existing };
@@ -1058,7 +1112,7 @@ async function finalizeVirtualAccountOrder({ pending, paymentId, verified }) {
       if (restoreError) console.error("[order] ⚠️ 주문 저장 실패 후 재고 복원도 실패 — 수동 확인 필요:", paymentId, restoreError.message);
       else logInventoryChange(inventoryItems.map((it) => ({ productId: it.productId, color: it.color, size: it.size, delta: it.qty, reason: "order_finalize_failed", ref: paymentId })));
     }
-    if (couponCode) await releaseCouponUsage(supabaseAdmin, couponCode);
+    if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
     if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
     try {
       await portone.closeVirtualAccount(paymentId);
@@ -2115,13 +2169,17 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
       continue;
     }
 
-    const { data: prev } = await supabaseAdmin.from("orders").select("status, tracking_no").eq("order_no", orderNo).maybeSingle();
+    const { data: prev } = await supabaseAdmin.from("orders").select("status, tracking_no, payment_method").eq("order_no", orderNo).maybeSingle();
     if (!prev) {
       results.push({ orderNo, ok: false, error: "존재하지 않는 주문입니다." });
       continue;
     }
     if (prev.status === "취소") {
       results.push({ orderNo, ok: false, error: "이미 취소된 주문은 일괄 처리로 되돌릴 수 없습니다 — 개별로 처리해 주세요." });
+      continue;
+    }
+    if (patch.status === "입금대기" && (prev.status !== "입금대기" || prev.payment_method === "card")) {
+      results.push({ orderNo, ok: false, error: "결제가 확인된 주문은 입금대기로 되돌릴 수 없습니다." });
       continue;
     }
 
@@ -2185,7 +2243,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
      (2026-09-01 코드 감사에서 발견). */
   const { data: prev, error: prevError } = await supabaseAdmin
     .from("orders")
-    .select("status, tracking_no")
+    .select("status, tracking_no, payment_method")
     .eq("order_no", req.params.no)
     .single();
   if (prevError || !prev) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
@@ -2202,8 +2260,13 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
   const isNewCancel = patch.status === "취소" && prev.status !== "취소";
-  // 입금된 주문을 취소하면 환불이 나가므로 "환불·주문취소" 권한이 따로 필요하다(입금 전 취소는 주문 권한만으로 가능).
-  if (isNewCancel && prev.status !== "입금대기" && !(await hasAreaPermission(req, "refunds"))) {
+  /* 입금된 주문을 "입금대기"로 되돌리는 건 막는다 — 되돌린 뒤 취소하면 "입금 전 취소"로 보여 환불 권한 검사를
+     건너뛰면서도 카드는 전액 환불됐다(2026-10-28 정기 감사). 카드결제는 처음부터 결제된 주문이라 항상 막는다. */
+  if (patch.status === "입금대기" && prev.status !== "입금대기" && (prev.status !== "취소" || prev.payment_method === "card")) {
+    return res.status(400).json({ error: "결제가 확인된 주문은 입금대기로 되돌릴 수 없습니다.", code: "INVALID_STATUS_BACK" });
+  }
+  // 입금된 주문을 취소하면 환불이 나가므로 "환불·주문취소" 권한이 따로 필요하다(입금 전 무통장 취소는 주문 권한만으로 가능).
+  if (isNewCancel && (prev.status !== "입금대기" || prev.payment_method === "card") && !(await hasAreaPermission(req, "refunds"))) {
     return res.status(403).json({ error: "'환불·주문취소' 권한이 없어 입금된 주문을 취소할 수 없습니다. 마스터 관리자에게 문의하세요.", code: "FORBIDDEN_AREA", area: "refunds" });
   }
   /* 반대 방향(취소 → 다른 상태로 되돌림)도 대칭으로 처리해야 한다 — 안 하면 취소 시
@@ -2217,6 +2280,13 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
      patch에 cancel_reason 자체가 안 들어가 DB에 예전 값이 그대로 남아 있었다. */
   if (isNewCancel) patch.cancel_reason = cancelReasonStr || null;
   if (isUncancel) patch.cancel_reason = null;
+
+  /* 이미 반품·부분 취소 환불이 있는 출고 후 주문은 "취소"로 처리하지 않는다 — 취소는 남은 금액 전부(차감한 반품 배송비
+     포함)를 환불하고, 불량이라 재고 복원을 안 한 상품까지 재고로 되돌렸다(2026-10-28 정기 감사). */
+  const { rows: prevRefunds } = await loadPreviousRefunds(supabaseAdmin, req.params.no);
+  if (isNewCancel && (prev.status === "배송중" || prev.status === "완료") && prevRefunds.length) {
+    return res.status(409).json({ error: "반품 환불을 처리한 출고 주문은 취소할 수 없습니다. 남은 상품은 반품 환불로 처리해 주세요.", code: "HAS_REFUNDS" });
+  }
 
   // 처음 배송이 시작되는 순간(배송중 전환 또는 첫 운송장 입력)을 기록 — 며칠 뒤 리뷰 요청 메일 기준(041)
   if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
@@ -2238,7 +2308,11 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   let uncancelResult = null;
   if (isUncancel) {
-    const decrementItems = restoreItemsFromOrder(saved.items);
+    // 부분 취소·반품으로 이미 환불한 수량은 다시 출고할 게 아니므로 빼고 재고를 다시 잡는다(2026-10-28 정기 감사).
+    const refundedQty = refundedQtyByIndex(prevRefunds);
+    const decrementItems = restoreItemsFromOrder(
+      (saved.items || []).map((it, i) => ({ ...it, qty: (Number(it.qty) || 0) - (refundedQty.get(i) || 0) })).filter((it) => it.qty > 0)
+    );
     if (decrementItems.length) {
       const { error: decError } = await supabaseAdmin.rpc("decrement_inventory", { p_items: decrementItems });
       if (decError) {

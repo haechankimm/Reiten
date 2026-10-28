@@ -143,3 +143,12 @@ test("hasPhysicalProduct — 참(charm-*)만 담긴 주문은 거절 대상", ()
   assert.strictEqual(hasPhysicalProduct([{ productId: "" }]), false);
   assert.strictEqual(hasPhysicalProduct([{ productId: "charm-star" }, { productId: "core-zip-hoodie", size: "M" }]), true);
 });
+
+test("priceItem — 사이즈가 있는 상품은 사이즈가 없거나 목록에 없으면 거부, 상품명은 서버 한글명(2026-10-28)", () => {
+  const products = [{ id: "core-zip-hoodie", price: 119000, sizes: ["S", "M"], nameKo: "코어 집업" }];
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: 1 }, products, PRICE_OPTS), null);
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: 1, size: "XXL" }, products, PRICE_OPTS), null);
+  const ok = priceItem({ productId: "core-zip-hoodie", qty: 1, size: "M", name: "Core Zip (EN)" }, products, PRICE_OPTS);
+  assert.equal(ok.unit, 119000);
+  assert.equal(ok.name, "코어 집업");
+});

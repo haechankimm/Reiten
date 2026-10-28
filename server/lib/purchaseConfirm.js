@@ -75,12 +75,19 @@ async function checkDeliveries({ db = supabaseAdmin, now = new Date(), fetchImpl
   if (!tracking.isConfigured()) return { checked: 0, delivered: 0, skipped: "no_key" };
   if (!(await confirmationEnabled(db))) return { checked: 0, delivered: 0, skipped: "no_migration" };
   const minShipped = new Date(now.getTime() - TRACKING_MIN_AGE_HOURS * 3600 * 1000).toISOString();
+  /* 오래 확인 안 한 것부터(한 번도 안 본 것 먼저) 최근 30일 출고분만 — 순서 없이 80건을 잘라 오면 배송완료가 영영
+     안 잡히는 주문(운송장 오타·분실)이 자리를 차지해 새 출고분을 못 보는 일이 생겼다(2026-10-28 정기 감사). */
+  const maxAge = new Date(now.getTime() - 30 * DAY_MS).toISOString();
   const { data: orders, error } = await db
     .from("orders")
     .select("order_no, status, courier, tracking_no, shipped_at, tracking_checked_at")
     .eq("status", "배송중")
     .is("delivered_at", null)
+    .is("confirmed_at", null)
+    .not("tracking_no", "is", null)
     .lte("shipped_at", minShipped)
+    .gte("shipped_at", maxAge)
+    .order("tracking_checked_at", { ascending: true, nullsFirst: true })
     .limit(80);
   if (error || !orders) return { checked: 0, delivered: 0, error: error && error.message };
 
@@ -108,13 +115,21 @@ async function checkDeliveries({ db = supabaseAdmin, now = new Date(), fetchImpl
 /* [크론] 자동 구매확정 — 배송완료 7일(또는 출고 14일) 지난 주문 중 반품·교환 처리 중이 아닌 것. */
 async function autoConfirmOrders({ db = supabaseAdmin, now = new Date() } = {}) {
   if (!(await confirmationEnabled(db))) return { confirmed: 0, skipped: "no_migration" };
-  const { data: orders, error } = await db
-    .from("orders")
-    .select("order_no, status, user_id, points_earned, shipped_at, delivered_at, confirmed_at")
-    .in("status", ["배송중", "완료"])
-    .is("confirmed_at", null)
-    .limit(200);
-  if (error || !orders) return { confirmed: 0, error: error && error.message };
+  /* 기한이 지난 것만 DB에서 바로 골라 온다(배송완료 7일 / 배송완료 기록 없으면 출고 14일). 예전엔 조건 없이 200건을
+     잘라 와서 JS로 걸렀는데, 출고·배송완료 기록이 없는 옛 주문(041·043 이전)이 200건을 넘게 쌓이면 새 주문이 영영
+     자동 구매확정되지 않고 적립금도 안 들어갔다(2026-10-28 정기 감사). */
+  const deliveredDue = new Date(now.getTime() - CONFIRM_AFTER_DELIVERY_DAYS * DAY_MS).toISOString();
+  const shippedDue = new Date(now.getTime() - CONFIRM_AFTER_SHIP_DAYS * DAY_MS).toISOString();
+  const cols = "order_no, status, user_id, points_earned, shipped_at, delivered_at, confirmed_at";
+  const [a, b] = await Promise.all([
+    db.from("orders").select(cols).in("status", ["배송중", "완료"]).is("confirmed_at", null)
+      .lte("delivered_at", deliveredDue).order("delivered_at", { ascending: true }).limit(200),
+    db.from("orders").select(cols).in("status", ["배송중", "완료"]).is("confirmed_at", null)
+      .is("delivered_at", null).lte("shipped_at", shippedDue).order("shipped_at", { ascending: true }).limit(200),
+  ]);
+  const error = a.error || b.error;
+  const orders = [...(a.data || []), ...(b.data || [])];
+  if (error) return { confirmed: 0, error: error.message };
   let confirmed = 0;
   for (const o of orders) {
     const due = autoConfirmAt(o);
