@@ -24,6 +24,9 @@ const router = express.Router();
 function isMaster(req) {
   return ((req.user && req.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL;
 }
+function redactSecret(row) {
+  return row && row.label === ADMIN_ALERT_WEBHOOK_SETTING_LABEL && row.value ? { ...row, value: "(메인 관리자만 볼 수 있음)" } : row;
+}
 const MASTER_ONLY_SETTING = "이 항목은 적립금·쿠폰·긴급 알림에 쓰이는 값이라 메인 관리자만 바꿀 수 있습니다.";
 async function protectedLabelTaken(label, exceptId) {
   const { data } = await supabaseAdmin.from("admin_settings").select("id").eq("label", label);
@@ -43,7 +46,8 @@ function toSettingDto(row) {
 router.get("/api/admin/settings", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin.from("admin_settings").select("*").order("sort_order", { ascending: true });
   if (error) return res.status(500).json({ error: "정보를 불러오지 못했습니다." });
-  res.json(data.map(toSettingDto));
+  // 긴급 알림 웹훅 주소는 그 주소만 알면 채널에 글을 쓸 수 있는 비밀값이라 대표에게만 보여준다(2026-10-28)
+  res.json(data.map((r) => (isMaster(req) ? r : redactSecret(r))).map(toSettingDto));
 });
 
 router.post("/api/admin/settings", requireAdmin, async (req, res) => {
@@ -134,7 +138,7 @@ router.get("/api/admin/backup/export", requireAdmin, async (req, res) => {
     exportedAt: new Date().toISOString(),
     products: products.data,
     coupons: coupons.data,
-    adminSettings: settings.data,
+    adminSettings: isMaster(req) ? settings.data : settings.data.map(redactSecret),
   };
   const filename = `reiten-backup-${require("../lib/kst").kstDateKey(new Date())}.json`;
   res.setHeader("Content-Type", "application/json; charset=utf-8");

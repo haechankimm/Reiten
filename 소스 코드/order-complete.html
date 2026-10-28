@@ -149,7 +149,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         ${t("주문번호")} <b class="tnum">${esc(order.no)}</b> · ${t("{name}님", { name: esc(c.name) })}
       </p>
 
-      ${order.paymentMethod === "card" ? `
+      ${order.paid && order.paymentMethod === "bank_transfer" ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("주문 확정")}</b><br>
+        ${t("쿠폰·적립금으로 결제할 금액 없이 주문이 확정되었습니다.")}<br>
+        <span class="small">${esc(t(SITE.shipping.leadTime))}.</span>
+      </div>` : order.paymentMethod === "card" || (order.paymentMethod === "virtual_account" && order.status === "입금확인") ? `
       <div class="notice" style="margin-top:28px">
         <b>${t("결제 완료")}</b><br>
         ${t("결제금액")} <b class="tnum">${money(order.total)}</b><br>
@@ -189,7 +194,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         <tbody>
           ${order.items.map(i => `
             <tr>
-              <td>${esc(i.name)}</td>
+              <td>${esc(orderItemName(i))}</td>
               <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
               <td>${i.qty}</td>
               <td>${money(i.sum)}</td>

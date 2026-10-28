@@ -570,6 +570,23 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
     return { error: { status: 400, body: { error: "참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.", code: "CHARM_ONLY" } } };
   }
 
+  /* 예전에 담아 둔 장바구니에 지금은 팔지 않는 사이즈가 남아 있으면, 뭉뚱그린 오류 대신 어느 상품인지 알려준다(2026-10-28) */
+  const badSizeIndex = rawItems.findIndex((raw) => {
+    const p = raw && typeof raw.productId === "string" && !raw.productId.startsWith("charm-") ? products.find((x) => x.id === raw.productId) : null;
+    return p && Array.isArray(p.sizes) && p.sizes.length && !(typeof raw.size === "string" && p.sizes.includes(raw.size));
+  });
+  if (badSizeIndex >= 0) {
+    const bad = rawItems[badSizeIndex];
+    const bp = products.find((x) => x.id === bad.productId);
+    const name = (bp && (bp.nameKo || bp.name)) || bad.productId;
+    const size = String(bad.size || "-");
+    return { error: { status: 400, body: {
+      error: `${name} ${size} 사이즈는 지금 판매하지 않습니다. 장바구니에서 빼고 다시 담아 주세요.`,
+      i18n: { key: "{name} {size} 사이즈는 지금 판매하지 않습니다. 장바구니에서 빼고 다시 담아 주세요.", vars: { name, size } },
+      code: "INVALID_SIZE", index: badSizeIndex,
+    } } };
+  }
+
   const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
   if (items.some((it) => it === null)) {
     return { error: { status: 400, body: { error: "존재하지 않는 상품·참(charm) 또는 잘못된 수량이 포함되어 있습니다." } } };
@@ -590,11 +607,10 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   const pointsUsed = await resolvePointsToUse(supabaseAdmin, userId, rawPointsToUse, Math.max(0, subtotal - coupon.discount));
 
   const total = subtotal - coupon.discount - pointsUsed + shipping;
-  /* 무료배송 금액 이상 + 전액 쿠폰(또는 적립금)이면 0원 주문이 됐다 — 카드결제창은 0원을 받지 않고, 무통장은
-     "0원 입금 대기"로 남았다가 24시간 뒤 자동 취소됐다(2026-10-28 정기 감사). 결제할 금액이 있게 안내한다. */
-  if (total <= 0) {
-    return { error: { status: 400, body: { error: "결제 금액이 0원인 주문은 접수할 수 없습니다. 적립금 사용액을 줄이거나 관리자에게 문의해 주세요.", code: "ZERO_TOTAL" } } };
-  }
+  /* 무료배송 금액 이상 + 전액 쿠폰(또는 "적립금 전액 사용")이면 결제할 금액이 0원이 된다. 이 주문은 결제창 없이
+     무통장 경로(/api/order)로 받아 바로 "입금확인"으로 만든다(아래 zeroTotal 처리). 카드결제창은 0원을 받지 않으므로
+     결제 준비(/api/payments/prepare)에서만 거절한다(2026-10-28 정기 감사 — 처음엔 0원을 거절했다가 "전액 사용" 버튼이
+     항상 실패하는 문제가 생겨 이렇게 바꿈). */
   return {
     rawItems,
     items,
@@ -603,6 +619,7 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
     coupon,
     pointsUsed,
     total,
+    zeroTotal: total <= 0,
     device: ORDER_DEVICE_TYPES.includes(device) ? device : "unknown",
   };
 }
@@ -620,6 +637,8 @@ app.post("/api/payments/prepare", optionalAuth, orderLimiter, async (req, res) =
   const products = await getActiveProducts();
   const priced = await validateAndPriceOrder(req.body, products, req.user ? req.user.id : null, { banned: req.userBanned });
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
+  // 결제할 금액이 0원이면 결제창을 열 수 없다 — 화면이 무통장 경로(/api/order)로 바로 접수한다(cart.html)
+  if (priced.zeroTotal) return res.status(400).json({ error: "결제할 금액이 없는 주문입니다. 다시 시도해 주세요.", code: "ZERO_TOTAL" });
   const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
 
@@ -809,6 +828,12 @@ async function existingOrderForPayment(paymentId) {
 async function finalizeCardOrder(args) {
   return withPaymentLock(args.paymentId, async () => {
     const existing = await existingOrderForPayment(args.paymentId);
+    /* 가상계좌 "발급" 처리가 잠금을 쥔 사이 "입금 완료"가 도착하면, 잠금을 얻었을 때 이미 입금대기 주문이 있다 — 이 결제는
+       PAID이므로 입금 완료로 넘긴다(예전엔 그대로 돌려줘 입금이 영영 반영되지 않을 수 있었다, 2026-10-28 정기 감사). */
+    if (existing && existing.payment_method === "virtual_account" && existing.status === "입금대기") {
+      await markVirtualAccountPaid(args.paymentId);
+      return { ok: true, saved: (await existingOrderForPayment(args.paymentId)) || existing };
+    }
     if (existing) return { ok: true, saved: existing };
     return finalizeCardOrderUnlocked(args);
   });
@@ -1375,7 +1400,7 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
           no: already.order_no, at: already.created_at, customer: already.customer, items: already.items,
           subtotal: already.subtotal, shipping: already.shipping, total: already.total,
           discount: already.discount, couponCode: already.coupon_code, pointsUsed: already.points_used || 0,
-          paymentMethod: already.payment_method, sent: true,
+          paymentMethod: already.payment_method, status: already.status, sent: true,
           virtualAccount: already.payment_method === "virtual_account" ? {
             bank: already.virtual_account_bank, accountNumber: already.virtual_account_number,
             holder: already.virtual_account_holder, dueAt: already.virtual_account_due_at,
@@ -1421,7 +1446,7 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
       no: result.saved.order_no, at: result.saved.created_at, customer: result.saved.customer, items: result.saved.items,
       subtotal: result.saved.subtotal, shipping: result.saved.shipping, total: result.saved.total,
       discount: result.saved.discount, couponCode: result.saved.coupon_code, pointsUsed: result.saved.points_used || 0,
-      paymentMethod: result.saved.payment_method, sent: true,
+      paymentMethod: result.saved.payment_method, status: result.saved.status, sent: true,
       virtualAccount: result.saved.payment_method === "virtual_account" ? {
         bank: result.saved.virtual_account_bank, accountNumber: result.saved.virtual_account_number,
         holder: result.saved.virtual_account_holder, dueAt: result.saved.virtual_account_due_at,
@@ -1514,6 +1539,8 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
       coupon_code: coupon.code,
       discount: coupon.discount,
       points_used: pointsUsed,
+      // 쿠폰·적립금으로 0원이 된 주문은 입금할 돈이 없으므로 바로 "입금확인"(2026-10-28 정기 감사)
+      ...(total <= 0 ? { status: "입금확인" } : {}),
     },
     { returning: true }
   );
@@ -1540,10 +1567,14 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
     return res.status(500).json({ error: "주문 저장에 실패했습니다." });
   }
 
+  if (saved.status === "입금확인") {
+    // 0원 주문 — 관리자가 입금 확인을 누른 것과 같은 후속 처리(입금 확인 메일·감사 쿠폰·적립 예정액)
+    await notifyOrderStatusSideEffects({ status: "입금대기" }, saved, { status: "입금확인" });
+  }
   sendOrderNotification(saved).catch((err) => {
     console.error("[mailer] 주문 알림 메일 발송 실패:", err.message);
   });
-  sendCustomerOrderReceived(saved).catch((err) => {
+  if (saved.status !== "입금확인") sendCustomerOrderReceived(saved).catch((err) => {
     console.error("[mailer] 주문 접수 확인 메일 발송 실패:", err.message);
   });
   kakao.sendAlimtalk("ORDER_RECEIVED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
@@ -1563,6 +1594,7 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
     couponCode: saved.coupon_code,
     pointsUsed: saved.points_used || 0,
     paymentMethod: "bank_transfer",
+    paid: saved.status === "입금확인",
     sent: true,
   });
 });
@@ -1949,7 +1981,11 @@ app.get("/api/admin/system-errors", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/system-errors/:id/resolve", requireAdmin, async (req, res) => {
-  const { error } = await supabaseAdmin.from("system_error_log").update({ resolved: true }).eq("id", req.params.id);
+  /* 아웃박스 권한으로 들어온 직원(결제·시스템 오류 권한 없음)은 메일 발송 실패 기록만 해결 처리할 수 있다 — 환불 실패 같은
+     긴급 오류를 대표가 보기 전에 지울 수 있었다(2026-10-28 정기 감사). */
+  let q = supabaseAdmin.from("system_error_log").update({ resolved: true }).eq("id", req.params.id);
+  if (!(await hasAreaPermission(req, "payments"))) q = q.eq("type", "notification_failed");
+  const { error } = await q;
   if (error) return res.status(500).json({ error: "처리에 실패했습니다." });
   res.json({ ok: true });
 });
@@ -2314,6 +2350,16 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
      복원됐던 재고가 그대로 부풀려진 채 남는다(관리자가 실수로 취소했다가 바로 되돌리는
      경우 등). */
   const isUncancel = prev.status === "취소" && patch.status !== undefined && patch.status !== "취소";
+  /* 입금 기한이 지난 주문을 "입금대기"로 되돌리면 다음 자동취소 크론이 곧바로 다시 취소해 버린다(고객에게 취소 메일이 또
+     가고 적립금·재고가 다시 처리됨). 가상계좌는 취소 때 계좌가 이미 닫혀 입금도 못 받는다. 입금이 확인됐다면
+     "입금확인"으로 되돌리면 된다(2026-10-28 정기 감사). */
+  if (isUncancel && patch.status === "입금대기") {
+    const { data: full } = await supabaseAdmin.from("orders").select("created_at, payment_method").eq("order_no", req.params.no).maybeSingle();
+    const expired = full && Date.now() - new Date(full.created_at).getTime() > PENDING_CANCEL_HOURS * 3600 * 1000;
+    if (full && (full.payment_method === "virtual_account" || expired)) {
+      return res.status(400).json({ error: "입금 기한이 지났거나 가상계좌 주문이라 입금대기로 되돌릴 수 없습니다. 입금을 확인했다면 입금확인으로 되돌려 주세요.", code: "UNCANCEL_EXPIRED" });
+    }
+  }
   /* 취소 사유는 취소되는 그 순간 항상 명시적으로 반영하고(안 적었으면 null), 되돌릴 때는
      지운다 — 안 그러면 "취소(사유 있음) → 되돌리기 → 사유 없이 재취소"에서 첫 번째 취소
      사유가 stale로 그대로 남는 버그가 생긴다(2026-09-01 코드 감사에서 발견). 예전엔
@@ -2377,19 +2423,39 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
       logSystemError("order_uncancelled_card_payment_not_restored", { orderNo: saved.order_no, paymentId: saved.payment_id });
       uncancelResult = { ...(uncancelResult || {}), paymentNote: "card_refund_not_reversible" };
     }
-    /* 취소 때 돌려준 "사용한 적립금"을 다시 차감한다 — 예전엔 되돌린 주문이 살아 있는데도 고객이 쓴 적립금을 그대로
-       돌려받은 상태로 남았다(2026-10-28 정기 감사). 부분 환불 때 이미 돌려준 몫은 빼고, 적립 예정 포인트는 다시
-       구매확정될 때 처리되지 않으므로(이미 확정된 주문은 confirmed_at이 남음) 사용분만 맞춘다. */
-    if (saved.user_id && Number(saved.points_used) > 0) {
+    /* 되돌린 주문의 적립금을 취소 전 상태로 맞춘다 — 사용한 적립금은 다시 차감하고, 구매확정돼 이미 받은 적립금은
+       다시 준다(부분 환불 때 돌려준·회수한 몫 반영). 취소 땐 이 주문 원장 합계를 0으로 맞췄으므로 목표값과의 차이만 넣는다
+       (2026-10-28 정기 감사 — 예전엔 사용분만 다시 빼서 받은 적립금이 사라지고, 나중 반품 때 또 회수됐다). */
+    if (saved.user_id && (Number(saved.points_used) > 0 || Number(saved.points_earned) > 0)) {
       const restoredByRefunds = prevRefunds.reduce((sum, r) => sum + (Number(r.points_restored) || 0), 0);
-      const recharge = Math.max(0, Number(saved.points_used) - restoredByRefunds);
-      if (recharge > 0) {
-        const { error: rechargeErr } = await supabaseAdmin
+      const reclaimedByRefunds = prevRefunds.reduce((sum, r) => sum + (Number(r.points_reclaimed) || 0), 0);
+      const { data: ledger } = await supabaseAdmin
+        .from("loyalty_points_ledger")
+        .select("delta, reason")
+        .eq("order_no", saved.order_no)
+        .in("reason", ["earn_purchase", "redeem_order", "refund_reversal"]);
+      const net = (ledger || []).reduce((sum, r) => sum + (Number(r.delta) || 0), 0);
+      const earnedCredited = (ledger || []).filter((r) => r.reason === "earn_purchase").reduce((sum, r) => sum + (Number(r.delta) || 0), 0);
+      const target = -Math.max(0, Number(saved.points_used || 0) - restoredByRefunds) + (saved.confirmed_at ? Math.max(0, earnedCredited - reclaimedByRefunds) : 0);
+      const delta = target - net;
+      if (delta !== 0) {
+        const { error: ledgerErr } = await supabaseAdmin
           .from("loyalty_points_ledger")
-          .insert({ user_id: saved.user_id, order_no: saved.order_no, delta: -recharge, reason: "refund_reversal" });
-        if (rechargeErr) console.error("[admin/orders] 취소 되돌리기 시 적립금 재차감 실패:", saved.order_no, rechargeErr.message);
-        else uncancelResult = { ...(uncancelResult || {}), pointsRecharged: recharge };
+          .insert({ user_id: saved.user_id, order_no: saved.order_no, delta, reason: "refund_reversal" });
+        if (ledgerErr) console.error("[admin/orders] 취소 되돌리기 시 적립금 복원 실패:", saved.order_no, ledgerErr.message);
+        else uncancelResult = { ...(uncancelResult || {}), pointsAdjusted: delta };
       }
+    }
+    // 취소 때 "결제 전액 환불"로 기록한 환불액을 실제 환불 기록 합계로 되돌린다 — 안 하면 이후 반품 환불이 "최대 0원"으로 막혔다
+    {
+      const refundedSum = prevRefunds.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0);
+      const { error: raErr } = await supabaseAdmin.from("orders").update({ refunded_amount: refundedSum }).eq("order_no", saved.order_no);
+      if (raErr && !isMissingColumnError(raErr)) console.error("[admin/orders] 환불액 되돌리기 실패:", raErr.message);
+    }
+    // 자동·관리자 취소 때 돌려준 쿠폰 사용 횟수를 다시 차지한다(1회용 쿠폰을 또 쓰지 못하게)
+    if (saved.coupon_code) {
+      const claimed = await claimCouponUsage(supabaseAdmin, saved.coupon_code);
+      if (!claimed) logSystemError("coupon_usage_exceeded", { couponCode: saved.coupon_code, orderNo: saved.order_no, stage: "uncancel" });
     }
   }
 

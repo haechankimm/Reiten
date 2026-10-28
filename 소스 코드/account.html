@@ -209,6 +209,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/app.js"></script>
 <script src="assets/js/auth-client.js"></script>
 <script>
+  // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
+  if (typeof loadProducts === "function") loadProducts().catch(() => {});
   applyI18n();
   renderHeader("");
 
@@ -260,7 +262,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   }
 
   function orderCard(o) {
-    const itemsLine = o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ");
+    const itemsLine = o.items.map((it) => `${esc(orderItemName(it))} × ${it.qty}`).join(", ");
     // 쿠폰·적립금 할인과 환불액을 같이 보여줘야 "상품 합계와 결제 금액이 왜 다른지"가 보인다(2026-10-02).
     const adjustments = [
       o.discount ? `${t("쿠폰 할인")} −${money(o.discount)}` : "",

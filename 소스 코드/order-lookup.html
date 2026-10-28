@@ -104,6 +104,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
 <script>
+  // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
+  if (typeof loadProducts === "function") loadProducts().catch(() => {});
   applyI18n();
   renderHeader("");
 
@@ -164,7 +166,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
       el("lk-items").innerHTML = o.items.map((i) => `
         <tr>
-          <td>${esc(i.name)}</td>
+          <td>${esc(orderItemName(i))}</td>
           <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
           <td>${i.qty}</td>
           <td>${money(i.sum)}</td>

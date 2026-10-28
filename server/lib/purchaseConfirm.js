@@ -85,6 +85,8 @@ async function checkDeliveries({ db = supabaseAdmin, now = new Date(), fetchImpl
     .is("delivered_at", null)
     .is("confirmed_at", null)
     .not("tracking_no", "is", null)
+    // 조회할 수 없는 택배사(직접 배송 등)는 확인 시각이 안 찍혀 대기열 맨 앞을 계속 차지했다 — 아예 빼고 고른다(2026-10-28)
+    .in("courier", Object.keys(tracking.COURIER_CODES))
     .lte("shipped_at", minShipped)
     .gte("shipped_at", maxAge)
     .order("tracking_checked_at", { ascending: true, nullsFirst: true })

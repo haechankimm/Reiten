@@ -10,6 +10,18 @@
      카드/가상계좌/무통장 중 뭔지 목록만 봐서는 알 수 없다던 감사 지적(2026-09) — 목록에는
      결제수단만 짧게, 상세 패널에는 쿠폰·적립금·가상계좌 입금 정보까지 전부 보여준다. */
   const ORDER_PAYMENT_METHOD_LABEL = { card: "카드결제", bank_transfer: "무통장입금", virtual_account: "가상계좌" };
+  /* 서버가 거절하는 상태는 아예 고르지 못하게 한다(2026-10-28 정기 감사) — 결제된 주문·카드·가상계좌의 "입금대기",
+     환불 이력이 있는 출고 주문의 "취소". 현재 상태는 항상 남긴다. */
+  function allowedStatusesFor(o) {
+    const paid = o.status !== "입금대기" && o.status !== "취소";
+    return ORDER_STATUSES.filter((s) => {
+      if (s === o.status) return true;
+      if (s === "입금대기" && (paid || o.paymentMethod === "card" || o.paymentMethod === "virtual_account")) return false;
+      if (s === "취소" && (o.status === "배송중" || o.status === "완료") && Number(o.refundedAmount) > 0) return false;
+      return true;
+    });
+  }
+
   function orderPaymentMethodLabel(o) {
     return t(ORDER_PAYMENT_METHOD_LABEL[o.paymentMethod] || "확인 안 됨");
   }
@@ -99,7 +111,7 @@
       </div>` : ""}
       <div class="detail-field" style="margin-top:16px">
         <label>${esc(t("상태"))}</label>
-        <select class="mini-select" id="od-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+        <select class="mini-select" id="od-status">${allowedStatusesFor(o).map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
       </div>
       <div class="detail-field" style="margin-top:8px">
         <label>${esc(t("담당자"))}</label>

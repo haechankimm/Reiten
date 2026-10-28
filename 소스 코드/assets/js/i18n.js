@@ -2006,6 +2006,14 @@ const I18N = {
   ["DB 마이그레이션 044가 아직 실행되지 않았습니다(상품 영어·일본어 문구 저장 불가)", {"de": "DB-Migration 044 wurde noch nicht ausgeführt (englische/japanische Produkttexte können nicht gespeichert werden)"}],
   ["DB 마이그레이션 044", {"de": "DB-Migration 044"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+/* ---------- 2026-10-28 정기 감사(4): 0원 주문·사이즈 오류·취소 되돌리기 ---------- */
+[
+  ["{name} {size} 사이즈는 지금 판매하지 않습니다. 장바구니에서 빼고 다시 담아 주세요.", {"en": "{name} in size {size} is no longer sold. Please remove it from your cart and add it again.", "ja": "{name}の{size}サイズは現在販売していません。カートから削除して、もう一度追加してください。", "de": "{name} in Größe {size} wird nicht mehr verkauft."}],
+  ["주문 확정", {"en": "Order confirmed", "ja": "ご注文確定", "de": "Bestellung bestätigt"}],
+  ["쿠폰·적립금으로 결제할 금액 없이 주문이 확정되었습니다.", {"en": "Your order is confirmed — coupons and points covered the full amount.", "ja": "クーポン・ポイントでお支払い金額なしでご注文が確定しました。", "de": "Bestellung bestätigt – Gutscheine und Punkte decken den vollen Betrag."}],
+  ["결제할 금액이 없는 주문입니다. 다시 시도해 주세요.", {"en": "There's nothing to pay for this order. Please try again.", "ja": "お支払い金額のないご注文です。もう一度お試しください。", "de": "Für diese Bestellung ist nichts zu bezahlen. Bitte erneut versuchen."}],
+  ["입금 기한이 지났거나 가상계좌 주문이라 입금대기로 되돌릴 수 없습니다. 입금을 확인했다면 입금확인으로 되돌려 주세요.", {"de": "Zahlungsfrist abgelaufen oder virtuelles Konto – kein Zurücksetzen auf „Zahlung ausstehend“. Bei bestätigter Zahlung bitte „Zahlung bestätigt“ wählen."}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

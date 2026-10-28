@@ -574,6 +574,12 @@ function productName(p) {
 
 /* 관리자가 Works에서 넣은 영어·일본어 상품 문구(044, 선택) — 없으면 한국어 원문을 사전으로 번역(t)해서 쓴다.
    예전엔 관리자가 입력한 설명이 영어·일본어 화면에서도 한국어로만 나왔다(2026-10-28 정기 감사). */
+/* 주문에 저장된 상품명은 관리용 한글명이라, 고객 화면에서는 지금 언어의 상품명으로 바꿔 보여준다(상품을 못 찾으면 저장된 이름) */
+function orderItemName(it) {
+  const p = it && it.productId && typeof getProduct === "function" ? getProduct(it.productId) : null;
+  return p ? productName(p) : (it && it.name) || "";
+}
+
 function productTranslation(p) {
   const lang = getLang();
   if (lang !== "en" && lang !== "ja") return null;

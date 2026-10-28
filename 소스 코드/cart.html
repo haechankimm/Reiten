@@ -537,8 +537,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (!cartHasPhysicalProduct(items)) { toast(t("참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.")); return; }
 
     const method = payMethod();
-    const isCard = cardPaymentEnabled && method === "card";
-    const isVbank = virtualAccountEnabled && method === "vbank";
+    // 쿠폰·적립금으로 결제할 금액이 0원이면 결제창 없이 바로 접수한다(서버가 바로 "입금확인" 처리, 2026-10-28)
+    const zeroTotal = displayTotal() <= 0;
+    const isCard = !zeroTotal && cardPaymentEnabled && method === "card";
+    const isVbank = !zeroTotal && virtualAccountEnabled && method === "vbank";
     const customer = {
       name: el("f-name").value.trim(),
       tel: el("f-tel").value.trim(),
