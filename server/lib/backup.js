@@ -11,12 +11,14 @@ const BACKUP_TABLES = [
   "orders", "order_refunds", "return_requests", "products", "inventory", "inventory_log", "coupons",
   "loyalty_points_ledger", "reviews", "qna", "profiles", "admin_settings", "lookbook", "product_colors",
   "restock_subscriptions", "qna_templates", "notices", "calendar_events",
+  // 2026-10-28 정기 감사: 권한·감사·결제·오류 기록도 복구에 필요해 추가
+  "admin_permissions", "admin_audit_log", "payment_log", "system_error_log", "admin_handoff_notes", "coupon_milestones",
 ];
 const PAGE = 1000;
 
 /* 정렬 없이 1,000건씩 끊어 받으면 행이 겹치거나 빠질 수 있어(2026-10-28 정기 감사) 고정 순서로 받는다 —
    대부분 표는 id, 없는 표는 그 표의 기본키로. 정렬 컬럼이 없다는 오류면 예전처럼 정렬 없이 받는다. */
-const ORDER_COLUMN = { product_colors: "key", inventory: "product_id" };
+const ORDER_COLUMN = { product_colors: "key", inventory: "product_id", admin_permissions: "user_id" };
 
 async function dumpTable(db, table) {
   const rows = [];
@@ -36,6 +38,11 @@ async function dumpTable(db, table) {
   return { rows };
 }
 
+const { ADMIN_ALERT_WEBHOOK_SETTING_LABEL } = require("./adminWebhook");
+function redactSecretSetting(row) {
+  return row && row.label === ADMIN_ALERT_WEBHOOK_SETTING_LABEL && row.value ? { ...row, value: "(백업에서 가림)" } : row;
+}
+
 /* → { filename, buffer(gzip), summary: { table: count | "오류: ..." } } */
 async function buildBackup({ db = supabaseAdmin, now = new Date() } = {}) {
   const tables = {};
@@ -46,7 +53,9 @@ async function buildBackup({ db = supabaseAdmin, now = new Date() } = {}) {
       summary[t] = `건너뜀(${error.slice(0, 80)})`; // 마이그레이션 전이라 없는 테이블 등
       continue;
     }
-    tables[t] = rows;
+    /* 긴급 알림 웹훅 주소는 그 주소만 알면 누구나 채널에 글을 쓸 수 있는 비밀값이라 백업 파일(메일 첨부)에서는 가린다
+       (2026-10-28 정기 감사) — 복구할 땐 Works 정보 탭에서 다시 넣으면 된다. */
+    tables[t] = t === "admin_settings" ? rows.map(redactSecretSetting) : rows;
     summary[t] = rows.length;
   }
   const json = JSON.stringify({ exportedAt: now.toISOString(), format: "reiten-backup-v1", tables });

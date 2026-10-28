@@ -471,6 +471,7 @@ async function sendCustomerRestockNotice({ email, productId, productName, color,
       <p>신청하신 <b>${escHtml(color)} · ${escHtml(size)}</b> 옵션이 다시 입고됐어요.</p>
       <p style="margin-top:16px"><a href="https://reiten.kr/product.html?id=${encodeURIComponent(productId)}">지금 확인하기</a></p>
       <p style="margin-top:16px;color:#666">품절되기 쉬운 옵션이라 빨리 마감될 수 있어요.</p>
+      <p style="margin-top:16px;color:#999;font-size:12px">이 알림은 신청 1건당 한 번만 발송됩니다. 직접 신청하지 않으셨다면 이 메일은 무시하셔도 됩니다.</p>
     `,
   });
 }

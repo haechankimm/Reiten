@@ -112,6 +112,13 @@ router.post("/api/reviews", writeLimiter, (req, res) => {
       return res.status(400).json({ error: "인스타그램 아이디 형식을 확인해 주세요." });
     }
 
+    /* 같은 주문·상품 리뷰가 이미 있으면 사진을 올리기 전에 막는다 — 예전엔 사진을 먼저 올리고 저장 단계에서 409가 나
+       Cloudinary에 주인 없는 사진이 남았다(2026-10-28 정기 감사). 최종 방어는 여전히 DB 유니크 인덱스. */
+    {
+      const { data: dup, error: dupErr } = await supabaseAdmin.from("reviews").select("id").eq("order_no", orderNoStr).eq("product_id", productId).limit(1);
+      if (!dupErr && dup && dup.length) return res.status(409).json({ error: "이미 이 주문으로 작성한 리뷰가 있습니다." });
+    }
+
     let photoUrl = null;
     if (req.file) {
       try {

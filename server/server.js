@@ -11,7 +11,7 @@ const multer = require("multer");
 const cron = require("node-cron");
 const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
-const { requireAuth, optionalAuth, requireAdmin } = require("./lib/auth");
+const { requireAuth, optionalAuth, requireAdmin, MASTER_ADMIN_EMAIL } = require("./lib/auth");
 const { isEmailBanned, BANNED_MESSAGE } = require("./lib/bans");
 const {
   sendOrderNotification,
@@ -1638,6 +1638,26 @@ app.get("/api/admin/login-lock", authLimiter, async (req, res) => {
   res.json({ locked: false });
 });
 
+/* 관리자 이메일 목록(5분 캐시) — 로그인 실패 보고는 인증 없이 들어오므로, 관리자가 아닌 아무 이메일로 계속 보내
+   "로그인 잠금" 알림 메일을 도배하거나 login_attempts를 끝없이 늘릴 수 있었다(2026-10-28 정기 감사). Works 로그인
+   전용 기능이라 관리자 이메일일 때만 세고 알린다(응답은 똑같이 ok라 관리자 여부는 드러나지 않는다). */
+let adminEmailCache = { at: 0, emails: null };
+async function isAdminEmail(email) {
+  if (!adminEmailCache.emails || Date.now() - adminEmailCache.at > 5 * 60 * 1000) {
+    const { data: rows, error } = await supabaseAdmin.from("profiles").select("id").eq("role", "admin");
+    if (error) return true; // 확인을 못 하면 예전처럼 센다(관리자 잠금 보호가 우선)
+    const emails = new Set();
+    for (const r of rows || []) {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(r.id);
+      const e = data && data.user && data.user.email;
+      if (e) emails.add(e.toLowerCase());
+    }
+    if (MASTER_ADMIN_EMAIL) emails.add(MASTER_ADMIN_EMAIL);
+    adminEmailCache = { at: Date.now(), emails };
+  }
+  return adminEmailCache.emails.has(email);
+}
+
 app.post("/api/admin/login-lock", authLimiter, async (req, res) => {
   const email = String((req.body || {}).email || "").trim().toLowerCase().slice(0, 200);
   const success = !!(req.body || {}).success;
@@ -1660,6 +1680,8 @@ app.post("/api/admin/login-lock", authLimiter, async (req, res) => {
     await supabaseAdmin.from("login_attempts").delete().eq("email", loginLockKey(email, req));
     return res.json({ ok: true });
   }
+
+  if (!(await isAdminEmail(email))) return res.json({ ok: true });
 
   const lockKey = loginLockKey(email, req);
   const { data: prev, error: selectError } = await supabaseAdmin.from("login_attempts").select("fail_count").eq("email", lockKey).maybeSingle();
@@ -2354,6 +2376,20 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
          "상태만 되돌리면 결제도 같이 산다"고 착각할 수 있어 시스템 오류로 남긴다. */
       logSystemError("order_uncancelled_card_payment_not_restored", { orderNo: saved.order_no, paymentId: saved.payment_id });
       uncancelResult = { ...(uncancelResult || {}), paymentNote: "card_refund_not_reversible" };
+    }
+    /* 취소 때 돌려준 "사용한 적립금"을 다시 차감한다 — 예전엔 되돌린 주문이 살아 있는데도 고객이 쓴 적립금을 그대로
+       돌려받은 상태로 남았다(2026-10-28 정기 감사). 부분 환불 때 이미 돌려준 몫은 빼고, 적립 예정 포인트는 다시
+       구매확정될 때 처리되지 않으므로(이미 확정된 주문은 confirmed_at이 남음) 사용분만 맞춘다. */
+    if (saved.user_id && Number(saved.points_used) > 0) {
+      const restoredByRefunds = prevRefunds.reduce((sum, r) => sum + (Number(r.points_restored) || 0), 0);
+      const recharge = Math.max(0, Number(saved.points_used) - restoredByRefunds);
+      if (recharge > 0) {
+        const { error: rechargeErr } = await supabaseAdmin
+          .from("loyalty_points_ledger")
+          .insert({ user_id: saved.user_id, order_no: saved.order_no, delta: -recharge, reason: "refund_reversal" });
+        if (rechargeErr) console.error("[admin/orders] 취소 되돌리기 시 적립금 재차감 실패:", saved.order_no, rechargeErr.message);
+        else uncancelResult = { ...(uncancelResult || {}), pointsRecharged: recharge };
+      }
     }
   }
 
