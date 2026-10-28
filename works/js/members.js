@@ -63,7 +63,7 @@
       : `<p class="small">${esc(t("조건에 맞는 회원이 없습니다"))}</p>`;
     el("admin-members-list").innerHTML = adminRows + customerRows;
     el("admin-members-list").querySelectorAll(".member-open-staff").forEach((btn) =>
-      btn.addEventListener("click", () => { goToTab("staff"); paintAdminStaff(); })
+      btn.addEventListener("click", () => goToTab("staff")) // 탭 이동이 이미 직원 목록을 그린다(중복 요청 방지)
     );
 
     /* 운영자 → 일반회원 강등. 서버는 "정보" 탭의 "권한 해제"와 같은 엔드포인트(routes/admins.js)를

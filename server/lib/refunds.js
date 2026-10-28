@@ -85,6 +85,14 @@ function computeRefund(order, previousRefunds, selection, opts = {}) {
 
   const cashGoodsTotal = Math.max(0, subtotal - discount - pointsUsed);
   const ratio = subtotal > 0 ? selectedSum / subtotal : 0;
+  /* 적립 포인트 회수는 "남은 상품 중 이번에 고른 몫"으로 나눈다 — 적립 예정액은 앞선 부분 환불 때 이미 줄어 있어서
+     처음 합계 대비 비율(ratio)을 곱하면 덜 회수됐다(2026-10-28 정기 감사). */
+  const prevRefundedSum = (previousRefunds || []).reduce(
+    (s, r) => s + (r.lines || []).reduce((a, ln) => a + (Number(ln.unit) || 0) * (Number(ln.qty) || 0), 0),
+    0
+  );
+  const remainingSum = Math.max(selectedSum, subtotal - prevRefundedSum);
+  const earnShare = remainingSum > 0 ? selectedSum / remainingSum : 0;
   const goodsRefund = isAllRemaining
     ? Math.max(0, cashGoodsTotal - sumOf(previousRefunds, "goods_amount"))
     : Math.min(cashGoodsTotal, Math.round(cashGoodsTotal * ratio));
@@ -110,7 +118,7 @@ function computeRefund(order, previousRefunds, selection, opts = {}) {
   const refundCash = Math.min(maxRefundable, Math.max(0, goodsRefund + shippingRefund - shippingDeduction));
 
   return {
-    kind, fault, lines, selectedSum, ratio, isAllRemaining,
+    kind, fault, lines, selectedSum, ratio, earnShare, isAllRemaining,
     goodsRefund, pointsRestore, shippingRefund, shippingDeduction, defaultDeduction,
     refundCash, maxRefundable, refundedSoFar,
   };
@@ -204,13 +212,13 @@ async function executeRefund(deps, params) {
     const earned = Number(order.points_earned) || 0;
     const creditedLeft = await creditedEarnRemaining(db, order, previousRefunds);
     if (creditedLeft > 0) {
-      const reclaim = calc.isAllRemaining ? creditedLeft : Math.min(creditedLeft, Math.round(earned * calc.ratio));
+      const reclaim = calc.isAllRemaining ? creditedLeft : Math.min(creditedLeft, Math.round(creditedLeft * calc.earnShare));
       if (reclaim > 0) {
         const { error } = await db.from("loyalty_points_ledger").insert({ user_id: order.user_id, order_no: order.order_no, delta: -reclaim, reason: "refund_reversal" });
         if (!error) pointsReclaimed = reclaim;
       }
     } else if (earned > 0) {
-      pendingEarnReduced = calc.isAllRemaining ? earned : Math.min(earned, Math.round(earned * calc.ratio));
+      pendingEarnReduced = calc.isAllRemaining ? earned : Math.min(earned, Math.round(earned * calc.earnShare));
       if (pendingEarnReduced > 0) {
         await db.from("orders").update({ points_earned: earned - pendingEarnReduced }).eq("order_no", order.order_no);
       }

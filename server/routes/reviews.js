@@ -159,6 +159,10 @@ router.post("/api/reviews", writeLimiter, (req, res) => {
 });
 
 router.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
+  // 잘못된 id는 500 대신 404, 숨김(미승인) 리뷰에는 공감을 받지 않는다(2026-10-28 정기 감사)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(404).json({ error: "리뷰를 찾을 수 없습니다." });
+  const { data: target } = await supabaseAdmin.from("reviews").select("id, approved").eq("id", req.params.id).maybeSingle();
+  if (!target || target.approved === false) return res.status(404).json({ error: "리뷰를 찾을 수 없습니다." });
   const { data, error } = await supabaseAdmin.rpc("increment_helpful", { p_id: req.params.id });
   if (error) {
     console.error("[reviews] 공감 처리 실패:", error.message);

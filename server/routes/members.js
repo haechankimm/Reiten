@@ -18,6 +18,7 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
+const { kstDateKey } = require("../lib/kst");
 const { deleteCustomerAccount } = require("../lib/accountDeletion");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
@@ -115,9 +116,9 @@ router.get("/api/admin/members/export", requireAdmin, async (req, res) => {
     email: it.email,
     name: it.name,
     phone: it.phone,
-    createdAt: it.createdAt ? it.createdAt.slice(0, 10) : "",
+    createdAt: it.createdAt ? kstDateKey(new Date(it.createdAt)) : "",
     emailConfirmed: it.emailConfirmed ? "인증됨" : "미인증",
-    lastSignInAt: it.lastSignInAt ? it.lastSignInAt.slice(0, 10) : "없음",
+    lastSignInAt: it.lastSignInAt ? kstDateKey(new Date(it.lastSignInAt)) : "없음",
     banned: it.banned ? "차단됨" : "정상",
   });
 

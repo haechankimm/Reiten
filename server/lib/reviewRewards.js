@@ -17,9 +17,11 @@ async function getReviewPhotoPoints(db) {
 
 async function rewardPhotoReview(db, review) {
   if (!review || !review.photo_url || !review.order_no) return { awarded: 0, reason: "no_photo_or_order" };
-  const { data: order } = await db.from("orders").select("order_no, user_id, status").eq("order_no", review.order_no).maybeSingle();
+  const { data: order } = await db.from("orders").select("*").eq("order_no", review.order_no).maybeSingle();
   if (!order || !order.user_id) return { awarded: 0, reason: "guest_order" };
   if (order.status === "취소") return { awarded: 0, reason: "cancelled_order" };
+  // 전액 반품 환불된 주문도 취소와 같게 본다 — 상태가 "완료"로 남아 적립금이 나가던 것(2026-10-28 정기 감사)
+  if (Number(order.refunded_amount) > 0 && Number(order.refunded_amount) >= Number(order.total)) return { awarded: 0, reason: "refunded_order" };
   const amount = await getReviewPhotoPoints(db);
   if (!amount) return { awarded: 0, reason: "disabled" };
   // 같은 리뷰로 두 번 적립하지 않게 먼저 확인(유니크 인덱스가 최종 방어)

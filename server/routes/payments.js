@@ -9,7 +9,7 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin } = require("../lib/auth");
 const { paginationParams } = require("../lib/pagination");
-const { applyKstDateRangeFilter } = require("../lib/kst");
+const { applyKstDateRangeFilter, kstDateTimeLabel } = require("../lib/kst");
 const { toCsvGeneric } = require("../lib/orderExport");
 
 const router = express.Router();
@@ -70,7 +70,7 @@ router.get("/api/admin/payment-log/export", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: "결제 트랜잭션 로그를 불러오지 못했습니다." });
 
   const rows = data.map((r) => ({
-    createdAt: r.created_at ? r.created_at.slice(0, 16).replace("T", " ") : "",
+    createdAt: r.created_at ? kstDateTimeLabel(new Date(r.created_at)) : "", // UTC 그대로 찍혀 9시간 이르게 보였다(2026-10-28)
     paymentId: r.payment_id,
     orderNo: r.order_no || "",
     status: STATUS_LABEL[r.status] || r.status,

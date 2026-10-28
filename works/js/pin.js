@@ -195,13 +195,14 @@
      hide: 숨길 요소, hidePanel: 그 요소가 들어 있는 패널째 숨김, disable: 보이되 잠금(값 확인용). */
   const READONLY_RULES = [
     { tab: "orders", panel: "admin-orders", hide: ["#ord-bulk-toggle", "#ord-bulk-input", "#ord-bulk-submit", "#od-save"], disable: ["#od-status", "#od-courier", "#od-tracking", "#od-assignee", "#od-internal-note", "#od-cancel-reason"] },
-    { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
+    { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock-lines", ".admin-return-reship", ".admin-return-refund"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
     { tab: "inventory", panel: "admin-inventory", hide: ["#inv-save-btn", ".inv-bulk-qty-apply", ".inv-bulk-qty-input"], disable: [".admin-inv-qty"] },
     { tab: "qna", panel: "admin-qna", hide: [".admin-qna-submit", ".admin-qna-save-meta", ".admin-qna-template-pick"], disable: [".admin-qna-answer", ".admin-qna-note", ".admin-qna-assignee"] },
     { tab: "paymentlog", panel: null, hide: [".notif-error-resolve"] },
     { tab: "reviews", panel: "admin-reviews", hide: ["#reviews-bulk-approve", "#reviews-bulk-hide", "#reviews-select-all", ".review-select", ".admin-review-delete", ".admin-review-toggle"] },
     { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
     { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
+    { tab: "dashboard", panel: null, hide: ["#settle-send", "#briefing-test"] },
     { tab: "lookbook", panel: "admin-lookbook", hidePanel: ["#lookbook-form"], hide: [".look-tile-add"], disable: [".look-tile"] },
     { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-demote", ".member-resend", ".member-verify"] },
     { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },
