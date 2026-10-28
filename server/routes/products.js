@@ -21,12 +21,21 @@ const { uploadProductVideo } = require("../lib/cloudinary");
 const MEDIA_COLUMNS = ["media", "model_info"];
 async function saveWithMediaFallback(run, patch) {
   let result = await run(patch);
+  // 044(상품 영어·일본어 문구) 전이면 번역 칸만 빼고 다시 저장한다(2026-10-28)
+  let translationsSkipped = false;
+  if (isMissingColumnError(result.error) && "translations" in patch) {
+    const { translations, ...rest } = patch;
+    translationsSkipped = Object.keys(translations || {}).length > 0;
+    patch = rest;
+    result = await run(patch);
+  }
   if (isMissingColumnError(result.error) && MEDIA_COLUMNS.some((c) => c in patch)) {
     const rest = { ...patch };
     MEDIA_COLUMNS.forEach((c) => delete rest[c]);
     result = await run(rest);
     result.mediaSkipped = true;
   }
+  result.translationsSkipped = translationsSkipped;
   return result;
 }
 
@@ -54,7 +63,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
   const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
 
-  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").insert({ id, ...p }).select().single(),
     patch
   );
@@ -65,7 +74,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "상품 생성에 실패했습니다." });
   }
   logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
 });
 
 /* ---------- 상품 일괄 처리 ----------
@@ -196,7 +205,7 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
   patch.updated_at = new Date().toISOString();
 
-  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").update(p).eq("id", req.params.id).select().maybeSingle(),
     patch
   );
@@ -207,7 +216,7 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
   logAdminAction(req, "product.update", "product", req.params.id, { ...patch, media: patch.media ? `${patch.media.length}개` : undefined });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
 });
 
 router.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {

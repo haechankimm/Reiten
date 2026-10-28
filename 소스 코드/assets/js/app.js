@@ -567,7 +567,27 @@ function rideGuideHTML(key) {
    이미 필수로 입력받는 영문명(name)으로 대신한다 — 관리자가 상품마다 번역을 따로 입력할
    필요가 없다. */
 function productName(p) {
+  const tr = productTranslation(p);
+  if (tr && tr.name) return tr.name;
   return getLang() === "ko" ? p.nameKo : (p.name || p.nameKo);
+}
+
+/* 관리자가 Works에서 넣은 영어·일본어 상품 문구(044, 선택) — 없으면 한국어 원문을 사전으로 번역(t)해서 쓴다.
+   예전엔 관리자가 입력한 설명이 영어·일본어 화면에서도 한국어로만 나왔다(2026-10-28 정기 감사). */
+function productTranslation(p) {
+  const lang = getLang();
+  if (lang !== "en" && lang !== "ja") return null;
+  return (p && p.translations && p.translations[lang]) || null;
+}
+function productText(p, field) {
+  const tr = productTranslation(p);
+  if (tr && tr[field]) return tr[field];
+  return t(p[field] || "");
+}
+function productDetails(p) {
+  const tr = productTranslation(p);
+  if (tr && Array.isArray(tr.details) && tr.details.length) return tr.details;
+  return (p.details || []).map((d) => t(d));
 }
 
 /* =========================================================
@@ -738,7 +758,7 @@ function productCard(p, delay = 0, extraBodyHTML = "") {
   ${media}
   <div class="card__body">
     <div class="card__name">${esc(name)}</div>
-    <div class="card__sub">${esc(t(p.short))}</div>
+    <div class="card__sub">${esc(productText(p, "short"))}</div>
     <div class="card__price tnum">${money(p.price)}</div>
     <div class="swatches">${dots}</div>
     ${extraBodyHTML}

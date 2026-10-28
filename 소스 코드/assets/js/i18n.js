@@ -1998,6 +1998,14 @@ const I18N = {
   ["본인이 쓴 노트만 삭제할 수 있습니다.", {"de": "Nur eigene Notizen können gelöscht werden."}],
   ["이 이메일로 신청한 재입고 알림이 너무 많습니다. 알림을 받은 뒤 다시 신청해 주세요.", {"en": "Too many restock alerts are registered for this email. Please sign up again after you receive one.", "ja": "このメールアドレスで登録された再入荷通知が多すぎます。通知を受け取った後に再度お申し込みください。"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+/* ---------- 2026-10-28 정기 감사(3): 상품 영어·일본어 문구(044) ---------- */
+[
+  ["영어·일본어 상품명·설명 (선택)", {"de": "Englische/japanische Produktnamen und Beschreibungen (optional)"}],
+  ["비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.", {"de": "Leer lassen = auf Englisch/Japanisch erscheint die koreanische Beschreibung."}],
+  ["저장했지만 DB 마이그레이션 044 전이라 영어·일본어 문구는 빠졌습니다", {"de": "Gespeichert, aber ohne englische/japanische Texte (DB-Migration 044 fehlt)"}],
+  ["DB 마이그레이션 044가 아직 실행되지 않았습니다(상품 영어·일본어 문구 저장 불가)", {"de": "DB-Migration 044 wurde noch nicht ausgeführt (englische/japanische Produkttexte können nicht gespeichert werden)"}],
+  ["DB 마이그레이션 044", {"de": "DB-Migration 044"}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

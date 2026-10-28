@@ -58,7 +58,31 @@ function toProductDto(row) {
     details: row.details || [],
     charmReady: !!row.charm_ready,
     active: row.active,
+    // 영어·일본어 상품명·설명(044, 선택) — { en: { name, short, desc, details[] }, ja: {...} }
+    translations: row.translations && typeof row.translations === "object" ? row.translations : {},
   };
+}
+
+/* 관리자가 넣은 영어·일본어 문구 — 언어별로 name/short/desc/details만 받고 길이를 자른다(2026-10-28 정기 감사:
+   관리자가 입력한 상품 설명이 영어·일본어 화면에서도 한국어로만 나오던 문제). */
+function sanitizeTranslations(input) {
+  const out = {};
+  if (!input || typeof input !== "object") return out;
+  for (const lang of ["en", "ja"]) {
+    const src = input[lang];
+    if (!src || typeof src !== "object") continue;
+    const entry = {};
+    const name = String(src.name || "").trim().slice(0, 120);
+    const short = String(src.short || "").trim().slice(0, 200);
+    const desc = String(src.desc || "").trim().slice(0, 3000);
+    const details = Array.isArray(src.details) ? src.details.filter((d) => typeof d === "string" && d.trim()).slice(0, 20).map((d) => d.trim().slice(0, 300)) : [];
+    if (name) entry.name = name;
+    if (short) entry.short = short;
+    if (desc) entry.desc = desc;
+    if (details.length) entry.details = details;
+    if (Object.keys(entry).length) out[lang] = entry;
+  }
+  return out;
 }
 
 /* forCreate=true면 필수 필드(name/nameKo/type/category/price)가 비어 있을 때 에러를 반환한다.
@@ -130,10 +154,11 @@ function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
       ? b.details.filter((d) => typeof d === "string").slice(0, 20).map((d) => d.slice(0, 300))
       : [];
   }
+  if (b.translations !== undefined) patch.translations = sanitizeTranslations(b.translations);
   if (b.charmReady !== undefined) patch.charm_ready = !!b.charmReady;
   if (b.active !== undefined) patch.active = !!b.active;
   if (b.sortOrder !== undefined) patch.sort_order = Number.isFinite(Number(b.sortOrder)) ? Math.floor(Number(b.sortOrder)) : 0;
   return { patch };
 }
 
-module.exports = { toProductDto, productPatchFromBody, sanitizeMedia, mediaFromRow };
+module.exports = { toProductDto, productPatchFromBody, sanitizeMedia, mediaFromRow, sanitizeTranslations };

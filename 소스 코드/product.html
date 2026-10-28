@@ -232,7 +232,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <span class="small" style="margin:0 6px;color:var(--muted)">·</span>
           <a class="link-u small" href="qna.html?product=${encodeURIComponent(p.id)}">${t("상품 문의")}</a>
         </p>
-        <p class="lede" style="margin-top:18px">${esc(t(p.desc))}</p>
+        <p class="lede" style="margin-top:18px">${esc(productText(p, "desc"))}</p>
 
         <div class="opt">
           <div class="opt__label"><span>Color</span><b id="color-name"></b></div>
@@ -295,7 +295,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <button class="acc__btn" type="button" aria-expanded="true"><span>${t("제품 정보")}</span><span>+</span></button>
             <div class="acc__panel open">
               <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
-                ${(p.details || []).map(d => `<li>${esc(t(d))}</li>`).join("")}
+                ${productDetails(p).map(d => `<li>${esc(d)}</li>`).join("")}
               </ul>
             </div>
           </div>
@@ -482,7 +482,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     "@type": "Product",
     name: productName(p),
     image: p.images.filter(Boolean).map((src) => new URL(src, location.href).href),
-    description: t(p.desc || p.short || ""),
+    description: productText(p, "desc") || productText(p, "short"),
     sku: p.id,
     brand: { "@type": "Brand", name: "REITEN" },
     offers: {

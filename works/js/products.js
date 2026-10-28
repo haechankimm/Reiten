@@ -442,6 +442,31 @@
     }
   }
 
+  /* 영어·일본어 상품 문구 입력칸(044) — 상품 저장 때 같이 보낸다. */
+  function fillTranslationFields(tr) {
+    for (const lang of ["en", "ja"]) {
+      const v = (tr && tr[lang]) || {};
+      if (!el(`pf-${lang}-name`)) continue;
+      el(`pf-${lang}-name`).value = v.name || "";
+      el(`pf-${lang}-short`).value = v.short || "";
+      el(`pf-${lang}-desc`).value = v.desc || "";
+      el(`pf-${lang}-details`).value = (v.details || []).join("\n");
+    }
+  }
+  function readTranslationFields() {
+    const out = {};
+    for (const lang of ["en", "ja"]) {
+      if (!el(`pf-${lang}-name`)) continue;
+      out[lang] = {
+        name: el(`pf-${lang}-name`).value.trim(),
+        short: el(`pf-${lang}-short`).value.trim(),
+        desc: el(`pf-${lang}-desc`).value.trim(),
+        details: el(`pf-${lang}-details`).value.split("\n").map((x) => x.trim()).filter(Boolean),
+      };
+    }
+    return out;
+  }
+
   function resetProductForm() {
     pfEditingId = null;
     pfMedia = [];
@@ -459,6 +484,7 @@
     el("pf-short").value = "";
     el("pf-desc").value = "";
     el("pf-details").value = "";
+    fillTranslationFields({});
     el("pf-modelinfo").value = "";
     el("pf-sizetable").value = "hoodie";
     el("pf-charmready").checked = false;
@@ -489,6 +515,7 @@
     el("pf-short").value = p.short || "";
     el("pf-desc").value = p.desc || "";
     el("pf-details").value = (p.details || []).join("\n");
+    fillTranslationFields(p.translations || {});
     el("pf-modelinfo").value = p.modelInfo || "";
     el("pf-sizetable").value = p.sizeTable || "hoodie";
     el("pf-charmready").checked = !!p.charmReady;
@@ -524,6 +551,7 @@
       short: el("pf-short").value.trim(),
       desc: el("pf-desc").value.trim(),
       details: el("pf-details").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      translations: readTranslationFields(),
       colors: pfSelectedColors,
       sizes: PF_SIZE_OPTIONS,
       soldOut: [], // 품절은 재고 탭 수량으로만 판단(예전 수동 품절 체크는 저장할 때 비운다)
@@ -544,7 +572,9 @@
       if (!result) return;
       toast(result.mediaSkipped
         ? t("저장했지만 DB 마이그레이션 041 전이라 상세 콘텐츠·모델 정보는 빠졌습니다(상품 사진 앞 6장만 저장)")
-        : t("상품을 저장했습니다"));
+        : result.translationsSkipped
+          ? t("저장했지만 DB 마이그레이션 044 전이라 영어·일본어 문구는 빠졌습니다")
+          : t("상품을 저장했습니다"));
       /* 관리자 미리보기와 실제 사이트가 다르게 보이는 걸(사진 비율 사고 같은) 저장한 그 자리에서
          바로 확인할 수 있게, 실제 상품 페이지 링크를 새 탭으로 열 수 있게 켜둔다.
          resetProductForm()이 폼을 새 상품 등록 상태로 되돌리므로, 이 링크는 그 뒤에 켜야 한다. */

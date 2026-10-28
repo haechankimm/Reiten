@@ -647,6 +647,27 @@
                 <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
                 <textarea id="pf-details"></textarea>
               </div>
+              <!-- 영어·일본어 상품 문구(선택, 2026-10-28) — 비우면 한국어(또는 사전 번역)가 그대로 나온다. DB 마이그레이션 044 필요 -->
+              <details class="field" style="grid-column:1/-1" id="pf-translations">
+                <summary data-i18n="영어·일본어 상품명·설명 (선택)">영어·일본어 상품명·설명 (선택)</summary>
+                <p class="small" style="color:var(--text-muted);margin:6px 0" data-i18n="비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.">비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.</p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+                  <div>
+                    <b>English</b>
+                    <input id="pf-en-name" placeholder="Name" style="margin-top:6px">
+                    <input id="pf-en-short" placeholder="Short description" style="margin-top:6px">
+                    <textarea id="pf-en-desc" placeholder="Description" style="margin-top:6px"></textarea>
+                    <textarea id="pf-en-details" placeholder="Details (one per line)" style="margin-top:6px"></textarea>
+                  </div>
+                  <div>
+                    <b>日本語</b>
+                    <input id="pf-ja-name" placeholder="商品名" style="margin-top:6px">
+                    <input id="pf-ja-short" placeholder="一言説明" style="margin-top:6px">
+                    <textarea id="pf-ja-desc" placeholder="商品説明" style="margin-top:6px"></textarea>
+                    <textarea id="pf-ja-details" placeholder="詳細(1行に1つ)" style="margin-top:6px"></textarea>
+                  </div>
+                </div>
+              </details>
               <div class="field" style="grid-column:1/-1">
                 <label data-i18n="컬러">컬러</label>
                 <div class="chips" id="pf-colors"></div>
