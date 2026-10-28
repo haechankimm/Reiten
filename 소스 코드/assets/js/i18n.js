@@ -1929,6 +1929,32 @@ const I18N = {
   ["이 상품은 사이즈 추천을 지원하지 않아요. 아래 사이즈 실측표를 확인해 주세요.", {"en": "Size recommendations aren't available for this item. Please check the size chart below.", "ja": "この商品はサイズ推薦に対応していません。下のサイズ実寸表をご確認ください。"}]
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* ---------- 2026-10-28 정기 감사: 새 오류·안내 문구 ---------- */
+[
+  ["결제 금액이 0원인 주문은 접수할 수 없습니다. 적립금 사용액을 줄이거나 관리자에게 문의해 주세요.", {"en": "Orders with a total of 0 won can't be placed. Please use fewer points or contact us.", "ja": "お支払い金額が0ウォンのご注文は受け付けできません。ポイントの使用額を減らすか、お問い合わせください。", "de": "Bestellungen mit 0 Won Gesamtbetrag können nicht aufgegeben werden. Bitte weniger Punkte verwenden oder uns kontaktieren."}],
+  ["리뷰를 찾을 수 없습니다.", {"en": "Review not found.", "ja": "レビューが見つかりません。", "de": "Bewertung nicht gefunden."}],
+  ["결제가 확인된 주문은 입금대기로 되돌릴 수 없습니다.", {"de": "Bestellungen mit bestätigter Zahlung können nicht auf „Zahlung ausstehend“ zurückgesetzt werden."}],
+  ["반품 환불을 처리한 출고 주문은 취소할 수 없습니다. 남은 상품은 반품 환불로 처리해 주세요.", {"de": "Versandte Bestellungen mit bereits erstatteten Retouren können nicht storniert werden. Bitte die restlichen Artikel per Retourenerstattung abwickeln."}],
+  ["이 항목은 적립금·쿠폰·긴급 알림에 쓰이는 값이라 메인 관리자만 바꿀 수 있습니다.", {"de": "Dieser Eintrag steuert Punkte, Gutscheine oder Notfall-Benachrichtigungen und kann nur vom Master-Admin geändert werden."}],
+  ["같은 이름의 항목이 이미 있습니다 — 기존 항목의 값을 수정해 주세요.", {"de": "Ein Eintrag mit diesem Namen existiert bereits – bitte den Wert des bestehenden Eintrags ändern."}],
+  ["기본 권한 저장에 실패해 관리자 등록을 되돌렸습니다. 잠시 후 다시 시도해 주세요.", {"de": "Die Standardrechte konnten nicht gespeichert werden, die Admin-Registrierung wurde rückgängig gemacht. Bitte später erneut versuchen."}],
+  ["기본 권한 저장에 실패해 승격을 되돌렸습니다. 잠시 후 다시 시도해 주세요.", {"de": "Die Standardrechte konnten nicht gespeichert werden, die Beförderung wurde rückgängig gemacht. Bitte später erneut versuchen."}],
+  ["수거중", {"de": "Abholung läuft"}],
+  ["취소된 주문에 입금됨(환불·복구 필요)", {"de": "Zahlung auf stornierte Bestellung (Erstattung/Wiederherstellung nötig)"}],
+  ["DB 마이그레이션 043", {"de": "DB-Migration 043"}],
+  ["DB 마이그레이션 043이 아직 실행되지 않았습니다(부분 환불 이력·구매확정·사진 리뷰 적립이 꺼져 있음)", {"de": "DB-Migration 043 wurde noch nicht ausgeführt (Teilerstattungsverlauf, Kaufbestätigung und Foto-Bewertungspunkte sind deaktiviert)"}],
+  ["메일 발송 설정", {"de": "E-Mail-Versand"}],
+  ["메일 발송 키(RESEND_API_KEY)가 없습니다 — 주문·입금 안내 메일이 나가지 않습니다", {"de": "Kein E-Mail-Schlüssel (RESEND_API_KEY) – Bestell- und Zahlungs-E-Mails werden nicht versendet"}],
+  ["배송조회 키(SWEETTRACKER_API_KEY)가 없어 배송완료 자동 처리가 꺼져 있습니다(출고 14일 뒤 자동 구매확정으로 대체)", {"de": "Kein Sendungsverfolgungs-Schlüssel (SWEETTRACKER_API_KEY) – automatische Zustellerkennung ist aus (stattdessen automatische Kaufbestätigung 14 Tage nach Versand)"}],
+  ["보내는 주소(RESEND_FROM)가 인증된 도메인 주소가 아닙니다 — 고객 메일이 전부 실패합니다", {"de": "Absenderadresse (RESEND_FROM) gehört zu keiner verifizierten Domain – alle Kunden-E-Mails schlagen fehl"}],
+  ["오류 추적(SENTRY_DSN)이 꺼져 있습니다", {"de": "Fehlerverfolgung (SENTRY_DSN) ist deaktiviert"}],
+  ["카드결제 웹훅 비밀값(PORTONE_WEBHOOK_SECRET)이 없습니다 — 결제 후 창을 닫은 손님 주문이 누락될 수 있습니다", {"de": "Webhook-Geheimnis (PORTONE_WEBHOOK_SECRET) fehlt – Bestellungen von Kunden, die das Fenster nach der Zahlung schließen, können verloren gehen"}],
+  ["텔레그램 긴급 알림", {"de": "Telegram-Notfallbenachrichtigung"}],
+  ["텔레그램 긴급 알림이 연결되지 않았습니다(폰 푸시만 동작)", {"de": "Telegram-Notfallbenachrichtigung ist nicht verbunden (nur Push aktiv)"}],
+  ["폰 푸시 키(VAPID)가 없습니다", {"de": "Push-Schlüssel (VAPID) fehlt"}],
+  ["테마 전환", {"de": "Design wechseln"}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

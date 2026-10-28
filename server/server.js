@@ -252,6 +252,11 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
       const result = await markVirtualAccountPaid(paymentId);
       return res.status(result.ok ? 200 : 500).end();
     }
+    /* 입금기한이 지나 취소된 가상계좌 주문에 입금이 들어온 경우 — 돈은 받았는데 주문은 취소 상태라, 조용히 넘어가면
+       아무도 모른다(계좌 폐쇄가 실패했을 때 생김). 긴급 알림으로 남겨 환불·복구를 하게 한다(2026-10-28 정기 감사). */
+    if (existingOrder.status === "취소") {
+      logSystemError("paid_after_cancel", { orderNo: existingOrder.order_no, paymentId, amount: existingOrder.total });
+    }
     return res.status(200).end();
   }
 
@@ -272,7 +277,7 @@ app.post("/api/payments/webhook", express.text({ type: "*/*" }), async (req, res
     return res.status(200).end(); // 재시도해도 결과가 같으므로 200으로 끝내 재전송을 막는다
   }
 
-  const result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null });
+  const result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null, paymentMethod: paidMethodOf(verified) });
   res.status(result.ok ? 200 : result.status).end();
 });
 
@@ -817,7 +822,14 @@ async function finalizeVirtualAccountOrder(args) {
   });
 }
 
-async function finalizeCardOrderUnlocked({ pending, paymentId, userId }) {
+/* 가상계좌 "발급" 웹훅이 실패한 채 "입금 완료"가 먼저 오면 결제 상태가 PAID라 카드 주문으로 만들어졌다 — 결제수단은
+   결제 정보에서 정한다(2026-10-28 정기 감사). 취소 때 환불 경로가 결제수단을 보고 갈라지기 때문. */
+function paidMethodOf(verified) {
+  const type = verified && verified.method && verified.method.type;
+  return type && /VirtualAccount/i.test(type) ? "virtual_account" : "card";
+}
+
+async function finalizeCardOrderUnlocked({ pending, paymentId, userId, paymentMethod = "card" }) {
   const products = await getActiveProducts();
   const { customer, items, raw_items: rawItems, subtotal, shipping, total, coupon_code: couponCode, discount, device } = pending;
   const pointsUsed = pending.points_used || 0;
@@ -921,7 +933,7 @@ async function finalizeCardOrderUnlocked({ pending, paymentId, userId }) {
       discount: discount || 0,
       points_used: pointsUsed,
       points_earned: pointsEarned,
-      payment_method: "card",
+      payment_method: paymentMethod,
       payment_id: paymentId,
       status: "입금확인",
     },
@@ -1396,7 +1408,7 @@ app.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
          예전엔 이 확인 요청의 로그인 토큰(req.user)을 썼는데, 토큰 없이 확인 요청만 따로 보내면
          적립금 할인을 받고도 차감이 건너뛰어져(finalizeCardOrder의 `pointsUsed && userId`) 같은
          적립금을 계속 다시 쓸 수 있었고, 주문도 회원 계정에 안 붙었다(2026-10-02 점검에서 발견). */
-      result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null });
+      result = await finalizeCardOrder({ pending, paymentId, userId: pending.user_id || null, paymentMethod: paidMethodOf(verified) });
     } else if (verified.status === "VIRTUAL_ACCOUNT_ISSUED") {
       result = await finalizeVirtualAccountOrder({ pending, paymentId, verified });
     } else {

@@ -10,6 +10,7 @@ const SYSTEM_ERROR_LABEL = {
   card_cancel_failed: "카드결제 취소 실패(이중실패)",
   refund_failed: "환불 실패",
   virtual_account_close_failed: "가상계좌 폐쇄 실패",
+  paid_after_cancel: "취소된 주문에 입금됨(환불·복구 필요)",
   order_finalize_failed: "카드결제 후 주문 확정 실패",
   bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
   notification_failed: "알림 발송 실패",
