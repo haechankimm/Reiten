@@ -190,3 +190,14 @@ test("마스터: 직원 PIN 지정·초기화, 비밀번호 변경, 마스터 �
   const self = await request(app).post(`/api/admin/staff/${MASTER.id}/pin`).set(auth(MT, masterToken)).send({ pin: "111111" });
   assert.strictEqual(self.status, 400);
 });
+
+test("PIN을 동시에 여러 번 틀려도 6회에서 잠긴다(2026-10-28 정기 감사 — 병렬 요청으로 잠금 우회)", async () => {
+  const app = buildApp();
+  await setupPin(app, MT);
+  const results = await Promise.all(
+    Array.from({ length: 20 }, () => request(app).post("/api/admin/pin/verify").set(auth(MT)).send({ pin: "111111" }))
+  );
+  const lockedCount = results.filter((r) => r.status === 423).length;
+  assert.strictEqual(results.filter((r) => r.status === 401).length, 5);
+  assert.strictEqual(lockedCount, 15);
+});

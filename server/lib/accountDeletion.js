@@ -17,7 +17,9 @@ async function hasActiveOrders(userId) {
     .select("order_no", { count: "exact", head: true })
     .eq("user_id", userId)
     .in("status", ACTIVE_ORDER_STATUSES);
-  return !error && (count || 0) > 0;
+  // 확인이 실패하면 "진행 중 주문 있음"으로 본다 — 예전엔 DB 오류 때 탈퇴가 그냥 진행됐다(2026-10-28)
+  if (error) return true;
+  return (count || 0) > 0;
 }
 
 async function deleteCustomerAccount(userId) {

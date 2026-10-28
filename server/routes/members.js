@@ -152,6 +152,8 @@ router.get("/api/admin/members/:id/overview", requireAdmin, async (req, res) => 
   const id = req.params.id;
   const { data: profile } = await supabaseAdmin.from("profiles").select("id, name, phone, role, created_at").eq("id", id).maybeSingle();
   if (!profile) return res.status(404).json({ error: "회원을 찾을 수 없습니다." });
+  // 관리자 계정(대표 포함)의 주문·적립금은 회원 화면에서 열람하지 않는다(2026-10-28 정기 감사)
+  if (profile.role === "admin") return res.status(403).json({ error: "일반 회원 계정만 처리할 수 있습니다." });
   const { data: userData } = await supabaseAdmin.auth.admin.getUserById(id);
   const u = (userData && userData.user) || {};
 

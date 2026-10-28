@@ -62,6 +62,7 @@ router.post("/api/restock-subscriptions", writeLimiter, async (req, res) => {
   const { error: insertError } = await supabaseAdmin
     .from("restock_subscriptions")
     .insert({ product_id: productId, color, size, email });
+  if (insertError && insertError.code === "23505") return res.json({ ok: true }); // 동시에 두 번 눌러 이미 저장됨
   if (insertError) {
     console.error("[restock] 신청 저장 실패:", insertError.message);
     return res.status(500).json({ error: "신청 저장에 실패했습니다." });

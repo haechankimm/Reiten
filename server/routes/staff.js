@@ -103,7 +103,28 @@ router.post("/api/admin/pin/setup", requireAdmin, async (req, res) => {
   res.json({ ok: true, token: signed.token, expiresAt: signed.expiresAt });
 });
 
-router.post("/api/admin/pin/verify", requireAdmin, async (req, res) => {
+/* 같은 계정의 PIN 확인·변경은 한 번에 하나씩 처리한다 — 틀린 PIN을 수십 개 동시에 보내면 모두 "실패 0회"를 읽고 1로
+   써서 6회 잠금을 우회할 수 있었다(2026-10-28 정기 감사). 서버는 한 대라 프로세스 안 잠금으로 충분하다. */
+const pinLocks = new Map();
+function serializePerUser(handler) {
+  return async (req, res) => {
+    const key = req.user.id;
+    const prev = pinLocks.get(key) || Promise.resolve();
+    let release;
+    const mine = new Promise((r) => (release = r));
+    const chain = prev.then(() => mine);
+    pinLocks.set(key, chain);
+    await prev;
+    try {
+      await handler(req, res);
+    } finally {
+      release();
+      if (pinLocks.get(key) === chain) pinLocks.delete(key);
+    }
+  };
+}
+
+router.post("/api/admin/pin/verify", requireAdmin, serializePerUser(async (req, res) => {
   const pin = (req.body || {}).pin;
   const { data: row, error } = await supabaseAdmin.from("admin_pins").select("*").eq("user_id", req.user.id).maybeSingle();
   if (error) return res.status(isMissingSchemaError(error) ? 503 : 500).json({ error: isMissingSchemaError(error) ? PIN_TABLE_MISSING : "PIN 확인에 실패했습니다." });
@@ -123,9 +144,9 @@ router.post("/api/admin/pin/verify", requireAdmin, async (req, res) => {
   await clearPinFailures(req, row);
   const signed = signPinToken(req.user.id, pinVersionOf(row));
   res.json({ ok: true, token: signed.token, expiresAt: signed.expiresAt });
-});
+}));
 
-router.post("/api/admin/pin/change", requireAdmin, async (req, res) => {
+router.post("/api/admin/pin/change", requireAdmin, serializePerUser(async (req, res) => {
   const { currentPin, newPin } = req.body || {};
   if (!isValidPin(newPin)) return res.status(400).json({ error: "새 PIN은 숫자 6자리여야 합니다." });
   const { data: row } = await supabaseAdmin.from("admin_pins").select("*").eq("user_id", req.user.id).maybeSingle();
@@ -144,7 +165,7 @@ router.post("/api/admin/pin/change", requireAdmin, async (req, res) => {
   logAdminAction(req, "admin.pin_change", "admin", req.user.id);
   const signed = signPinToken(req.user.id, pinVersionOf(saved));
   res.json({ ok: true, token: signed.token, expiresAt: signed.expiresAt });
-});
+}));
 
 /* ---------- 마스터 전용: 직원 관리 ---------- */
 async function loadStaffTarget(id) {
