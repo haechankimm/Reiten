@@ -44,7 +44,8 @@ const LEVELS = ["none", "view", "edit"];
 const LEVEL_RANK = { none: 0, view: 1, edit: 2 };
 
 function firstSegments(sub) {
-  return String(sub || "").replace(/^\/+/, "").split("/").filter(Boolean);
+  // Express 라우팅은 대소문자를 구분하지 않아서 "/usage-log/STATS"처럼 대문자로 바꿔 영역 검사만 피하는 길이 있었다(2026-10-28).
+  return String(sub || "").toLowerCase().replace(/^\/+/, "").split("/").filter(Boolean);
 }
 
 function matchesPrefix(sub, prefix) {
@@ -69,6 +70,19 @@ function areaForPath(sub) {
     if (matchesPrefix(sub, p) && len > bestLen) { best = "open"; bestLen = len; }
   }
   return best;
+}
+
+/* 다른 탭이 화면을 그리려고 꼭 읽어야 하는 것만 좁게 허용한다(2026-10-28 정기 감사 — 기본 권한 직원이 재고 탭을 열면
+   상품 목록을 못 읽어 화면이 비었고, 주문 변경 이력·반품 탭의 환불 내역·아웃박스 "해결됨"이 403이었다). */
+function borrowedAccess(area, sub, req, perms) {
+  const has = (key, level) => (LEVEL_RANK[perms[key]] || 0) >= LEVEL_RANK[level];
+  const isRead = req.method === "GET" || req.method === "HEAD";
+  const segs = firstSegments(sub);
+  if (area === "products" && isRead && segs[0] === "products") return has("inventory", "view") || has("coupons", "view");
+  if (area === "auditlog" && isRead && req.query && req.query.targetType === "order") return has("orders", "view");
+  if (area === "orders" && isRead && segs[0] === "orders" && segs[2] === "refunds") return has("returns", "view");
+  if (area === "payments" && req.method === "POST" && segs[0] === "system-errors" && segs[2] === "resolve") return has("outbox", "edit");
+  return false;
 }
 
 function requiredLevel(method) {
@@ -174,7 +188,13 @@ function pinVersionOf(row) {
    변경(orders 영역) 중에서도 "입금된 주문을 취소해 환불이 나가는 경우"만 refunds 권한을 추가로 요구. */
 async function hasAreaPermission(req, area, level = "edit") {
   if (((req.user && req.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) return true;
-  const stored = await getStoredPermissions(req.user.id).catch(() => null);
+  // 권한 조회가 DB 오류로 실패하면 "권한 없음"으로 본다 — 예전엔 null(= 전체 허용)로 떨어져 환불 권한까지 열렸다(2026-10-28).
+  let stored;
+  try {
+    stored = await getStoredPermissions(req.user.id);
+  } catch (e) {
+    return false;
+  }
   const perms = resolvePermissions(stored, false);
   return (LEVEL_RANK[perms[area]] || 0) >= LEVEL_RANK[level];
 }
@@ -240,7 +260,7 @@ async function adminGuard(req, res, next) {
     if (area === null) return res.status(403).json({ error: "이 기능은 마스터 관리자만 사용할 수 있습니다.", code: "FORBIDDEN_AREA" });
 
     const perms = resolvePermissions(await getStoredPermissions(req.user.id), false);
-    if (LEVEL_RANK[perms[area]] < LEVEL_RANK[requiredLevel(req.method)]) {
+    if (LEVEL_RANK[perms[area]] < LEVEL_RANK[requiredLevel(req.method)] && !borrowedAccess(area, sub, req, perms)) {
       const label = AREAS[area].label;
       const need = requiredLevel(req.method) === "view" ? "조회" : "수정";
       return res.status(403).json({

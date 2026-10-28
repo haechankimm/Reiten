@@ -629,7 +629,7 @@
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         if (!confirm(t("정말 삭제하시겠습니까? 되돌릴 수 없습니다.") + "\n" + id)) return;
-        await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!(await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }))) return;
         if (pfEditingId === id) resetProductForm();
         toast(t("상품을 삭제했습니다"));
         paintAdminProducts();

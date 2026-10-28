@@ -77,6 +77,10 @@
           if (item) item.refunded = true;
           if (c.refund === "card" && c.ok) toast(t("주문을 취소하고 카드 결제도 자동 환불했습니다"));
           else if (c.refund === "card" && !c.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "virtual_account_closed" && c.ok) toast(t("주문을 취소하고 가상계좌도 폐쇄했습니다 — 아직 입금 전이라 환불할 금액은 없습니다"));
+          else if (c.refund === "virtual_account_closed" && !c.ok) toast(t("주문은 취소됐지만 가상계좌 폐쇄에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "virtual_account" && c.ok) toast(t("주문을 취소하고 입금된 금액도 자동 환불했습니다"));
+          else if (c.refund === "virtual_account" && !c.ok) toast(t("주문은 취소됐지만 가상계좌 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
           else if (c.refund === "bank_manual") toast(t("주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요"));
           else if (c.refund === "already_cancelled") toast(t("이미 취소된 주문이라 신청만 완료 처리했습니다"));
           else toast(t("주문을 취소했습니다"));
@@ -211,10 +215,13 @@
      넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
   /* 컬러 하나의 사이즈 입력 한 줄(HTML 문자열) — 컬러 칩을 바꿀 때마다 이 한 줄만 다시
      그려 넣는다(카드 전체를 다시 그리지 않음, 그래서 다른 컬러의 입력값도 그대로 유지됨). */
-  function invSizeRowHTML(sizes, qtyByColorSize, color) {
+  /* pendingQty(size): 아직 저장 안 한 입력값 — 컬러 칩을 바꿨다 돌아오면 입력한 숫자가 화면에서 사라지는데 저장은
+     되던 문제(2026-10-28 정기 감사) 때문에 다시 그릴 때 저장 대기 값을 우선 보여준다. */
+  function invSizeRowHTML(sizes, qtyByColorSize, color, pendingQty) {
     return sizes
       .map((size) => {
-        const qty = qtyByColorSize.get(`${color}:${size}`) ?? 0;
+        const pending = pendingQty ? pendingQty(size) : undefined;
+        const qty = pending !== undefined ? pending : qtyByColorSize.get(`${color}:${size}`) ?? 0;
         return `
         <div class="inv-size${invSizeClass(qty)}">
           <span class="inv-size-label">${esc(size)}</span>
@@ -360,7 +367,10 @@
         card.querySelectorAll(".inv-color-chip").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
         const sizesBox = card.querySelector(".inv-card-sizes");
         sizesBox.dataset.activeColor = color;
-        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color, (size) => {
+          const pend = pendingChanges.get(`${card.dataset.product}:${color}:${size}`);
+          return pend ? pend.qty : undefined;
+        });
         return;
       }
 

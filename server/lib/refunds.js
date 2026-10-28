@@ -168,7 +168,7 @@ async function executeRefund(deps, params) {
         paymentCancelled = true;
       } catch (e) {
         const reason = e.message || "PG 오류";
-        return { ok: false, status: 502, error: `카드 환불에 실패했습니다: ${reason}`, i18n: { key: "카드 환불에 실패했습니다: {reason}", vars: { reason } }, method, cardError: e.message || String(e) };
+        return { ok: false, status: 502, error: `카드 환불에 실패했습니다: ${reason}`, i18n: { key: "카드 환불에 실패했습니다: {reason}", vars: { reason } }, amount: refundCash, method, cardError: e.message || String(e) };
       }
     } else if (order.payment_method === "virtual_account") {
       method = "virtual_account_manual";
@@ -187,7 +187,7 @@ async function executeRefund(deps, params) {
       const { error } = await db.rpc("restore_inventory", { p_items: restoreItems });
       if (!error) {
         restocked = true;
-        logInventoryChange(restoreItems.map((it) => ({ ...it, delta: it.qty, reason: kind === "return" ? "return_restock" : "partial_cancel", ref: order.order_no })));
+        logInventoryChange(restoreItems.map((it) => ({ ...it, delta: it.qty, reason: kind === "return" ? "return_restock" : "admin_cancel" /* inventory_log CHECK(027)에 partial_cancel이 없어 기록이 조용히 실패했다(2026-10-28) */, ref: order.order_no })));
       }
     }
   }

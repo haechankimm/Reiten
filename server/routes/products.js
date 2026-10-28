@@ -91,6 +91,17 @@ router.patch("/api/admin/products/bulk-active", requireAdmin, async (req, res) =
   res.json({ ok: true, count: ids.length });
 });
 
+/* 상품별로 다른 값을 한 줄씩 UPDATE — upsert는 쓰면 안 된다: Postgres가 충돌 판정 전에 "새 행"의 NOT NULL을 먼저
+   검사해서, name·name_ko·type·category 없이 {id, colors}만 보낸 upsert는 상품이 이미 있어도 항상 실패했다
+   (일괄 컬러 추가·퍼센트/고정액 일괄 가격 수정이 늘 500 — 2026-10-28 정기 감사, 실제 Postgres로 재현). */
+async function updateEach(updates) {
+  for (const { id, ...fields } of updates) {
+    const { error } = await supabaseAdmin.from("products").update(fields).eq("id", id);
+    if (error) return error;
+  }
+  return null;
+}
+
 router.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) => {
   const ids = parseBulkIds(req.body);
   const color = String((req.body && req.body.color) || "").trim();
@@ -104,12 +115,12 @@ router.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) =>
     return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
   }
 
-  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 upsert.
+  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 UPDATE(updateEach).
   const updates = rows
     .filter((r) => !(r.colors || []).includes(color))
     .map((r) => ({ id: r.id, colors: [...(r.colors || []), color] }));
   if (updates.length) {
-    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    const updateError = await updateEach(updates);
     if (updateError) {
       console.error("[admin/products] 일괄 컬러 추가 실패:", updateError.message);
       return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
@@ -155,7 +166,7 @@ router.patch("/api/admin/products/bulk-price", requireAdmin, async (req, res) =>
     return { id: r.id, price: Math.max(1, next), updated_at: new Date().toISOString() };
   });
   if (updates.length) {
-    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    const updateError = await updateEach(updates);
     if (updateError) {
       console.error("[admin/products] 일괄 가격 수정 실패:", updateError.message);
       return res.status(500).json({ error: "일괄 가격 수정에 실패했습니다." });

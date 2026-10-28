@@ -59,7 +59,7 @@
   el("sf-delete").addEventListener("click", async () => {
     if (!sfEditingId) return;
     if (!confirm(t("이 정보를 삭제하시겠습니까?"))) return;
-    await adminFetch(`/api/admin/settings/${encodeURIComponent(sfEditingId)}`, { method: "DELETE" });
+    if (!(await adminFetch(`/api/admin/settings/${encodeURIComponent(sfEditingId)}`, { method: "DELETE" }))) return;
     toast(t("삭제했습니다"));
     resetSettingsForm();
     paintAdminSettings();

@@ -28,11 +28,15 @@ function monthRangeFromKey(monthKey) {
 
 /* 순수 계산 — orders(그 달 주문), refundRows(그 달 처리된 order_refunds), legacyReturns(그 달 환불된 반품 신청),
    totalsByOrderNo(예전 전액 환불 금액 계산용) → summary + 환불 행 목록 */
-function computeSettlementSummary({ orders, refundRows, legacyReturns, totalsByOrderNo }) {
-  const recordedOrderNos = new Set((refundRows || []).map((r) => r.order_no));
-  const legacy = (legacyReturns || []).filter((r) => r.refunded && !recordedOrderNos.has(r.order_no));
+function computeSettlementSummary({ orders, refundRows, legacyReturns, totalsByOrderNo, recordedOrderNosAnyMonth }) {
+  /* 2026-10-28 정기 감사:
+     ① 새 환불 기록(order_refunds)이 다른 달에 있는 반품도 "예전 방식 전액 환불"로 세던 것 → 어느 달이든 기록이 있으면 제외
+     ② 이번 달에 취소된 주문은 매출에서 이미 빠지는데 그 주문의 부분 환불을 또 빼서 순매출이 두 번 줄던 것 → 제외 */
+  const recordedOrderNos = new Set([...(refundRows || []).map((r) => r.order_no), ...(recordedOrderNosAnyMonth || [])]);
+  const cancelledThisMonth = new Set((orders || []).filter((o) => o.status === "취소").map((o) => o.order_no));
+  const legacy = (legacyReturns || []).filter((r) => r.refunded && !recordedOrderNos.has(r.order_no) && !cancelledThisMonth.has(r.order_no));
   const refundLines = [
-    ...(refundRows || []).map((r) => ({
+    ...(refundRows || []).filter((r) => !cancelledThisMonth.has(r.order_no)).map((r) => ({
       orderNo: r.order_no,
       kind: r.kind === "partial_cancel" ? "부분 취소" : "반품",
       refundAmount: Number(r.refund_amount) || 0,
@@ -106,9 +110,16 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
     (extra || []).forEach((o) => totalsByOrderNo.set(o.order_no, o.total));
   }
 
+  let recordedOrderNosAnyMonth = [];
+  if (legacyNos.length && !refundsError) {
+    const { data: rec } = await db.from("order_refunds").select("order_no").in("order_no", legacyNos);
+    recordedOrderNosAnyMonth = (rec || []).map((r) => r.order_no);
+  }
+
   const { summary, refundLines, couponOrders } = computeSettlementSummary({
     orders: orders || [],
     refundRows,
+    recordedOrderNosAnyMonth,
     legacyReturns: (legacyReturns || []).filter((r) => (r.request_type || "return") === "return"),
     totalsByOrderNo,
   });

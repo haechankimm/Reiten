@@ -1041,6 +1041,7 @@ async function finalizeVirtualAccountOrderUnlocked({ pending, paymentId, verifie
       await portone.closeVirtualAccount(paymentId);
     } catch (closeErr) {
       console.error("[order] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+      logSystemError("virtual_account_close_failed", { paymentId, error: closeErr.message, source: "finalize" });
     }
     if (couponClaimed) await releaseCouponUsage(supabaseAdmin, couponCode);
     if (pointsUsed) await reversePointsForOrder(supabaseAdmin, orderNumber);
@@ -1118,6 +1119,7 @@ async function finalizeVirtualAccountOrderUnlocked({ pending, paymentId, verifie
       await portone.closeVirtualAccount(paymentId);
     } catch (closeErr) {
       console.error("[order] ⚠️ 주문 저장 실패 후 가상계좌 폐쇄도 실패 — 수동 확인 필요:", paymentId, closeErr.message);
+      logSystemError("virtual_account_close_failed", { paymentId, error: closeErr.message, source: "finalize_save" });
     }
     logSystemError("order_finalize_failed", { paymentId, stage: "order_save", error: saveError.message });
     return { ok: false, status: 500, body: { error: "주문 저장에 실패했습니다." } };
@@ -2729,7 +2731,7 @@ async function cancelStalePendingOrders() {
      "생성된 지 24시간 지났다"는 이유만으로 잘못 취소해버릴 수 있다. */
   let { data: stale, error } = await supabaseAdmin
     .from("orders")
-    .select("id, order_no, items, customer, subtotal, shipping, total, points_used, created_at")
+    .select("id, order_no, items, customer, subtotal, shipping, total, points_used, coupon_code, created_at")
     .eq("status", "입금대기")
     .neq("payment_method", "virtual_account")
     .lt("created_at", cutoff);
@@ -2785,6 +2787,10 @@ async function cancelStalePendingOrders() {
     if (order.points_used) {
       reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
     }
+    // 주문 때 올린 쿠폰 사용 횟수도 돌려준다 — 안 하면 1회용 감사 쿠폰을 미입금 취소 후 다시 못 썼다(2026-10-28 정기 감사).
+    if (order.coupon_code) {
+      releaseCouponUsage(supabaseAdmin, order.coupon_code).catch((err) => console.error("[coupon] 자동취소 시 사용 횟수 반환 실패:", err.message));
+    }
 
     sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
     kakao.sendAlimtalk("ORDER_CANCELLED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no }).catch(() => {});
@@ -2802,7 +2808,7 @@ async function closeExpiredVirtualAccounts() {
   const now = new Date().toISOString();
   const { data: expired, error } = await supabaseAdmin
     .from("orders")
-    .select("id, order_no, payment_id, items, customer, subtotal, shipping, total, points_used, created_at")
+    .select("id, order_no, payment_id, items, customer, subtotal, shipping, total, points_used, coupon_code, created_at")
     .eq("status", "입금대기")
     .eq("payment_method", "virtual_account")
     .lt("virtual_account_due_at", now);
@@ -2840,13 +2846,19 @@ async function closeExpiredVirtualAccounts() {
     if (order.points_used) {
       reversePointsForOrder(supabaseAdmin, order.order_no).catch((err) => console.error("[points] 자동취소 시 되돌리기 실패:", err.message));
     }
+    // 주문 때 올린 쿠폰 사용 횟수도 돌려준다 — 안 하면 1회용 감사 쿠폰을 미입금 취소 후 다시 못 썼다(2026-10-28 정기 감사).
+    if (order.coupon_code) {
+      releaseCouponUsage(supabaseAdmin, order.coupon_code).catch((err) => console.error("[coupon] 자동취소 시 사용 횟수 반환 실패:", err.message));
+    }
     try {
       await portone.closeVirtualAccount(order.payment_id);
     } catch (closeErr) {
       console.error("[auto-cancel] ⚠️ 가상계좌 폐쇄 실패 — 수동 확인 필요:", order.order_no, closeErr.message);
+      // 계좌가 열린 채 남으면 취소된 주문에 입금이 들어올 수 있어 긴급 알림으로 남긴다(2026-10-28)
+      logSystemError("virtual_account_close_failed", { orderNo: order.order_no, error: closeErr.message, source: "auto_cancel" });
     }
 
-    sendCustomerAutoCancelled(order).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
+    sendCustomerAutoCancelled({ ...order, payment_method: "virtual_account" }).catch((err) => console.error("[mailer] 자동취소 안내 메일 발송 실패:", err.message));
     kakao.sendAlimtalk("ORDER_CANCELLED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no }).catch(() => {});
     console.log(`[auto-cancel] ${order.order_no} 가상계좌 입금기한 만료 자동 취소 처리 완료`);
   }

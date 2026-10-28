@@ -5,6 +5,11 @@
      같은 체크박스 다중 선택 + 상단 바 패턴(products.js 참고). */
   const selectedReviewIds = new Set();
 
+  /* DB가 돌려주는 시각은 UTC라 앞 10글자를 자르면 시작일(00:00 KST = 전날 15:00 UTC)이 하루 앞당겨 보이고, 그대로
+     저장하면 수정할 때마다 하루씩 더 당겨졌다(2026-10-28 정기 감사) — 한국 날짜로 바꿔 쓴다. */
+  function kstDay(iso) {
+    return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  }
   function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
 
   function reviewCardHTML(r) {
@@ -60,10 +65,12 @@
         if (!item) return;
         const nextApproved = !item.approved;
         btn.disabled = true;
-        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
+        const saved = await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify({ approved: nextApproved }),
         });
+        btn.disabled = false;
+        if (!saved) return; // 실패(권한 없음·서버 오류)면 화면을 바꾸지 않는다(2026-10-28)
         item.approved = nextApproved;
         toast(nextApproved ? t("리뷰를 승인했습니다") : t("리뷰를 숨겼습니다"));
         renderAdminReviews();
@@ -74,7 +81,7 @@
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         if (!confirm(t("이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
-        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!(await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }))) return;
         reviewsState.items = reviewsState.items.filter((x) => x.id !== id);
         reviewsState.total = Math.max(0, reviewsState.total - 1);
         selectedReviewIds.delete(id);
@@ -158,7 +165,7 @@
   function couponCardHTML(c) {
     const period =
       c.startsAt || c.endsAt
-        ? `${c.startsAt ? c.startsAt.slice(0, 10) : "-"} ~ ${c.endsAt ? c.endsAt.slice(0, 10) : "-"}`
+        ? `${c.startsAt ? kstDay(c.startsAt) : "-"} ~ ${c.endsAt ? kstDay(c.endsAt) : "-"}`
         : t("기간 제한 없음");
     return `
       <div class="panel" data-code="${esc(c.code)}" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
@@ -279,8 +286,8 @@
     el("cp-scope").value = c.scope;
     el("cp-min-subtotal").value = c.minSubtotal || 0;
     el("cp-usage-limit").value = c.usageLimit || "";
-    el("cp-starts").value = c.startsAt ? c.startsAt.slice(0, 10) : "";
-    el("cp-ends").value = c.endsAt ? c.endsAt.slice(0, 10) : "";
+    el("cp-starts").value = c.startsAt ? kstDay(c.startsAt) : "";
+    el("cp-ends").value = c.endsAt ? kstDay(c.endsAt) : "";
     el("cp-active").checked = c.active;
     el("cp-cancel").hidden = false;
     syncCouponScopeUI();

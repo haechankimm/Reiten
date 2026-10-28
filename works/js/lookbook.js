@@ -153,7 +153,7 @@
   el("lf-delete").addEventListener("click", async () => {
     if (!lfEditingId) return;
     if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
-    await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "DELETE" });
+    if (!(await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "DELETE" }))) return;
     toast(t("삭제했습니다"));
     resetLookbookForm();
     paintAdminLookbook();

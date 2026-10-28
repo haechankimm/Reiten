@@ -100,7 +100,7 @@ router.post("/api/admin/refunds", requireAdmin, async (req, res) => {
   if (!result.ok) {
     if (result.cardError) {
       logSystemError("refund_failed", { orderNo: order.order_no, error: result.cardError, source: refundKind });
-      sendAdminRefundFailed({ orderNo: order.order_no, amount: null, error: result.cardError }).catch(() => {});
+      sendAdminRefundFailed({ orderNo: order.order_no, amount: result.amount ?? null, error: result.cardError }).catch(() => {});
     }
     return res.status(result.status || 500).json({ error: result.error, i18n: result.i18n });
   }

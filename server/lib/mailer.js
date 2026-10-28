@@ -61,7 +61,7 @@ async function sendOrderNotification(order) {
       <p><b>배송지</b> [${escHtml(order.customer.zip)}] ${escHtml(order.customer.addr)} ${escHtml(order.customer.addr2 || "")}</p>
       <p><b>메모</b> ${escHtml(order.customer.memo || "-")}</p>
       <ul>${itemsHtml(order)}</ul>
-      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)} + 배송비 ${won(order.shipping)})</p>
+      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)}${order.discount ? ` − 쿠폰 ${won(order.discount)}` : ""}${order.points_used ? ` − 적립금 ${won(order.points_used)}` : ""} + 배송비 ${won(order.shipping)})</p>
     `,
   });
 }
@@ -79,7 +79,7 @@ async function sendCustomerOrderReceived(order) {
       <h2>${escHtml(order.customer.name)}님, 주문이 접수되었습니다</h2>
       <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
       <ul>${itemsHtml(order)}</ul>
-      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)} + 배송비 ${won(order.shipping)})</p>
+      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)}${order.discount ? ` − 쿠폰 ${won(order.discount)}` : ""}${order.points_used ? ` − 적립금 ${won(order.points_used)}` : ""} + 배송비 ${won(order.shipping)})</p>
       <p style="margin-top:16px">
         <b>입금 계좌</b><br>
         ${escHtml(SITE.order.bankName)} ${escHtml(SITE.order.accountNo)} · 예금주 ${escHtml(SITE.order.holder)}<br>
@@ -204,7 +204,7 @@ async function sendAdminCardPaid(order) {
       <p><b>배송지</b> [${escHtml(order.customer.zip)}] ${escHtml(order.customer.addr)} ${escHtml(order.customer.addr2 || "")}</p>
       <p><b>메모</b> ${escHtml(order.customer.memo || "-")}</p>
       <ul>${itemsHtml(order)}</ul>
-      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)} + 배송비 ${won(order.shipping)})</p>
+      <p><b>총 결제금액</b> ${won(order.total)} (상품 ${won(order.subtotal)}${order.discount ? ` − 쿠폰 ${won(order.discount)}` : ""}${order.points_used ? ` − 적립금 ${won(order.points_used)}` : ""} + 배송비 ${won(order.shipping)})</p>
     `,
   });
 }
@@ -249,7 +249,7 @@ async function sendCustomerVirtualAccountIssued(order) {
       <p style="margin-top:16px">
         <b>입금 계좌</b><br>
         ${escHtml(order.virtual_account_bank || "")} ${escHtml(order.virtual_account_number || "")}<br>
-        ${order.virtual_account_due_at ? `입금기한 ${new Date(order.virtual_account_due_at).toLocaleString("ko-KR")}까지<br>` : ""}
+        ${order.virtual_account_due_at ? `입금기한 ${new Date(order.virtual_account_due_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}까지<br>` : ""}
       </p>
       <p style="margin-top:16px;color:#666">위 계좌로 입금하시면 별도 확인 절차 없이 자동으로 결제완료 처리됩니다.</p>
     `,
@@ -269,7 +269,9 @@ async function sendCustomerAutoCancelled(order) {
     html: `
       <h2>${escHtml(order.customer.name)}님, 주문이 자동 취소되었습니다</h2>
       <p><b>주문번호</b> ${escHtml(order.order_no)}</p>
-      <p style="margin-top:8px">입금 확인이 되지 않아 주문 접수 24시간 경과 후 자동으로 취소되었습니다.</p>
+      <p style="margin-top:8px">${order.payment_method === "virtual_account"
+        ? "가상계좌 입금기한까지 입금이 확인되지 않아 자동으로 취소되었습니다. 이 계좌는 더 이상 사용할 수 없으니 입금하지 마세요."
+        : "입금 확인이 되지 않아 주문 접수 24시간 경과 후 자동으로 취소되었습니다."}</p>
       <ul>${itemsHtml(order)}</ul>
       <p style="margin-top:16px;color:#666">다시 주문하고 싶으시면 사이트에서 새로 담아 주문해 주세요. 이미 입금하셨다면 회신 메일로 알려주세요 — 확인 후 복구해드립니다.</p>
     `,

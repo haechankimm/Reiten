@@ -14,10 +14,21 @@ const BACKUP_TABLES = [
 ];
 const PAGE = 1000;
 
+/* 정렬 없이 1,000건씩 끊어 받으면 행이 겹치거나 빠질 수 있어(2026-10-28 정기 감사) 고정 순서로 받는다 —
+   대부분 표는 id, 없는 표는 그 표의 기본키로. 정렬 컬럼이 없다는 오류면 예전처럼 정렬 없이 받는다. */
+const ORDER_COLUMN = { product_colors: "key", inventory: "product_id" };
+
 async function dumpTable(db, table) {
   const rows = [];
+  let orderCol = ORDER_COLUMN[table] || "id";
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from(table).select("*").range(from, from + PAGE - 1);
+    let q = db.from(table).select("*");
+    if (orderCol) q = q.order(orderCol, { ascending: true });
+    let { data, error } = await q.range(from, from + PAGE - 1);
+    if (error && orderCol && from === 0) {
+      orderCol = null;
+      ({ data, error } = await db.from(table).select("*").range(from, from + PAGE - 1));
+    }
     if (error) return { rows, error: error.message };
     rows.push(...(data || []));
     if (!data || data.length < PAGE) break;

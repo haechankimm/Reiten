@@ -176,7 +176,7 @@
       el("od-partial-cancel")?.addEventListener("click", () =>
         openRefundDialog({
           orderNo: o.no, kind: "partial_cancel",
-          onDone: () => paintAdminOrders(),
+          onDone: () => paintAdminOrders(false, { keepSelection: true }),
         })
       );
 
@@ -236,7 +236,8 @@
            계산하지만, 대시보드 탭 자체는 로그인 시점에 한 번만 그려서 방금 취소한 주문의
            매출이 그대로 남아있는 것처럼 보인다는 피드백 — 주문을 저장할 때마다 대시보드도
            같이 새로고침한다. */
-        paintAdminDashboard();
+        // 대시보드 권한이 없는 직원은 대시보드를 다시 그리면 403 토스트가 "저장했습니다"를 덮어 실패처럼 보였다(2026-10-28).
+        if (canView("dashboard")) paintAdminDashboard();
       });
     }
   }
@@ -251,13 +252,14 @@
     return params;
   }
 
-  async function paintAdminOrders(loadMore = false) {
+  async function paintAdminOrders(loadMore = false, { keepSelection = false } = {}) {
     ordersState.page = loadMore ? ordersState.page + 1 : 1;
     const result = await adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`);
     if (!result) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
-    if (!loadMore) selectedOrderNo = null;
+    // 부분 취소 직후처럼 작업 뒤 새로고침할 땐 보던 주문을 그대로 연다(예전엔 목록 첫 주문으로 바뀜, 2026-10-28)
+    if (!loadMore && !(keepSelection && ordersState.items.some((o) => o.no === selectedOrderNo))) selectedOrderNo = null;
     renderOrdersSplit();
   }
 

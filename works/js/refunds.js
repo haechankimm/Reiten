@@ -100,6 +100,7 @@
       errEl.classList.remove("on");
       if (!params.lines.length) { box.innerHTML = `<p class="small">${esc(t("환불할 상품과 수량을 골라 주세요."))}</p>`; lastPreview = null; return; }
       const my = ++seq;
+      lastPreview = null; // 새 미리보기가 오기 전에 "환불 실행"을 누르면 예전 금액으로 확인창이 뜨던 것 방지(2026-10-28)
       const token = await getAccessToken();
       const res = await fetch("/api/admin/refunds/preview", {
         method: "POST",
