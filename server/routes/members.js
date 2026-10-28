@@ -19,6 +19,7 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { kstDateKey } = require("../lib/kst");
+const { isMissingSchemaError } = require("../lib/pgErrors");
 const { deleteCustomerAccount } = require("../lib/accountDeletion");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
@@ -228,8 +229,14 @@ router.patch("/api/admin/members/:id/promote", requireMasterAdmin, async (req, r
   // 승격된 직원은 기본 권한으로 시작(이미 설정된 권한이 있으면 유지). 테이블이 없으면 조용히 건너뜀.
   const { data: existingPerm } = await supabaseAdmin.from("admin_permissions").select("user_id").eq("user_id", id).maybeSingle();
   if (!existingPerm) {
-    await supabaseAdmin.from("admin_permissions").insert({ user_id: id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS) });
+    const { error: permError } = await supabaseAdmin.from("admin_permissions").insert({ user_id: id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS) });
     invalidateAdminCache(id);
+    // 권한 행 없이 운영자가 되면 전체 허용이라, 저장 실패 시 승격을 되돌린다(2026-10-28 정기 감사)
+    if (permError && !isMissingSchemaError(permError)) {
+      await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", id);
+      invalidateAdminCache(id);
+      return res.status(500).json({ error: "기본 권한 저장에 실패해 승격을 되돌렸습니다. 잠시 후 다시 시도해 주세요." });
+    }
   }
 
   logAdminAction(req, "member.promote", "member", id);

@@ -14,6 +14,7 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
+const { isMissingSchemaError } = require("../lib/pgErrors");
 
 const router = express.Router();
 
@@ -94,6 +95,13 @@ router.post("/api/admin/admins", requireMasterAdmin, async (req, res) => {
   const { error: permError } = await supabaseAdmin
     .from("admin_permissions")
     .upsert({ user_id: data.user.id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (permError && !isMissingSchemaError(permError)) {
+    /* 권한 행이 없으면 "전체 허용"으로 동작하므로, 저장에 실패하면 관리자 권한을 되돌린다 — 예전엔 경고만 남겨
+       새 직원이 모든 영역(환불 포함)을 열 수 있었다(2026-10-28 정기 감사). */
+    await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", data.user.id);
+    invalidateAdminCache(data.user.id);
+    return res.status(500).json({ error: "기본 권한 저장에 실패해 관리자 등록을 되돌렸습니다. 잠시 후 다시 시도해 주세요." });
+  }
   if (permError) console.warn("[admins] 기본 권한 저장 생략:", permError.message);
   invalidateAdminCache(data.user.id);
 
