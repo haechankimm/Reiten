@@ -191,10 +191,11 @@
 
   async function paintAdminLookbook(loadMore = false) {
     lookbookState.page = loadMore ? lookbookState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/lookbook?page=${lookbookState.page}&pageSize=${lookbookState.pageSize}`);
+    // 룩북 편집 화면은 실제 페이지와 같은 배치를 보여줘야 해서 전부 불러온다(예전엔 50칸까지만, 2026-10-28)
+    const result = await adminFetchAll("/api/admin/lookbook");
     if (!result) return;
     lookbookState.total = result.total;
-    lookbookState.items = loadMore ? lookbookState.items.concat(result.items) : result.items;
+    lookbookState.items = result.items;
     renderLookbookVisual();
   }
 

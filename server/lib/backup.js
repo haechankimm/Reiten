@@ -60,7 +60,7 @@ async function buildBackup({ db = supabaseAdmin, now = new Date() } = {}) {
   }
   const json = JSON.stringify({ exportedAt: now.toISOString(), format: "reiten-backup-v1", tables });
   return {
-    filename: `reiten-backup-${now.toISOString().slice(0, 10)}.json.gz`,
+    filename: `reiten-backup-${require("./kst").kstDateKey(now)}.json.gz`,
     buffer: zlib.gzipSync(Buffer.from(json, "utf8")),
     summary,
   };

@@ -2095,7 +2095,7 @@ app.get("/api/admin/orders/export", requireAdmin, async (req, res) => {
   });
   if (error) return res.status(500).json({ error: "주문 목록을 불러오지 못했습니다." });
 
-  const filename = `reiten-orders-${new Date().toISOString().slice(0, 10)}`;
+  const filename = `reiten-orders-${require("./lib/kst").kstDateKey(new Date())}`;
   try {
     if (format === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -2570,7 +2570,7 @@ app.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
     qty: r.qty,
   }));
 
-  const filename = `reiten-inventory-${new Date().toISOString().slice(0, 10)}`;
+  const filename = `reiten-inventory-${require("./lib/kst").kstDateKey(new Date())}`;
   try {
     if (format === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");

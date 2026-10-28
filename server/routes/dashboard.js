@@ -226,7 +226,7 @@ router.get("/api/admin/dashboard/export", requireAdmin, async (req, res) => {
     { key: "qty", label: "판매수량" },
   ];
 
-  const filename = `reiten-dashboard-${new Date().toISOString().slice(0, 10)}`;
+  const filename = `reiten-dashboard-${require("../lib/kst").kstDateKey(new Date())}`;
   try {
     if (format === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");

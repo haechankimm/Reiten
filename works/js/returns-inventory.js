@@ -88,6 +88,8 @@
           toast(t("상태를 저장했습니다"));
         }
         renderAdminReturns();
+        // 주문 탭이 예전 상태를 들고 있으면 다음 저장 때 "다른 관리자가 수정" 오류가 났다 — 같이 새로 고친다(2026-10-28)
+        if (typeof canView === "function" && canView("orders")) paintAdminOrders();
 
         /* 다시 그린 뒤 방금 저장한 카드의 뱃지에 잠깐 테두리를 줘서 "여기가 바뀌었다"를
            명확히 보여준다(1.2초 후 자동으로 사라짐). */
@@ -112,6 +114,8 @@
             item.status = "완료";
             if (result.refund && result.refund.restocked) item.restocked = true;
             renderAdminReturns();
+            // 주문 탭이 예전 상태를 들고 있으면 다음 저장 때 "다른 관리자가 수정" 오류가 났다 — 같이 새로 고친다(2026-10-28)
+            if (typeof canView === "function" && canView("orders")) paintAdminOrders();
           },
         });
       })
@@ -282,7 +286,7 @@
   async function paintAdminInventory() {
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
-      adminFetch("/api/admin/products?pageSize=100"),
+      adminFetchAll("/api/admin/products"),
     ]);
     if (!rows || !productsRes) return;
     // 상품 탭 권한이 없는 직원에게는 바로가기를 숨긴다(pin.js canView).

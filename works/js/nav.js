@@ -233,7 +233,11 @@
       const data = await res.json();
       if (Array.isArray(data)) {
         Object.keys(COLORS).forEach((k) => delete COLORS[k]);
-        data.forEach((c) => { COLORS[c.key] = c; });
+        data.forEach((c) => {
+          COLORS[c.key] = c;
+          // 관리자가 넣은 독일어 이름을 번역 사전에 등록 — 저장만 되고 화면엔 안 쓰이던 것(2026-10-28 정기 감사)
+          if (c.labelDe) I18N[c.label] = Object.assign({}, I18N[c.label], { de: c.labelDe });
+        });
       }
     } catch (e) {}
   }
@@ -281,6 +285,20 @@
       return null;
     }
     return res.json();
+  }
+
+  /* 목록 API를 끝까지 모아 받는다(100개씩) — 재고 화면·쿠폰 대상 상품·룩북 편집이 첫 페이지(50~100개)까지만 보여
+     그 뒤 상품·칸은 아예 다룰 수 없던 것(2026-10-28 정기 감사). path에는 ?가 이미 있어도 된다. */
+  async function adminFetchAll(path) {
+    const items = [];
+    for (let page = 1; page <= 50; page++) {
+      const sep = path.includes("?") ? "&" : "?";
+      const r = await adminFetch(`${path}${sep}page=${page}&pageSize=100`);
+      if (!r) return null;
+      items.push(...(r.items || []));
+      if (!r.items || r.items.length < 100 || items.length >= (r.total || 0)) return { items, total: r.total ?? items.length };
+    }
+    return { items, total: items.length };
   }
 
   function loadMoreHTML(hasMore, id) {

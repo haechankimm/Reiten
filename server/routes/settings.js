@@ -136,7 +136,7 @@ router.get("/api/admin/backup/export", requireAdmin, async (req, res) => {
     coupons: coupons.data,
     adminSettings: settings.data,
   };
-  const filename = `reiten-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const filename = `reiten-backup-${require("../lib/kst").kstDateKey(new Date())}.json`;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(JSON.stringify(backup, null, 2));

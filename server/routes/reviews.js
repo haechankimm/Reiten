@@ -199,7 +199,8 @@ router.get("/api/admin/reviews", requireAdmin, async (req, res) => {
     .from("reviews")
     .select("*", { count: "exact" })
     .order("approved", { ascending: true })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true }); // 같은 시각 리뷰도 페이지 사이에서 순서가 바뀌지 않게
   query = applyReviewFilters(query, req.query);
   const { data, error, count } = await query.range(from, to);
 

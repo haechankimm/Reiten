@@ -317,7 +317,13 @@
     const dlUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = dlUrl;
-    a.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.${format}`;
+    /* 서버가 정해 준 파일 이름(Content-Disposition)을 우선 쓰고, 없으면 한국 날짜로 만든다 — 예전엔 UTC 날짜라 자정~오전 9시엔
+       하루 전 날짜가 붙었고, 정산 리포트는 "2026-09-2026-10-28"처럼 날짜가 두 번 붙었다(2026-10-28 정기 감사). */
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+    const serverName = m ? decodeURIComponent(m[1] || m[2]) : "";
+    const kstToday = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+    a.download = serverName || `${filenamePrefix}-${kstToday}.${format}`;
     document.body.appendChild(a);
     a.click();
     a.remove();

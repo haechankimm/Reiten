@@ -126,7 +126,7 @@ router.get("/api/admin/members/export", requireAdmin, async (req, res) => {
   const sections = [{ title: "회원", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "customer").map(toExportRow) }];
   if (master) sections.push({ title: "관리자", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "admin").map(toExportRow) });
 
-  const filename = `reiten-members-${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `reiten-members-${require("../lib/kst").kstDateKey(new Date())}.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(toCsvGeneric(sections));

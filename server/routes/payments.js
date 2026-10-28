@@ -79,7 +79,7 @@ router.get("/api/admin/payment-log/export", requireAdmin, async (req, res) => {
     reason: r.reason || "",
   }));
 
-  const filename = `reiten-payment-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `reiten-payment-log-${require("../lib/kst").kstDateKey(new Date())}.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(toCsvGeneric([{ title: "결제 트랜잭션", columns: PAYMENT_LOG_COLUMNS, rows }]));
