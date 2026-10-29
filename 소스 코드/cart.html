@@ -315,7 +315,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     // 참만 담긴 장바구니는 주문할 수 없다(서버도 CHARM_ONLY로 거절) — 안내를 띄우고 제출 버튼을 막는다.
     const charmOnly = !cartHasPhysicalProduct(items);
     el("charm-only-notice").hidden = !charmOnly;
-    el("submit").disabled = charmOnly;
+    // 주문 처리 중(data-busy)엔 그대로 잠가 둔다 — 예전엔 처리 중에 paint()가 돌면 버튼이 다시 켜져 두 번 제출될 수 있었다(2026-10-29)
+    el("submit").disabled = charmOnly || el("submit").dataset.busy === "1";
 
     const ship = Cart.shipping();
     const discount = appliedCoupon ? appliedCoupon.discount : 0;
@@ -348,7 +349,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       ? t("제출하면 주문서가 바로 전송됩니다.")
       : t("제출하면 주문번호와 함께 복사용 주문서가 만들어집니다. 이메일 또는 카카오톡으로 보내주세요.");
     // 쿠폰·적립금 적용으로 합계가 0원이 되거나 다시 생기면 결제 안내·버튼 문구도 같이 바뀌어야 한다(2026-10-28 정기 감사)
-    if (!el("submit").disabled) syncPayMethodUI();
+    if (el("submit").dataset.busy !== "1") syncPayMethodUI();
   }
 
   /* ---------- 검증 & 제출 ---------- */
@@ -575,6 +576,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     const btn = el("submit");
     btn.disabled = true;
+    // 처리 중 표시 — 이 사이에 paint()가 다시 돌아도(설정·적립금 비동기 로드) 버튼을 다시 켜지 않게 한다(2026-10-29)
+    btn.dataset.busy = "1";
     btn.textContent = t("처리 중…");
 
     if (isCard || isVbank) {
@@ -594,6 +597,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           const body = await prepRes.json().catch(() => ({}));
           toast(apiErrorText(body, t("결제 준비에 실패했습니다")));
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
@@ -635,6 +639,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           // 포트원(PG) 문구는 한국어 원문이라 영어·일본어 화면에서는 사전 문구로 바꾼다(app.js paymentFailText, 2026-10-28 정기 감사)
           toast(paymentFailText(payResult, isVbank));
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
@@ -660,6 +665,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               : apiErrorText(body, t("결제 확인에 실패했습니다"))
           );
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
@@ -675,6 +681,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         }
         toast(t(isVbank ? "계좌 발급 중 오류가 발생했습니다" : "결제 중 오류가 발생했습니다"));
         btn.disabled = false;
+        delete btn.dataset.busy;
         syncPayMethodUI();
       }
       return;
@@ -732,6 +739,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             : apiErrorText(body, t("주문을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요."))
         );
         btn.disabled = false;
+        delete btn.dataset.busy;
         syncPayMethodUI();
         return;
       }
@@ -740,6 +748,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         // 서버가 있는 사이트인데 응답을 못 받음(네트워크 끊김·시간 초과) — 주문이 이미 들어갔을 수도 있어 확인을 안내한다.
         toast(t("연결이 불안정해 주문 결과를 확인하지 못했습니다. 주문 조회 또는 메일함에서 접수 여부를 확인한 뒤 다시 시도해 주세요."));
         btn.disabled = false;
+        delete btn.dataset.busy;
         syncPayMethodUI();
         return;
       }
