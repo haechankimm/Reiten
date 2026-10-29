@@ -106,6 +106,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script>
   // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
   if (typeof loadProducts === "function") loadProducts().catch(() => {});
+  // 옵션의 컬러 이름도 관리자가 추가한 색상까지 지금 언어로 보여주려고 팔레트를 받아온다(orderItemOptions, 2026-10-28 정기 감사)
+  if (typeof loadColors === "function") loadColors().catch(() => {});
   applyI18n();
   renderHeader("");
 
@@ -167,7 +169,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       el("lk-items").innerHTML = o.items.map((i) => `
         <tr>
           <td>${esc(orderItemName(i))}</td>
-          <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
+          <td style="text-align:left;color:var(--muted)">${esc(orderItemOptions(i))}</td>
           <td>${i.qty}</td>
           <td>${money(i.sum)}</td>
         </tr>`).join("") + orderAmountRowsHTML(o);
@@ -183,6 +185,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       el("lk-cancel-block").hidden = !["입금대기", "입금확인"].includes(o.status);
       el("lk-cancel-form").hidden = true;
       el("lk-cancel-done").hidden = true;
+      // 한 번 "주문취소 신청"을 열거나 접수한 뒤 다시 조회하면 버튼이 숨겨진 채(또는 제출 버튼이 막힌 채)로 남아
+      // 다시 신청할 수 없었다 — 조회할 때마다 처음 상태로 되돌린다(2026-10-28 정기 감사)
+      el("lk-cancel-open").hidden = false;
+      el("lk-cancel-submit").disabled = false;
     } catch (err) {
       toast(t("조회에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
     } finally {

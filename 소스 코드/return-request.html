@@ -53,6 +53,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <p class="err" data-i18n="연락처를 입력해 주세요.">연락처를 입력해 주세요.</p>
           </div>
         </div>
+        <!-- 반품인지 교환인지 받지 않아 모든 신청이 "반품"으로 접수됐다 — 서버 requestType(return/exchange)을 고르게 한다(2026-10-28 정기 감사) -->
+        <div class="field">
+          <label for="rq-type" data-i18n-html data-i18n='신청 유형 <span class="req">*</span>'>신청 유형 <span class="req">*</span></label>
+          <select id="rq-type" required>
+            <option value="return" data-i18n="반품" selected>반품</option>
+            <option value="exchange" data-i18n="교환">교환</option>
+          </select>
+        </div>
         <div class="field">
           <label for="rq-reason" data-i18n-html data-i18n='사유 <span class="req">*</span>'>사유 <span class="req">*</span></label>
           <select id="rq-reason" required>
@@ -150,6 +158,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           reason: el("rq-reason").value,
           customReason: isOther ? custom.value.trim() : "",
           detail: el("rq-detail").value.trim(),
+          requestType: el("rq-type").value === "exchange" ? "exchange" : "return",
         }),
       });
       if (!res.ok) {

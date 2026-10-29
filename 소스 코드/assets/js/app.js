@@ -580,6 +580,19 @@ function orderItemName(it) {
   return p ? productName(p) : (it && it.name) || "";
 }
 
+/* 주문에 저장된 옵션 문구(options)는 담을 당시 언어로 굳어 있다 — 상품 줄은 원본 키(color·size)도 같이 저장되므로
+   (server.js itemsForStorage) 컬러·사이즈는 지금 언어로 다시 만든다. 장바구니 opts는 항상 컬러 → 사이즈 → (지퍼 참 →
+   추가 아이템) 순서라(product.html·customizer.html) 앞의 두 칸만 바꾸고 나머지는 저장된 문구를 그대로 붙인다.
+   컬러 정의를 못 찾으면(삭제된 색상 등) 저장된 문구를 그대로 쓴다(2026-10-28 정기 감사). */
+function orderItemOptions(it) {
+  const raw = (it && it.options) || "";
+  const c = it && it.color && typeof COLORS !== "undefined" ? COLORS[it.color] : null;
+  if (!c || !c.label) return raw;
+  const parts = [`${t("컬러")} ${t(c.label)}`];
+  if (it.size) parts.push(`${t("사이즈")} ${it.size}`);
+  return parts.concat(raw.split(" / ").slice(2).filter(Boolean)).join(" / ");
+}
+
 function productTranslation(p) {
   const lang = getLang();
   if (lang !== "en" && lang !== "ja") return null;
@@ -634,6 +647,18 @@ function apiErrorText(body, fallback) {
   return fallback;
 }
 
+/* 포트원 결제창이 실패로 끝났을 때(창 닫기·승인 거절) 보여줄 문구 — 포트원(PG)이 주는 message는 한국어 원문이라
+   영어·일본어 손님에게 그대로 보였다. ko는 PG의 상세 문구를 그대로 쓰고, 그 밖의 언어는 사전 문구로 바꾼다.
+   v2 SDK는 사용자 취소도 code가 FAILURE_TYPE_PG라 code만으로는 못 가르고, pgCode(예: PAY_PROCESS_CANCELED)나
+   message에 "취소"/CANCEL이 들어 있는지로 취소와 실패를 나눈다(2026-10-28 정기 감사). */
+function paymentFailText(res, vbank) {
+  const msg = res && res.message ? String(res.message) : "";
+  if (getLang() === "ko" && msg) return msg;
+  const canceled = !res || /CANCEL/i.test(String(res.pgCode || "") + " " + msg) || msg.includes("취소");
+  if (canceled) return t(vbank ? "계좌 발급이 취소되었습니다" : "결제가 취소되었습니다");
+  return t(vbank ? "계좌 발급에 실패했습니다" : "결제에 실패했습니다");
+}
+
 /* ---------- 주문조회·내 주문 공용 표시 (2026-10-02) ----------
    서버(lib/customerOrders.js)가 쿠폰·적립금 할인, 환불액, 결제수단, 구매확정 상태까지 내려준다. */
 function localDate(iso) {
@@ -662,7 +687,7 @@ function orderPaymentGuideHTML(o) {
     const va = o.virtualAccount;
     return `<div class="notice" style="margin-top:16px">
       <b>${t("가상계좌 입금 안내")}</b><br>
-      ${esc(va.bank || "")} ${esc(va.accountNumber || "")}<br>
+      ${esc(t(va.bank || ""))} ${esc(va.accountNumber || "")}<br>
       ${t("입금액")} <b class="tnum">${money(o.total)}</b>${va.dueAt ? ` · ${t("입금기한")} <b>${esc(new Date(va.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"))}</b>` : ""}
     </div>`;
   }
@@ -827,6 +852,9 @@ function charmSVG(charmKey, finishKey, opts = {}) {
    부팅
    ========================================================= */
 document.addEventListener("DOMContentLoaded", () => {
+  /* 브라우저 탭 제목(<title>)은 data-i18n으로 바꿀 수 없어 영어·일본어에서도 한국어로 남았다 — 페이지마다 쓰는
+     제목 전체를 사전 키로 두고 번역한다. 사전에 없거나 페이지가 이미 직접 바꾼 제목(product.html 등)은 그대로 둔다(2026-10-28 정기 감사). */
+  if (getLang() !== "ko") document.title = t(document.title);
   initReveal();
   initBeams();
 });

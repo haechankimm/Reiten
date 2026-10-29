@@ -179,7 +179,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       advisor.weightKg = document.getElementById("sa-weight").value;
       advisor.fit = document.getElementById("sa-fit").value;
       advisor.protector = document.getElementById("sa-protector").checked;
-      advisor.result = recommendSize(advisor, { sizes: p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
+      /* 지금 고른 컬러에서 살 수 있는 사이즈만 추천 후보로 넘긴다 — 예전엔 품절 사이즈를 추천해 "선택하기"를 눌러도
+         담을 수 없었다. 그 컬러가 전부 품절이면 전체 사이즈로 추천하고, 아래 "이 사이즈가 품절이에요" 안내가 뜬다(2026-10-28 정기 감사). */
+      const outNow = outSizesForColor(state.color);
+      const inStock = p.sizes.filter(s => !p.soldOut.includes(s) && !outNow.includes(s));
+      advisor.result = recommendSize(advisor, { sizes: inStock.length ? inStock : p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
       advisor.open = true;
       try {
         localStorage.setItem(ADVISOR_KEY, JSON.stringify({ heightCm: advisor.heightCm, weightKg: advisor.weightKg, fit: advisor.fit, protector: advisor.protector }));
@@ -442,6 +446,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       const size = document.getElementById("restock-size").value;
       const email = document.getElementById("restock-email").value.trim();
       if (!email) return;
+      // novalidate라 형식이 틀린 주소도 그대로 서버로 갔다(서버 오류 문구만 보임) — 주문서와 같은 기준으로 먼저 확인한다(2026-10-28 정기 감사)
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast(t("이메일 형식을 확인해 주세요.")); return; }
       const btn = form.querySelector("button");
       btn.disabled = true;
       try {

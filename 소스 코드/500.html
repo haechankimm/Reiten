@@ -2,6 +2,9 @@
 <html lang="ko" data-theme="light">
 <head>
 <meta charset="utf-8">
+<!-- 서버는 없는 주소(예: /a/b/c)에서도 이 파일을 그대로 보내준다 — renderHeader()가 넣는 로고·메뉴 링크(index.html 등)와
+     이미지가 상대 경로라 /a/b/index.html처럼 엉뚱한 곳을 가리켰다. 기준 주소를 사이트 루트로 고정한다(2026-10-28 정기 감사) -->
+<base href="/">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
 <script>
@@ -47,6 +50,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
      오류 페이지라 스크립트 하나가 실패해도 본문은 보이도록 각각 감싼다. */
   try { applyI18n(); document.title = t("일시적인 오류") + " — REITEN"; } catch (e) {}
   try { renderHeader(""); } catch (e) {}
+  // <base href="/"> 때문에 "본문으로 건너뛰기"(#main)가 홈(/#main)으로 이동해 버리므로 지금 주소 기준으로 고친다(2026-10-28 정기 감사)
+  try { const skip = document.querySelector(".skip-link"); if (skip) skip.setAttribute("href", location.pathname + location.search + "#main"); } catch (e) {}
 </script>
 </body>
 </html>

@@ -31,6 +31,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       <p class="eyebrow">Privacy Policy</p>
       <h1 class="h-xl" style="margin-top:12px">개인정보처리방침</h1>
       <p class="small" style="margin-top:10px;color:var(--muted)" id="effective-date"></p>
+      <!-- 약관·방침 본문은 한국어로만 제공된다 — 영어·일본어 손님에게 한국어 원문이 법적 기준이라는 걸 알린다(ko에서는 숨김, 2026-10-28 정기 감사) -->
+      <p class="notice small" id="legal-lang-notice" style="margin-top:16px" data-i18n="이 문서는 한국어로 제공되며, 한국어 원문이 법적 효력을 갖습니다." hidden>이 문서는 한국어로 제공되며, 한국어 원문이 법적 효력을 갖습니다.</p>
       <hr class="rule" style="margin:26px 0 34px">
 
       <div class="legal-doc" style="display:grid;gap:28px">
@@ -179,6 +181,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script>
   applyI18n();
   renderHeader("");
+  if (getLang() !== "ko") document.getElementById("legal-lang-notice").hidden = false;
   document.getElementById("effective-date").textContent = "시행일 : 2026년 8월 6일";
 
   const b = SITE.biz;

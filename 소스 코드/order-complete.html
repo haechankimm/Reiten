@@ -49,11 +49,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
      redirectUrl로 이 페이지를 넘겨두고, 포트원이 ?paymentId=...(실패 시 &code=...&message=...)를 붙여
      돌려보내면 여기서 직접 주문을 확정한다(2026-10-02). PC는 예전처럼 cart.html에서 처리된다. */
   const returnParams = new URLSearchParams(location.search);
-  if (returnParams.get("paymentId")) {
-    confirmReturnedPayment(returnParams);
-  } else {
-    renderOrder(readLastOrder());
-  }
+  /* orderItemName()·orderItemOptions()가 관리자 패널(DB)에만 있는 상품·색상도 찾아 지금 언어로 보여주도록 목록을
+     먼저 받아온다 — 실패해도(정적 배포 등) data.js 목록으로 그대로 그린다(2026-10-28 정기 감사). */
+  Promise.all([
+    typeof loadProducts === "function" ? loadProducts().catch(() => false) : false,
+    typeof loadColors === "function" ? loadColors().catch(() => {}) : null,
+  ]).then(() => {
+    if (returnParams.get("paymentId")) {
+      confirmReturnedPayment(returnParams);
+    } else {
+      renderOrder(readLastOrder());
+    }
+  });
 
   function readLastOrder() {
     try { return JSON.parse(localStorage.getItem("reiten_last_order")); } catch (e) { return null; }
@@ -63,9 +70,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const paymentId = params.get("paymentId");
     if (params.get("code")) {
       // 고객이 결제를 취소했거나 카드사 승인이 거절된 경우 — 장바구니는 그대로 두고 돌아갈 길을 안내한다.
+      // 포트원 message는 한국어 원문이라 ko가 아니면 사전 문구로 바꾼다(app.js paymentFailText, 2026-10-28 정기 감사)
       root.innerHTML = `
         <div class="empty">
-          <p class="lede">${esc(params.get("message") || t("결제가 취소되었습니다"))}</p>
+          <p class="lede">${esc(paymentFailText({ code: params.get("code"), message: params.get("message"), pgCode: params.get("pgCode") }, false))}</p>
           <p style="margin-top:20px"><a class="btn" href="cart.html">${t("장바구니로 돌아가기")}</a></p>
         </div>`;
       return;
@@ -81,7 +89,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = body.error === "OUT_OF_STOCK"
-          ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
+          ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: orderItemName(body), size: body.size })
           : apiErrorText(body, t("결제 확인에 실패했습니다"));
         root.innerHTML = `
           <div class="empty">
@@ -106,6 +114,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <p style="margin-top:20px"><a class="btn" href="order-lookup.html">${t("주문 조회")}</a></p>
         </div>`;
     }
+  }
+
+  // 일본어 문장 끝에 반각 "."이 붙어 어색했다 — 언어별 마침표를 쓴다(2026-10-28 정기 감사)
+  function leadTimeSentence() {
+    return esc(t(SITE.shipping.leadTime)) + (getLang() === "ja" ? "。" : ".");
   }
 
   function renderOrder(order) {
@@ -153,16 +166,16 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       <div class="notice" style="margin-top:28px">
         <b>${t("주문 확정")}</b><br>
         ${t("쿠폰·적립금으로 결제할 금액 없이 주문이 확정되었습니다.")}<br>
-        <span class="small">${esc(t(SITE.shipping.leadTime))}.</span>
+        <span class="small">${leadTimeSentence()}</span>
       </div>` : order.paymentMethod === "card" || (order.paymentMethod === "virtual_account" && order.status === "입금확인") ? `
       <div class="notice" style="margin-top:28px">
         <b>${t("결제 완료")}</b><br>
         ${t("결제금액")} <b class="tnum">${money(order.total)}</b><br>
-        <span class="small">${esc(t(SITE.shipping.leadTime))}.</span>
+        <span class="small">${leadTimeSentence()}</span>
       </div>` : order.paymentMethod === "virtual_account" && order.virtualAccount ? `
       <div class="notice" style="margin-top:28px">
         <b>${t("가상계좌 발급 완료")}</b><br>
-        ${esc(order.virtualAccount.bank || "")} ${esc(order.virtualAccount.accountNumber || "")}<br>
+        ${esc(t(order.virtualAccount.bank || ""))} ${esc(order.virtualAccount.accountNumber || "")}<br>
         ${t("입금액")} <b class="tnum">${money(order.total)}</b>
         ${order.virtualAccount.dueAt ? `· ${t("입금기한")} <b>${new Date(order.virtualAccount.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US")}</b>` : ""}<br>
         <span class="small">${t("이 계좌로 입금하시면 확인 절차 없이 자동으로 결제완료 처리됩니다.")}</span>
@@ -195,7 +208,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           ${order.items.map(i => `
             <tr>
               <td>${esc(orderItemName(i))}</td>
-              <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
+              <td style="text-align:left;color:var(--muted)">${esc(orderItemOptions(i))}</td>
               <td>${i.qty}</td>
               <td>${money(i.sum)}</td>
             </tr>`).join("")}

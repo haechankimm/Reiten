@@ -301,6 +301,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         if (b.dataset.act === "del") Cart.remove(key);
         else Cart.setQty(key, it.qty + (b.dataset.act === "inc" ? 1 : -1));
         // 담긴 상품이 바뀌면 할인액도 달라질 수 있어 다시 적용하게 한다.
+        // 예전엔 쿠폰이 말없이 빠져서 손님이 할인된 줄 알고 결제할 수 있었다 — 알려주고 입력칸도 비운다(2026-10-28 정기 감사)
+        if (appliedCoupon) {
+          toast(t("장바구니가 바뀌어 쿠폰을 다시 적용해 주세요"));
+          el("f-coupon").value = "";
+        }
         appliedCoupon = null;
         el("coupon-msg").textContent = "";
         paint();
@@ -342,6 +347,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     el("pay-note").textContent = o.formEndpoint || hasServer
       ? t("제출하면 주문서가 바로 전송됩니다.")
       : t("제출하면 주문번호와 함께 복사용 주문서가 만들어집니다. 이메일 또는 카카오톡으로 보내주세요.");
+    // 쿠폰·적립금 적용으로 합계가 0원이 되거나 다시 생기면 결제 안내·버튼 문구도 같이 바뀌어야 한다(2026-10-28 정기 감사)
+    if (!el("submit").disabled) syncPayMethodUI();
   }
 
   /* ---------- 검증 & 제출 ---------- */
@@ -349,6 +356,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     input.setAttribute("aria-invalid", String(on));
     const err = input.closest(".field").querySelector(".err");
     if (err) err.classList.toggle("on", on);
+  }
+
+  /* 재고 부족 응답의 name은 관리용 한글 상품명이라 영어·일본어 화면에선 지금 언어 상품명으로 바꾼다(2026-10-28 정기 감사) */
+  function stockItemName(body) {
+    const p = body && body.productId ? getProduct(body.productId) : null;
+    return p ? productName(p) : (body && body.name) || "";
   }
 
   function payMethod() {
@@ -365,7 +378,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       ["f-zip", v => /^[0-9]{5}$/.test(v.trim())],
       ["f-addr", v => v.trim().length >= 5],
     ];
-    if (payMethod() === "bank") checks.push(["f-payer", v => v.trim().length >= 2]);
+    // 0원 주문은 입금할 돈이 없어 입금자명 칸을 숨긴다 — 숨긴 칸을 검사하면 제출이 막힌다(2026-10-28 정기 감사)
+    if (payMethod() === "bank" && displayTotal() > 0) checks.push(["f-payer", v => v.trim().length >= 2]);
     checks.forEach(([id, fn]) => {
       const input = el(id);
       const bad = !fn(input.value);
@@ -510,13 +524,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   function syncPayMethodUI() {
     const method = payMethod();
-    const isCard = cardPaymentEnabled && method === "card";
-    const isVbank = virtualAccountEnabled && method === "vbank";
-    el("payer-field").hidden = isCard || isVbank;
-    el("bank-notice").hidden = isCard || isVbank;
+    /* 쿠폰·적립금으로 결제할 금액이 0원이면 제출은 결제수단과 상관없이 결제창 없이 접수된다 —
+       예전엔 카드·가상계좌 칩이 눌린 채면 카드 안내가 그대로 보이고, 숨겨진 입금자명("")이 그대로
+       전송돼 서버가 "입금자명 필수"로 거절했다. 0원일 때는 결제 안내를 모두 숨기고 버튼 문구로 알린다(2026-10-28 정기 감사). */
+    const zeroTotal = displayTotal() <= 0;
+    const isCard = !zeroTotal && cardPaymentEnabled && method === "card";
+    const isVbank = !zeroTotal && virtualAccountEnabled && method === "vbank";
+    el("payer-field").hidden = zeroTotal || isCard || isVbank;
+    el("bank-notice").hidden = zeroTotal || isCard || isVbank;
     el("card-notice").hidden = !isCard;
     el("vbank-notice").hidden = !isVbank;
-    el("submit").textContent = t(isCard ? "결제하기" : isVbank ? "계좌 발급받기" : "주문서 제출");
+    el("submit").textContent = zeroTotal
+      ? t("결제할 금액 없이 주문하기")
+      : isCard ? t("결제하기") : isVbank ? t("계좌 발급받기") : t("주문서 제출");
   }
   /* 라디오 버튼 대신 상품 사이즈 선택과 같은 큰 칩 버튼으로 바꿨다 — 라디오는 너무 작고
      눈에 안 띄어서, 결제수단을 안 고르고(기본값인 무통장입금 그대로) 제출해버리는 경우가
@@ -549,7 +569,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       addr: el("f-addr").value.trim(),
       addr2: el("f-addr2").value.trim(),
       memo: el("f-memo-select").value === "__custom__" ? el("f-memo").value.trim() : el("f-memo-select").value,
-      payer: (isCard || isVbank) ? el("f-name").value.trim() : el("f-payer").value.trim(),
+      // 0원 주문은 입금자명 칸이 숨겨져 비어 있다 — 서버는 payer가 필수라 주문자 이름으로 채운다(2026-10-28 정기 감사)
+      payer: (zeroTotal || isCard || isVbank) ? el("f-name").value.trim() : el("f-payer").value.trim(),
     };
 
     const btn = el("submit");
@@ -611,7 +632,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         });
 
         if (!payResult || payResult.code !== undefined) {
-          toast((payResult && payResult.message) || t(isVbank ? "계좌 발급이 취소되었습니다" : "결제가 취소되었습니다"));
+          // 포트원(PG) 문구는 한국어 원문이라 영어·일본어 화면에서는 사전 문구로 바꾼다(app.js paymentFailText, 2026-10-28 정기 감사)
+          toast(paymentFailText(payResult, isVbank));
           btn.disabled = false;
           syncPayMethodUI();
           return;
@@ -634,7 +656,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           }
           toast(
             body.error === "OUT_OF_STOCK"
-              ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
+              ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: stockItemName(body), size: body.size })
               : apiErrorText(body, t("결제 확인에 실패했습니다"))
           );
           btn.disabled = false;
@@ -706,7 +728,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         const body = await res.json().catch(() => ({}));
         toast(
           body.error === "OUT_OF_STOCK"
-            ? t("{name} {size} 사이즈 재고가 소진되었습니다", { name: body.name, size: body.size })
+            ? t("{name} {size} 사이즈 재고가 소진되었습니다", { name: stockItemName(body), size: body.size })
             : apiErrorText(body, t("주문을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요."))
         );
         btn.disabled = false;
