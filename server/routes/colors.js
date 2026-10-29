@@ -7,6 +7,7 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { toColorDto, getPublicColors } = require("../lib/colors");
+const { isMissingColumnError } = require("../lib/pgErrors");
 
 const router = express.Router();
 
@@ -44,8 +45,25 @@ async function uniqueColorKey(label) {
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
+/* 영어·일본어 색상 이름(label_en·label_ja, 마이그레이션 044) — 관리자가 추가한 색상은 한국어 이름뿐이라 영어·일본어
+   손님에게도 한국어로 보였다(2026-10-29). 044 전이면 그 두 칸만 빼고 다시 저장하고 translationsSkipped로 알린다. */
+const optLabel = (v) => (v ? String(v).trim().slice(0, 40) || null : null);
+const TRANSLATION_COLUMNS = ["label_en", "label_ja"];
+async function saveWithTranslationFallback(run, row) {
+  let result = await run(row);
+  let translationsSkipped = false;
+  if (isMissingColumnError(result.error) && TRANSLATION_COLUMNS.some((c) => c in row)) {
+    const rest = { ...row };
+    translationsSkipped = TRANSLATION_COLUMNS.some((c) => rest[c]);
+    TRANSLATION_COLUMNS.forEach((c) => delete rest[c]);
+    result = await run(rest);
+  }
+  result.translationsSkipped = translationsSkipped;
+  return result;
+}
+
 router.post("/api/admin/colors", requireAdmin, async (req, res) => {
-  const { label, labelDe, hex } = req.body || {};
+  const { label, labelDe, labelEn, labelJa, hex } = req.body || {};
   const labelStr = String(label || "").trim().slice(0, 40);
   if (!labelStr) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
   const hexStr = String(hex || "").trim();
@@ -61,49 +79,55 @@ router.post("/api/admin/colors", requireAdmin, async (req, res) => {
 
   const { count } = await supabaseAdmin.from("product_colors").select("key", { count: "exact", head: true });
 
-  const { data, error } = await supabaseAdmin
-    .from("product_colors")
-    .insert({
+  const { data, error, translationsSkipped } = await saveWithTranslationFallback(
+    (row) => supabaseAdmin.from("product_colors").insert(row).select().single(),
+    {
       key,
       label: labelStr,
-      label_de: labelDe ? String(labelDe).trim().slice(0, 40) : null,
+      label_de: optLabel(labelDe),
+      label_en: optLabel(labelEn),
+      label_ja: optLabel(labelJa),
       hex: hexStr,
       sort_order: count ?? 0,
-    })
-    .select()
-    .single();
+    }
+  );
 
   if (error) {
     console.error("[admin/colors] 생성 실패:", error.message);
     return res.status(500).json({ error: "생성에 실패했습니다." });
   }
   logAdminAction(req, "color.create", "color", data.key, { label: data.label });
-  res.json(toColorDto(data));
+  res.json({ ...toColorDto(data), translationsSkipped });
 });
 
 router.patch("/api/admin/colors/:key", requireAdmin, async (req, res) => {
-  const { label, labelDe, hex } = req.body || {};
+  const { label, labelDe, labelEn, labelJa, hex } = req.body || {};
   const patch = { updated_at: new Date().toISOString() };
   if (label !== undefined) {
     const v = String(label || "").trim().slice(0, 40);
     if (!v) return res.status(400).json({ error: "색상 이름을 입력해 주세요." });
     patch.label = v;
   }
-  if (labelDe !== undefined) patch.label_de = labelDe ? String(labelDe).trim().slice(0, 40) : null;
+  if (labelDe !== undefined) patch.label_de = optLabel(labelDe);
+  if (labelEn !== undefined) patch.label_en = optLabel(labelEn);
+  if (labelJa !== undefined) patch.label_ja = optLabel(labelJa);
   if (hex !== undefined) {
     const v = String(hex || "").trim();
     if (!HEX_RE.test(v)) return res.status(400).json({ error: "색상 값은 #RRGGBB 형식으로 입력해 주세요." });
     patch.hex = v;
   }
 
-  const { data, error } = await supabaseAdmin.from("product_colors").update(patch).eq("key", req.params.key).select().maybeSingle();
+  const { data, error, translationsSkipped } = await saveWithTranslationFallback(
+    (row) => supabaseAdmin.from("product_colors").update(row).eq("key", req.params.key).select().maybeSingle(),
+    patch
+  );
   if (error) {
     console.error("[admin/colors] 수정 실패:", error.message);
     return res.status(500).json({ error: "수정에 실패했습니다." });
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 색상입니다." });
   logAdminAction(req, "color.update", "color", req.params.key, patch);
-  res.json(toColorDto(data));
+  res.json({ ...toColorDto(data), translationsSkipped });
 });
 
 /* 이미 어떤 활성 상품이 쓰고 있는 색상을 지우면 그 상품의 컬러 스와치가 깨지므로

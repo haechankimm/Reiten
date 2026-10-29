@@ -79,7 +79,15 @@ async function loadColors() {
     const data = await res.json();
     if (Array.isArray(data)) {
       Object.keys(COLORS).forEach((k) => delete COLORS[k]);
-      data.forEach((c) => { COLORS[c.key] = c; });
+      data.forEach((c) => {
+        COLORS[c.key] = c;
+        /* 관리자가 Works에서 넣은 영어·일본어 색상 이름을 번역 사전에 등록한다 — 새로 추가한 색상은 사전에 없어
+           영어·일본어 화면에서도 한국어로 보였다(2026-10-29, 마이그레이션 044). 비어 있으면 기존 사전 번역을 그대로 둔다. */
+        const extra = {};
+        if (c.labelEn) extra.en = c.labelEn;
+        if (c.labelJa) extra.ja = c.labelJa;
+        if (Object.keys(extra).length) I18N[c.label] = Object.assign({}, I18N[c.label], extra);
+      });
     }
   } catch (e) {}
 }

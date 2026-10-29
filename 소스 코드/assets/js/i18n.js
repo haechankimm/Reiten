@@ -2005,7 +2005,6 @@ const I18N = {
   ["영어·일본어 상품명·설명 (선택)", {"de": "Englische/japanische Produktnamen und Beschreibungen (optional)"}],
   ["비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.", {"de": "Leer lassen = auf Englisch/Japanisch erscheint die koreanische Beschreibung."}],
   ["저장했지만 DB 마이그레이션 044 전이라 영어·일본어 문구는 빠졌습니다", {"de": "Gespeichert, aber ohne englische/japanische Texte (DB-Migration 044 fehlt)"}],
-  ["DB 마이그레이션 044가 아직 실행되지 않았습니다(상품 영어·일본어 문구 저장 불가)", {"de": "DB-Migration 044 wurde noch nicht ausgeführt (englische/japanische Produkttexte können nicht gespeichert werden)"}],
   ["DB 마이그레이션 044", {"de": "DB-Migration 044"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 /* ---------- 2026-10-28 정기 감사(4): 0원 주문·사이즈 오류·취소 되돌리기 ---------- */
@@ -2165,6 +2164,14 @@ const I18N = {
   ["제주은행", {"en":"Jeju Bank","ja":"済州銀行"}],
   ["전북은행", {"en":"Jeonbuk Bank","ja":"全北銀行"}],
   ["경남은행", {"en":"Kyongnam Bank","ja":"慶南銀行"}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
+/* ---------- 2026-10-29: 색상 영어·일본어 이름(Works 색상 관리) ---------- */
+[
+  ["영어 이름 (선택)", {"de": "Englischer Name (optional)"}],
+  ["일본어 이름 (선택)", {"de": "Japanischer Name (optional)"}],
+  ["저장했지만 DB 마이그레이션 044 전이라 영어·일본어 이름은 빠졌습니다", {"de": "Gespeichert, aber ohne englische/japanische Namen, da DB-Migration 044 noch nicht ausgeführt wurde"}],
+  ["DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)", {"de": "DB-Migration 044 wurde noch nicht ausgeführt (englische/japanische Texte für Produkte und Farben können nicht gespeichert werden)"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
 /**

@@ -55,7 +55,7 @@
   }
 
   function colorSwatchRow(c) {
-    const label = esc(t(c.label)) + (c.labelDe ? ` · ${esc(c.labelDe)}` : "");
+    const label = esc(t(c.label)) + [c.labelDe, c.labelEn, c.labelJa].filter(Boolean).map((v) => ` · ${esc(v)}`).join("");
     return `
       <div class="color-manage-row" style="display:flex;align-items:center;gap:8px;padding:5px 0">
         <span style="width:18px;height:18px;flex:none;border-radius:50%;border:1px solid var(--line);background:${esc(c.hex)}"></span>
@@ -68,6 +68,8 @@
   function colorManagerFormHTML(existing) {
     const label = existing ? esc(existing.label) : "";
     const labelDe = existing && existing.labelDe ? esc(existing.labelDe) : "";
+    const labelEn = existing && existing.labelEn ? esc(existing.labelEn) : "";
+    const labelJa = existing && existing.labelJa ? esc(existing.labelJa) : "";
     const hex = existing ? existing.hex : "#8a8a8a";
     return `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px;margin-top:6px;border:1px dashed var(--line);border-radius:8px">
@@ -78,6 +80,15 @@
         <div class="field" style="margin:0;width:150px">
           <label>${esc(t("독일어 이름 (선택)"))}</label>
           <input type="text" id="cm-label-de" value="${labelDe}" maxlength="40">
+        </div>
+        <!-- 고객 화면(영어·일본어)에 보일 색상 이름 — 비워 두면 한국어 이름 그대로(2026-10-29, 마이그레이션 044) -->
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("영어 이름 (선택)"))}</label>
+          <input type="text" id="cm-label-en" value="${labelEn}" maxlength="40">
+        </div>
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("일본어 이름 (선택)"))}</label>
+          <input type="text" id="cm-label-ja" value="${labelJa}" maxlength="40">
         </div>
         <div class="field" style="margin:0">
           <label>${esc(t("색상 값"))}</label>
@@ -127,6 +138,8 @@
   async function saveColor(mode) {
     const label = el("cm-label").value.trim();
     const labelDe = el("cm-label-de").value.trim();
+    const labelEn = el("cm-label-en").value.trim();
+    const labelJa = el("cm-label-ja").value.trim();
     const hex = el("cm-hex-text").value.trim();
     if (!label) return toast(t("색상 이름을 입력해 주세요."));
     if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return toast(t("색상 값은 #RRGGBB 형식으로 입력해 주세요."));
@@ -134,7 +147,7 @@
     const isNew = mode === "new";
     const result = await adminFetch(isNew ? "/api/admin/colors" : `/api/admin/colors/${mode}`, {
       method: isNew ? "POST" : "PATCH",
-      body: JSON.stringify({ label, labelDe: labelDe || null, hex }),
+      body: JSON.stringify({ label, labelDe: labelDe || null, labelEn: labelEn || null, labelJa: labelJa || null, hex }),
     });
     if (!result) return; // adminFetch가 이미 실패 사유를 토스트로 띄움
 
@@ -142,7 +155,9 @@
     if (isNew) pfSelectedColors = [...pfSelectedColors, result.key];
     colorManagerMode = null;
     renderPfColors();
-    toast(t(isNew ? "색상을 추가했습니다." : "색상을 수정했습니다."));
+    toast(result.translationsSkipped
+      ? t("저장했지만 DB 마이그레이션 044 전이라 영어·일본어 이름은 빠졌습니다")
+      : t(isNew ? "색상을 추가했습니다." : "색상을 수정했습니다."));
   }
 
   async function deleteColor(key) {

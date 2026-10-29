@@ -31,8 +31,10 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const { error: refundErr } = await db.from("order_refunds").select("id").limit(1);
   if (confirmErr || refundErr) out.push({ level: "warn", key: "migration_043", label: "DB 마이그레이션 043이 아직 실행되지 않았습니다(부분 환불 이력·구매확정·사진 리뷰 적립이 꺼져 있음)" });
   else out.push({ level: "ok", key: "migration_043", label: "DB 마이그레이션 043" });
-  const { error: trErr } = await db.from("products").select("translations").limit(1);
-  if (trErr) out.push({ level: "warn", key: "migration_044", label: "DB 마이그레이션 044가 아직 실행되지 않았습니다(상품 영어·일본어 문구 저장 불가)" });
+  const { error: trErr0 } = await db.from("products").select("translations").limit(1);
+  // 044는 색상 영어·일본어 이름 칸(product_colors.label_en·label_ja)도 함께 만든다(2026-10-29)
+  const trErr = trErr0 || (await db.from("product_colors").select("label_en, label_ja").limit(1)).error;
+  if (trErr) out.push({ level: "warn", key: "migration_044", label: "DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)" });
   else out.push({ level: "ok", key: "migration_044", label: "DB 마이그레이션 044" });
 
   const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
