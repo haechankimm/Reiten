@@ -233,14 +233,41 @@
       const data = await res.json();
       if (Array.isArray(data)) {
         Object.keys(COLORS).forEach((k) => delete COLORS[k]);
-        data.forEach((c) => { COLORS[c.key] = c; });
+        data.forEach((c) => {
+          COLORS[c.key] = c;
+          // 관리자가 넣은 독일어 이름을 번역 사전에 등록 — 저장만 되고 화면엔 안 쓰이던 것(2026-10-28 정기 감사)
+          if (c.labelDe) I18N[c.label] = Object.assign({}, I18N[c.label], { de: c.labelDe });
+        });
       }
     } catch (e) {}
   }
 
+  /* 서버 오류 응답을 지금 언어(한국어/독일어)로 — 한국어 원문이 곧 사전 키라 t()로 바로 번역되고,
+     숫자가 끼는 문구는 서버가 함께 주는 번역 키·변수(i18n)로 번역한다(고객 사이트 apiErrorText와 같은 규칙). */
+  function serverMsg(body, fallback) {
+    if (body && body.i18n && typeof body.i18n.key === "string") {
+      // 변수(권한 이름 "주문·배송", "조회" 등)도 사전에 있으면 같이 번역한다
+      const vars = {};
+      Object.keys(body.i18n.vars || {}).forEach((k) => {
+        const v = body.i18n.vars[k];
+        vars[k] = typeof v === "string" ? t(v) : v;
+      });
+      return t(body.i18n.key, vars);
+    }
+    if (body && typeof body.error === "string" && body.error) return t(body.error);
+    return fallback;
+  }
+
+  /* 마지막 adminFetch 실패의 상태·코드 — adminFetch는 실패 시 null만 돌려줘서, 409 STALE(다른 관리자가 먼저
+     바꿈)인지 알 길이 없어 저장 화면이 옛 값을 그대로 들고 있었다(2026-10-28 정기 감사). 기존 호출부는 그대로 두고
+     필요한 곳만 이 값을 확인한다. 성공하면 null로 비운다. */
+  let lastAdminFetchError = null;
+
   async function adminFetch(path, opts) {
+    lastAdminFetchError = null;
     const token = await getAccessToken();
     if (!token) {
+      lastAdminFetchError = { status: 401, code: "" };
       toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       return null;
     }
@@ -250,14 +277,16 @@
     });
     if (!res.ok) {
       if (res.status === 401) {
+        lastAdminFetchError = { status: 401, code: "" };
         toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       } else {
         let message = "";
         let code = "";
-        try { const body = await res.json(); message = body.error || ""; code = body.code || ""; } catch (e) {}
+        try { const body = await res.json(); message = serverMsg(body, ""); code = body.code || ""; } catch (e) {}
+        lastAdminFetchError = { status: res.status, code };
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
         // PIN 토큰이 만료·무효가 되면 새로고침해서 PIN 입력 창부터 다시 띄운다.
-        if (res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) {
+        if ((res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) || code === "PIN_LOCKED") {
           clearPinToken();
           setTimeout(() => location.reload(), 900);
         }
@@ -265,6 +294,20 @@
       return null;
     }
     return res.json();
+  }
+
+  /* 목록 API를 끝까지 모아 받는다(100개씩) — 재고 화면·쿠폰 대상 상품·룩북 편집이 첫 페이지(50~100개)까지만 보여
+     그 뒤 상품·칸은 아예 다룰 수 없던 것(2026-10-28 정기 감사). path에는 ?가 이미 있어도 된다. */
+  async function adminFetchAll(path) {
+    const items = [];
+    for (let page = 1; page <= 50; page++) {
+      const sep = path.includes("?") ? "&" : "?";
+      const r = await adminFetch(`${path}${sep}page=${page}&pageSize=100`);
+      if (!r) return null;
+      items.push(...(r.items || []));
+      if (!r.items || r.items.length < 100 || items.length >= (r.total || 0)) return { items, total: r.total ?? items.length };
+    }
+    return { items, total: items.length };
   }
 
   function loadMoreHTML(hasMore, id) {

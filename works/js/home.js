@@ -95,6 +95,11 @@
      "오늘 특이사항을 다음 근무자에게 남기고 싶다"는 요청(2026-09) — 대화형이 아니라 짧은
      메모를 시간순으로 쌓아두는 게시판. 037_handoff_notes_and_calendar.sql 미실행이면 서버가
      빈 목록만 내려줘 조용히 비어 보인다(다른 선택 기능과 같은 원칙). */
+  // 쓴 사람과 메인 관리자만 삭제 버튼을 본다(서버도 같은 규칙, 2026-10-28 정기 감사)
+  function canDeleteHandoff(n) {
+    if (typeof adminMe === "undefined" || !adminMe) return false;
+    return !!adminMe.isMaster || String(n.adminEmail || "").toLowerCase() === String(adminMe.email || "").toLowerCase();
+  }
   function handoffNoteRowHTML(n) {
     return `
       <div class="panel" data-id="${esc(n.id)}" style="padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
@@ -102,7 +107,7 @@
           <div style="word-break:break-word">${esc(n.content)}</div>
           <div class="small" style="color:var(--text-muted);margin-top:4px">${esc(emailName(n.adminEmail))} · ${fmtDateTime(n.at)}</div>
         </div>
-        <button type="button" class="btn btn--sm btn--ghost handoff-delete" aria-label="${esc(t("삭제"))}">✕</button>
+        ${canDeleteHandoff(n) ? `<button type="button" class="btn btn--sm btn--ghost handoff-delete" aria-label="${esc(t("삭제"))}">✕</button>` : ""}
       </div>`;
   }
 

@@ -3,12 +3,12 @@
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAuth } = require("../lib/auth");
-const { writeLimiter } = require("../lib/rateLimiters");
+const { authLimiter } = require("../lib/rateLimiters");
 const { deleteCustomerAccount, hasActiveOrders } = require("../lib/accountDeletion");
 
 const router = express.Router();
 
-router.delete("/api/my/account", writeLimiter, requireAuth, async (req, res) => {
+router.delete("/api/my/account", requireAuth, authLimiter, async (req, res) => {
   if ((req.body || {}).confirm !== "탈퇴") return res.status(400).json({ error: "확인 문구가 올바르지 않습니다." });
 
   const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", req.user.id).maybeSingle();

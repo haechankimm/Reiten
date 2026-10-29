@@ -5,6 +5,11 @@
      같은 체크박스 다중 선택 + 상단 바 패턴(products.js 참고). */
   const selectedReviewIds = new Set();
 
+  /* DB가 돌려주는 시각은 UTC라 앞 10글자를 자르면 시작일(00:00 KST = 전날 15:00 UTC)이 하루 앞당겨 보이고, 그대로
+     저장하면 수정할 때마다 하루씩 더 당겨졌다(2026-10-28 정기 감사) — 한국 날짜로 바꿔 쓴다. */
+  function kstDay(iso) {
+    return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  }
   function stars(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
 
   function reviewCardHTML(r) {
@@ -60,10 +65,13 @@
         if (!item) return;
         const nextApproved = !item.approved;
         btn.disabled = true;
-        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
+        const saved = await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify({ approved: nextApproved }),
         });
+        btn.disabled = false;
+        if (!saved) return; // 실패(권한 없음·서버 오류)면 화면을 바꾸지 않는다(2026-10-28)
+        reviewsState.dirty = true;
         item.approved = nextApproved;
         toast(nextApproved ? t("리뷰를 승인했습니다") : t("리뷰를 숨겼습니다"));
         renderAdminReviews();
@@ -74,7 +82,7 @@
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         if (!confirm(t("이 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
-        await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!(await adminFetch(`/api/admin/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }))) return;
         reviewsState.items = reviewsState.items.filter((x) => x.id !== id);
         reviewsState.total = Math.max(0, reviewsState.total - 1);
         selectedReviewIds.delete(id);
@@ -114,12 +122,34 @@
     return params;
   }
 
+  /* 목록은 "승인 대기 먼저" 순서라, 승인·숨김을 누르면 그 리뷰가 다른 페이지 위치로 옮겨가 다음 "더 보기"에서 한 건이
+     빠지거나 겹쳤다(2026-10-28 정기 감사). 승인·숨김 뒤 더 보기는 지금까지 본 만큼 + 한 페이지를 처음부터 다시 받는다. */
   async function paintAdminReviews(loadMore = false) {
+    if (loadMore && reviewsState.dirty) {
+      const want = reviewsState.items.length + reviewsState.pageSize;
+      const params = reviewsQueryParams();
+      params.delete("page");
+      params.delete("pageSize");
+      const all = await adminFetchAll(`/api/admin/reviews?${params.toString()}`);
+      if (!all) return;
+      reviewsState.items = all.items.slice(0, want);
+      reviewsState.total = all.total;
+      reviewsState.page = Math.ceil(reviewsState.items.length / reviewsState.pageSize);
+      reviewsState.dirty = false;
+      renderAdminReviews();
+      return;
+    }
     reviewsState.page = loadMore ? reviewsState.page + 1 : 1;
     const result = await adminFetch(`/api/admin/reviews?${reviewsQueryParams().toString()}`);
     if (!result) return;
     reviewsState.total = result.total;
-    reviewsState.items = loadMore ? reviewsState.items.concat(result.items) : result.items;
+    if (loadMore) {
+      const seen = new Set(reviewsState.items.map((x) => x.id));
+      reviewsState.items = reviewsState.items.concat(result.items.filter((x) => !seen.has(x.id)));
+    } else {
+      reviewsState.items = result.items;
+      reviewsState.dirty = false;
+    }
     renderAdminReviews();
   }
 
@@ -158,7 +188,7 @@
   function couponCardHTML(c) {
     const period =
       c.startsAt || c.endsAt
-        ? `${c.startsAt ? c.startsAt.slice(0, 10) : "-"} ~ ${c.endsAt ? c.endsAt.slice(0, 10) : "-"}`
+        ? `${c.startsAt ? kstDay(c.startsAt) : "-"} ~ ${c.endsAt ? kstDay(c.endsAt) : "-"}`
         : t("기간 제한 없음");
     return `
       <div class="panel" data-code="${esc(c.code)}" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
@@ -192,10 +222,13 @@
         const code = btn.closest("[data-code]").dataset.code;
         const c = couponsState.items.find((x) => x.code === code);
         if (!c) return;
+        // 응답 전에 두 번 누르면 켜짐→꺼짐→켜짐처럼 요청이 겹쳐 최종 상태가 뒤섞였다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+        btn.disabled = true;
         const result = await adminFetch(`/api/admin/coupons/${encodeURIComponent(code)}`, {
           method: "PATCH",
           body: JSON.stringify({ active: !c.active }),
         });
+        btn.disabled = false;
         if (!result) return;
         c.active = result.active;
         renderAdminCoupons();
@@ -230,10 +263,22 @@
   }
 
   /* 적용 상품 선택 칩 — 상품 등록 폼의 컬러 칩과 같은 토글 방식. scope가 "지정 상품만"일 때만 보인다. */
+  /* 상품 탭 목록(첫 50개)을 빌려 쓰던 것을 쿠폰 전용으로 전부 불러온다 — 51번째 이후 상품은 쿠폰 대상으로 고를 수
+     없었고, 상품 권한 없는 직원은 "불러오는 중…"에서 멈췄다(2026-10-28 정기 감사). */
+  let couponProductOptions = null;
+  let couponProductsLoading = false;
   function renderCouponProductChips() {
-    const products = productsState.items;
-    if (!products.length) {
+    const products = couponProductOptions || [];
+    if (!couponProductOptions) {
       el("cp-products").innerHTML = `<p class="small">${esc(t("상품 목록을 불러오는 중입니다…"))}</p>`;
+      if (!couponProductsLoading) {
+        couponProductsLoading = true;
+        adminFetchAll("/api/admin/products").then((r) => {
+          couponProductsLoading = false;
+          couponProductOptions = r ? r.items : [];
+          renderCouponProductChips();
+        });
+      }
       return;
     }
     el("cp-products").innerHTML = products
@@ -279,8 +324,8 @@
     el("cp-scope").value = c.scope;
     el("cp-min-subtotal").value = c.minSubtotal || 0;
     el("cp-usage-limit").value = c.usageLimit || "";
-    el("cp-starts").value = c.startsAt ? c.startsAt.slice(0, 10) : "";
-    el("cp-ends").value = c.endsAt ? c.endsAt.slice(0, 10) : "";
+    el("cp-starts").value = c.startsAt ? kstDay(c.startsAt) : "";
+    el("cp-ends").value = c.endsAt ? kstDay(c.endsAt) : "";
     el("cp-active").checked = c.active;
     el("cp-cancel").hidden = false;
     syncCouponScopeUI();

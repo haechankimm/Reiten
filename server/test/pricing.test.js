@@ -134,3 +134,21 @@ test("orderNo — UTC 서버에서도 KST 날짜로 찍힌다(KST 01시 = UTC �
   assert.ok(orderNo(1, new Date("2026-08-05T14:59:00Z")).startsWith("R260805-"));
   assert.ok(orderNo(1, new Date("2026-08-05T15:00:00Z")).startsWith("R260806-"));
 });
+
+test("hasPhysicalProduct — 참(charm-*)만 담긴 주문은 거절 대상", () => {
+  const { hasPhysicalProduct } = require("../lib/pricing");
+  assert.strictEqual(hasPhysicalProduct([{ productId: "charm-heart", charm: { key: "heart" }, qty: 3 }]), false);
+  assert.strictEqual(hasPhysicalProduct([]), false);
+  assert.strictEqual(hasPhysicalProduct(null), false);
+  assert.strictEqual(hasPhysicalProduct([{ productId: "" }]), false);
+  assert.strictEqual(hasPhysicalProduct([{ productId: "charm-star" }, { productId: "core-zip-hoodie", size: "M" }]), true);
+});
+
+test("priceItem — 사이즈가 있는 상품은 사이즈가 없거나 목록에 없으면 거부, 상품명은 서버 한글명(2026-10-28)", () => {
+  const products = [{ id: "core-zip-hoodie", price: 119000, sizes: ["S", "M"], nameKo: "코어 집업" }];
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: 1 }, products, PRICE_OPTS), null);
+  assert.equal(priceItem({ productId: "core-zip-hoodie", qty: 1, size: "XXL" }, products, PRICE_OPTS), null);
+  const ok = priceItem({ productId: "core-zip-hoodie", qty: 1, size: "M", name: "Core Zip (EN)" }, products, PRICE_OPTS);
+  assert.equal(ok.unit, 119000);
+  assert.equal(ok.name, "코어 집업");
+});

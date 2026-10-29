@@ -17,27 +17,62 @@ async function hasActiveOrders(userId) {
     .select("order_no", { count: "exact", head: true })
     .eq("user_id", userId)
     .in("status", ACTIVE_ORDER_STATUSES);
-  return !error && (count || 0) > 0;
+  // 확인이 실패하면 "진행 중 주문 있음"으로 본다 — 예전엔 DB 오류 때 탈퇴가 그냥 진행됐다(2026-10-28)
+  if (error) return true;
+  return (count || 0) > 0;
 }
+
+/* 정리 → 계정 삭제 순서는 그대로지만(외래키 때문에 먼저 끊어야 함), 계정 삭제가 실패하면 끊었던 연결과 적립금 원장을
+   되돌린다 — 예전엔 마지막 단계만 실패해도 계정은 남았는데 주문 내역·적립금만 사라졌다(2026-10-28 정기 감사). */
+const UNLINK_TABLES = [
+  { table: "orders", key: "order_no" },
+  { table: "return_requests", key: "id" },
+  { table: "qna", key: "id" },
+  { table: "pending_payments", key: "payment_id" },
+];
 
 async function deleteCustomerAccount(userId) {
   const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId);
   const email = userData && userData.user ? (userData.user.email || "").toLowerCase() : "";
 
+  // ① 되돌릴 수 있게 지금 연결된 행과 적립금 원장을 기억해 둔다
+  const linked = {};
+  for (const { table, key } of UNLINK_TABLES) {
+    const { data, error } = await supabaseAdmin.from(table).select(key).eq("user_id", userId);
+    if (!tolerable(error)) return { ok: false, error: "연결된 기록 정리에 실패했습니다: " + error.message };
+    linked[table] = (data || []).map((r) => r[key]);
+  }
+  const { data: ledgerRows, error: ledgerReadErr } = await supabaseAdmin.from("loyalty_points_ledger").select("*").eq("user_id", userId);
+  if (!tolerable(ledgerReadErr)) return { ok: false, error: "연결된 기록 정리에 실패했습니다: " + ledgerReadErr.message };
+
+  async function rollback() {
+    for (const { table, key } of UNLINK_TABLES) {
+      const ids = linked[table] || [];
+      if (ids.length) await supabaseAdmin.from(table).update({ user_id: userId }).in(key, ids);
+    }
+    if (ledgerRows && ledgerRows.length) await supabaseAdmin.from("loyalty_points_ledger").insert(ledgerRows);
+  }
+
+  // ② 연결 끊기·원장 삭제
   const steps = [
-    supabaseAdmin.from("orders").update({ user_id: null }).eq("user_id", userId),
-    supabaseAdmin.from("return_requests").update({ user_id: null }).eq("user_id", userId),
-    supabaseAdmin.from("qna").update({ user_id: null }).eq("user_id", userId),
-    supabaseAdmin.from("pending_payments").update({ user_id: null }).eq("user_id", userId),
+    ...UNLINK_TABLES.map(({ table }) => supabaseAdmin.from(table).update({ user_id: null }).eq("user_id", userId)),
     supabaseAdmin.from("loyalty_points_ledger").delete().eq("user_id", userId),
   ];
-  if (email) steps.push(supabaseAdmin.from("restock_subscriptions").delete().eq("email", email));
   const results = await Promise.all(steps);
   const failed = results.find((r) => !tolerable(r.error));
-  if (failed) return { ok: false, error: "연결된 기록 정리에 실패했습니다: " + failed.error.message };
+  if (failed) {
+    await rollback();
+    return { ok: false, error: "연결된 기록 정리에 실패했습니다: " + failed.error.message };
+  }
 
+  // ③ 계정 삭제 — 실패하면 되돌린다
   const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-  if (error) return { ok: false, error: "계정 삭제에 실패했습니다: " + error.message };
+  if (error) {
+    await rollback();
+    return { ok: false, error: "계정 삭제에 실패했습니다: " + error.message };
+  }
+  // ④ 품절 알림 신청은 계정이 실제로 지워진 뒤에 정리(개인정보)
+  if (email) await supabaseAdmin.from("restock_subscriptions").delete().eq("email", email);
   return { ok: true };
 }
 

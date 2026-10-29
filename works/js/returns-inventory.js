@@ -1,6 +1,8 @@
   const REQUEST_TYPE_LABEL = { return: "반품", exchange: "교환", cancel: "주문취소 신청" };
   const REQUEST_TYPE_CLASS = { return: "st-neutral", exchange: "st-neutral", cancel: "st-pending" };
 
+  /* 신청 사유(r.reason)는 고객 신청 폼의 고정 한국어 선택지라 사전 키 그대로 t()로 번역한다(2026-10-28 정기 감사).
+     고객이 직접 쓴 customReason·detail은 번역하지 않는다. */
   function returnCardHTML(r) {
     const requestType = r.requestType || "return";
     return `
@@ -13,19 +15,22 @@
           <span class="small tnum">${fmtDate(r.at)}</span>
         </div>
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
-        <p style="margin-top:8px">${esc(r.reason)}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
+        <p style="margin-top:8px">${esc(t(r.reason))}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
-          <select class="admin-return-status">${RETURN_STATUSES.map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+          <select class="admin-return-status">${(RETURN_STATUSES_BY_TYPE[requestType] || RETURN_STATUSES).map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
           <select class="mini-select admin-return-assignee">${adminAssigneeOptionsHTML(r.assignedTo)}</select>
           <button type="button" class="btn btn--sm admin-return-save">${esc(t("저장"))}</button>
-          ${
-            r.restocked
-              ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>`
-              : `<button type="button" class="btn btn--sm btn--ghost admin-return-restock">${esc(t("재고 복원"))}</button>`
-          }
-          ${r.refunded ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
+          ${requestType === "return" && !r.refunded && hasAreaEdit("refunds") ? `<button type="button" class="btn btn--sm admin-return-refund">${esc(t("환불 처리"))}</button>` : ""}
+          ${requestType === "return" && !r.refunded && !hasAreaEdit("refunds") ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불은 '환불·주문취소' 권한이 있는 관리자가 처리합니다"))}</span>` : ""}
+          ${requestType === "exchange" ? `<button type="button" class="btn btn--sm admin-return-reship">${esc(t("교환 재발송"))}</button>` : ""}
+          ${requestType === "exchange" && !r.restocked ? `<button type="button" class="btn btn--sm btn--ghost admin-return-restock-lines">${esc(t("회수 상품 재고 복원"))}</button>` : ""}
+          ${r.restocked ? `<span class="small" style="color:var(--text-muted)">${esc(t("재고 복원 완료"))}</span>` : ""}
+          ${r.refunded && requestType !== "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
+          ${r.refunded && requestType === "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("주문 취소 처리됨"))}</span>` : ""}
         </div>
+        ${r.reshipTrackingNo ? `<p class="small" style="margin-top:6px">${esc(t("재발송"))}: ${esc(t((COURIERS.find((c) => c.key === r.reshipCourier) || {}).label || r.reshipCourier || ""))} ${esc(r.reshipTrackingNo)}</p>` : ""}
+        ${requestType === "cancel" && r.status !== "완료" && r.status !== "반려" ? `<p class="small" style="margin-top:6px;color:var(--text-muted)">${esc(t("'완료'로 저장하면 주문이 실제로 취소되고 재고 복원·환불까지 자동으로 처리됩니다(출고 전 주문만)."))}</p>` : ""}
         <textarea class="admin-return-note" rows="2" style="margin-top:8px" placeholder="${esc(t("내부 메모 (고객에게 보이지 않음)"))}" maxlength="2000">${esc(r.internalNote || "")}</textarea>
       </div>`;
   }
@@ -47,13 +52,25 @@
         const assignedTo = card.querySelector(".admin-return-assignee").value;
         const internalNote = card.querySelector(".admin-return-note").value.trim();
         const prevItem = returnsState.items.find((x) => x.id === id);
+        const type = (prevItem && prevItem.requestType) || "return";
+        if (type === "return" && status === "완료" && prevItem && !prevItem.refunded) {
+          toast(t("반품 완료는 '환불 처리' 버튼으로 진행해 주세요"));
+          return;
+        }
+        if (type === "cancel" && status === "완료" && prevItem && prevItem.status !== "완료") {
+          if (!confirm(t("주문 {orderNo}을(를) 실제로 취소합니다. 재고가 복원되고 결제된 금액은 환불됩니다(무통장은 직접 송금). 진행할까요?", { orderNo: prevItem.orderNo }))) return;
+        }
         btn.disabled = true;
         const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify({ status, assignedTo, internalNote, expectedStatus: prevItem ? prevItem.status : undefined }),
         });
         btn.disabled = false;
-        if (!result) return;
+        if (!result) {
+          // 다른 관리자가 먼저 바꿨으면(409 STALE) 옛 상태를 들고 있어 다시 저장해도 계속 실패했다 — 목록을 다시 불러온다(2026-10-28 정기 감사).
+          if (lastAdminFetchError && lastAdminFetchError.code === "STALE") paintAdminReturns();
+          return;
+        }
 
         /* 저장 버튼을 눌러도 화면이 그대로라 "정말 반영됐는지 알기 어렵다"는 피드백 — 토스트
            문구만 다르고 정작 카드의 상태 뱃지(item.status)는 갱신 안 하던 버그였다. 환불 결과와
@@ -61,17 +78,24 @@
         const item = returnsState.items.find((x) => x.id === id);
         if (item) { item.status = status; item.assignedTo = assignedTo || null; item.internalNote = internalNote || null; }
 
-        if (result.refund?.method === "card" && result.refund.ok) {
+        const c = result.cancel;
+        if (c) {
           if (item) item.refunded = true;
-          toast(t("상태를 저장하고 환불까지 완료했습니다"));
-        } else if (result.refund?.method === "card" && !result.refund.ok) {
-          toast(t("상태는 저장했지만 환불에 실패했습니다. 포트원에서 직접 확인해 주세요."));
-        } else if (result.refund?.method === "bank_manual") {
-          toast(t("상태를 저장했습니다. 무통장입금 건이라 계좌로 직접 환불해 주세요."));
+          if (c.refund === "card" && c.ok) toast(t("주문을 취소하고 카드 결제도 자동 환불했습니다"));
+          else if (c.refund === "card" && !c.ok) toast(t("주문은 취소됐지만 카드 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "virtual_account_closed" && c.ok) toast(t("주문을 취소하고 가상계좌도 폐쇄했습니다 — 아직 입금 전이라 환불할 금액은 없습니다"));
+          else if (c.refund === "virtual_account_closed" && !c.ok) toast(t("주문은 취소됐지만 가상계좌 폐쇄에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "virtual_account" && c.ok) toast(t("주문을 취소하고 입금된 금액도 자동 환불했습니다"));
+          else if (c.refund === "virtual_account" && !c.ok) toast(t("주문은 취소됐지만 가상계좌 환불에 실패했습니다 — 관리자 메일을 확인해 직접 처리해 주세요"));
+          else if (c.refund === "bank_manual") toast(t("주문을 취소했습니다 — 무통장입금은 계좌로 직접 환불해 주세요"));
+          else if (c.refund === "already_cancelled") toast(t("이미 취소된 주문이라 신청만 완료 처리했습니다"));
+          else toast(t("주문을 취소했습니다"));
         } else {
           toast(t("상태를 저장했습니다"));
         }
         renderAdminReturns();
+        // 주문 탭이 예전 상태를 들고 있으면 다음 저장 때 "다른 관리자가 수정" 오류가 났다 — 같이 새로 고친다(2026-10-28)
+        if (typeof canView === "function" && canView("orders")) paintAdminOrders();
 
         /* 다시 그린 뒤 방금 저장한 카드의 뱃지에 잠깐 테두리를 줘서 "여기가 바뀌었다"를
            명확히 보여준다(1.2초 후 자동으로 사라짐). */
@@ -83,16 +107,51 @@
       })
     );
 
-    el("admin-returns-list").querySelectorAll(".admin-return-restock").forEach((btn) =>
-      btn.addEventListener("click", async () => {
+    /* 반품 → 환불 처리 창(상품·수량·귀책·배송비 차감·재고 복원을 고르고 금액 확인 후 실행, works/js/refunds.js) */
+    el("admin-returns-list").querySelectorAll(".admin-return-refund").forEach((btn) =>
+      btn.addEventListener("click", () => {
         const id = btn.closest("[data-id]").dataset.id;
-        btn.disabled = true;
-        const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(id)}/restock`, { method: "POST" });
-        if (!result) { btn.disabled = false; return; }
         const item = returnsState.items.find((x) => x.id === id);
-        if (item) item.restocked = true;
-        toast(t("재고를 복원했습니다"));
-        renderAdminReturns();
+        if (!item) return;
+        openRefundDialog({
+          orderNo: item.orderNo, kind: "return", returnId: id,
+          onDone: (result) => {
+            item.refunded = true;
+            item.status = "완료";
+            if (result.refund && result.refund.restocked) item.restocked = true;
+            renderAdminReturns();
+            // 주문 탭이 예전 상태를 들고 있으면 다음 저장 때 "다른 관리자가 수정" 오류가 났다 — 같이 새로 고친다(2026-10-28)
+            if (typeof canView === "function" && canView("orders")) paintAdminOrders();
+          },
+        });
+      })
+    );
+
+    /* 교환 → 재발송(운송장 입력·고객 안내, 환불 없음) */
+    el("admin-returns-list").querySelectorAll(".admin-return-reship").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = returnsState.items.find((x) => x.id === id);
+        openReshipDialog({
+          returnId: id,
+          onDone: (result) => {
+            if (item) Object.assign(item, { status: "재발송", reshipCourier: result.item.reshipCourier, reshipTrackingNo: result.item.reshipTrackingNo });
+            renderAdminReturns();
+          },
+        });
+      })
+    );
+
+    /* 교환으로 돌아온 상품 중 고른 것만 재고 복원 */
+    el("admin-returns-list").querySelectorAll(".admin-return-restock-lines").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.closest("[data-id]").dataset.id;
+        const item = returnsState.items.find((x) => x.id === id);
+        if (!item) return;
+        openRestockLinesDialog({
+          orderNo: item.orderNo, returnId: id,
+          onDone: () => { item.restocked = true; renderAdminReturns(); },
+        });
       })
     );
 
@@ -166,14 +225,17 @@
      넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
   /* 컬러 하나의 사이즈 입력 한 줄(HTML 문자열) — 컬러 칩을 바꿀 때마다 이 한 줄만 다시
      그려 넣는다(카드 전체를 다시 그리지 않음, 그래서 다른 컬러의 입력값도 그대로 유지됨). */
-  function invSizeRowHTML(sizes, qtyByColorSize, color) {
+  /* pendingQty(size): 아직 저장 안 한 입력값 — 컬러 칩을 바꿨다 돌아오면 입력한 숫자가 화면에서 사라지는데 저장은
+     되던 문제(2026-10-28 정기 감사) 때문에 다시 그릴 때 저장 대기 값을 우선 보여준다. */
+  function invSizeRowHTML(sizes, qtyByColorSize, color, pendingQty) {
     return sizes
       .map((size) => {
-        const qty = qtyByColorSize.get(`${color}:${size}`) ?? 0;
+        const pending = pendingQty ? pendingQty(size) : undefined;
+        const qty = pending !== undefined ? pending : qtyByColorSize.get(`${color}:${size}`) ?? 0;
         return `
         <div class="inv-size${invSizeClass(qty)}">
           <span class="inv-size-label">${esc(size)}</span>
-          <input type="number" min="0" class="admin-inv-qty" data-color="${esc(color)}" data-size="${esc(size)}" value="${qty}">
+          <input type="number" min="0" step="1" class="admin-inv-qty" data-color="${esc(color)}" data-size="${esc(size)}" value="${qty}">
         </div>`;
       })
       .join("");
@@ -230,7 +292,7 @@
   async function paintAdminInventory() {
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
-      adminFetch("/api/admin/products?pageSize=100"),
+      adminFetchAll("/api/admin/products"),
     ]);
     if (!rows || !productsRes) return;
     // 상품 탭 권한이 없는 직원에게는 바로가기를 숨긴다(pin.js canView).
@@ -288,13 +350,19 @@
         <div class="inv-color-chips">${colorChips}</div>
         <div class="inv-card-sizes" data-active-color="${esc(activeColor)}">${invSizeRowHTML(sizes, qtyByColorSize, activeColor)}</div>
         <div class="inv-bulk-qty">
-          <input type="number" min="0" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
+          <input type="number" min="0" step="1" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
           <button type="button" class="btn btn--sm btn--ghost inv-bulk-qty-apply">${esc(t("전체 적용"))}</button>
         </div>
         <div class="inv-card-log" hidden></div>
       </div>`;
       })
       .join("");
+
+    /* 아래에서 이 컨테이너에 click·change·wheel 리스너를 붙이는데, 예전엔 로그인 때 한 번만 그려서 문제가 없었다.
+       상품 저장 뒤에도 다시 그리게 되면서(2026-10-28 정기 감사) 리스너가 겹쳐 "전체 적용"이 두 번 나가고 휠이 2씩
+       움직일 수 있어, 다시 그릴 때마다 리스너 없는 빈 컨테이너로 바꿔 끼운다. */
+    const prevBody = el("admin-inventory-body");
+    prevBody.replaceWith(prevBody.cloneNode(false));
 
     el("admin-inventory-body").innerHTML =
       legend + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-items:start">${cards}</div>`;
@@ -315,7 +383,10 @@
         card.querySelectorAll(".inv-color-chip").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
         const sizesBox = card.querySelector(".inv-card-sizes");
         sizesBox.dataset.activeColor = color;
-        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color);
+        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color, (size) => {
+          const pend = pendingChanges.get(`${card.dataset.product}:${color}:${size}`);
+          return pend ? pend.qty : undefined;
+        });
         return;
       }
 
@@ -330,9 +401,15 @@
       if (bulkBtn) {
         const card = bulkBtn.closest("[data-product]");
         const input = card.querySelector(".inv-bulk-qty-input");
+        /* 빈 칸에서 누르면 Number("")=0이라 그 컬러 전 사이즈가 0(품절)으로 저장됐다(2026-10-28 정기 감사) —
+           빈 값은 아무것도 안 하고, 소수(2.5개)도 막아 0 이상의 정수만 받는다. */
+        if (input.value.trim() === "") {
+          toast(t("0 이상의 정수를 입력해 주세요."));
+          return;
+        }
         const qty = Number(input.value);
-        if (!Number.isFinite(qty) || qty < 0) {
-          toast(t("0 이상의 숫자를 입력해 주세요."));
+        if (!Number.isInteger(qty) || qty < 0) {
+          toast(t("0 이상의 정수를 입력해 주세요."));
           return;
         }
         const productId = card.dataset.product;
@@ -384,6 +461,15 @@
       const productId = card.dataset.product;
       const color = input.dataset.color;
       const size = input.dataset.size;
+      /* 소수(2.5)·빈 칸·음수도 그대로 변경사항에 쌓였다가 저장 때 서버에서 막혀 전체가 실패했다(2026-10-28 정기 감사) —
+         0 이상의 정수가 아니면 알리고 직전 값(저장 대기 값 또는 저장된 값)으로 되돌린다. */
+      if (input.value.trim() === "" || !Number.isInteger(qty) || qty < 0) {
+        toast(t("0 이상의 정수를 입력해 주세요."));
+        const pend = pendingChanges.get(`${productId}:${color}:${size}`);
+        const meta = productMeta.get(productId);
+        input.value = pend ? pend.qty : (meta && meta.qtyByColorSize.get(`${color}:${size}`)) ?? 0;
+        return;
+      }
       pendingChanges.set(`${productId}:${color}:${size}`, { productId, color, size, qty });
       box.className = "inv-size" + invSizeClass(qty);
       updateSaveBtn();

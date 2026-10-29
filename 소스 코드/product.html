@@ -53,6 +53,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/data.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
+<script src="assets/js/sizeAdvisor.js"></script>
 <script>
   applyI18n();
   renderHeader("shop.html");
@@ -98,7 +99,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     return MEDIA.filter((m) => m.kind !== "gallery" && forColor(m, color));
   }
 
-  const initialColor = p.colors.find(c => COLORS[c]) || Object.keys(COLORS)[0];
+  /* 상품에 등록된 컬러가 팔레트(COLORS)에 하나도 없으면(관리자가 팔레트에서 삭제 등) 예전엔
+     팔레트의 첫 컬러로 대신 채워서, 이 상품에 없는 컬러로 장바구니에 담겼다. 이제는 컬러 없음(null)으로
+     두고 담기·바로 주문을 막는다(2026-10-28 정기 감사). */
+  const initialColor = p.colors.find(c => COLORS[c]) || null;
   let state = {
     color: initialColor,
     size: p.sizes.find(s => !p.soldOut.includes(s) && !outSizesForColor(initialColor).includes(s)) || p.sizes[0],
@@ -119,10 +123,86 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       : `<div class="ph" style="aspect-ratio:4/5"><span class="ph__label">${t("사진 준비중")}</span></div>`;
   }
 
+  /* ---------- 라이더 사이즈 추천 (assets/js/sizeAdvisor.js) ----------
+     입력값은 브라우저에만 저장해 다른 상품에서도 다시 안 쳐도 되게 한다(서버로 보내지 않음). */
+  const ADVISOR_KEY = "reiten_size_profile";
+  const advisor = (() => {
+    try { return { open: false, result: null, ...(JSON.parse(localStorage.getItem(ADVISOR_KEY)) || {}) }; }
+    catch (e) { return { open: false, result: null }; }
+  })();
+  advisor.open = false;
+  advisor.result = null;
+
+  function sizeAdvisorHTML() {
+    const r = advisor.result;
+    const reasonText = r && !r.error ? [
+      r.reasons.includes("protector_up") ? t("보호대 위에 입는 걸 감안해 한 치수 크게 골랐어요.") : "",
+      r.reasons.includes("fit_up") ? t("넉넉한 핏을 원하셔서 한 치수 크게 봤어요.") : "",
+      r.reasons.includes("fit_down") ? t("딱 맞는 핏을 원하셔서 한 치수 작게 봤어요.") : "",
+      r.reasons.includes("nearest_available") ? t("이 상품에 있는 사이즈 중 가장 가까운 사이즈예요.") : "",
+    ].filter(Boolean).join(" ") : "";
+    const recOut = r && !r.error && (p.soldOut.includes(r.recommended) || outSizesForColor(state.color).includes(r.recommended));
+    return `
+      <button type="button" class="link-u small" id="size-advisor-toggle" style="margin-top:12px;background:none;border:0;padding:0;cursor:pointer" aria-expanded="${advisor.open}">
+        ${esc(t("내 사이즈 추천받기 (라이더용)"))}
+      </button>
+      <div class="size-advisor" id="size-advisor" ${advisor.open ? "" : "hidden"}>
+        <div class="row-2">
+          <div class="field"><label for="sa-height">${esc(t("키 (cm)"))}</label><input id="sa-height" type="number" inputmode="numeric" min="130" max="210" value="${esc(advisor.heightCm || "")}"></div>
+          <div class="field"><label for="sa-weight">${esc(t("몸무게 (kg)"))}</label><input id="sa-weight" type="number" inputmode="numeric" min="30" max="160" value="${esc(advisor.weightKg || "")}"></div>
+        </div>
+        <div class="field">
+          <label for="sa-fit">${esc(t("원하는 핏"))}</label>
+          <select id="sa-fit">
+            <option value="fitted" ${advisor.fit === "fitted" ? "selected" : ""}>${esc(t("딱 맞게"))}</option>
+            <option value="regular" ${!advisor.fit || advisor.fit === "regular" ? "selected" : ""}>${esc(t("보통(디자인 그대로의 오버핏)"))}</option>
+            <option value="relaxed" ${advisor.fit === "relaxed" ? "selected" : ""}>${esc(t("더 넉넉하게"))}</option>
+          </select>
+        </div>
+        <label class="checkbox"><input type="checkbox" id="sa-protector" ${advisor.protector ? "checked" : ""}> <span>${esc(t("이너 프로텍터(보호대) 위에 입을 거예요"))}</span></label>
+        <button type="button" class="btn btn--sm btn--line" id="sa-run" style="margin-top:10px">${esc(t("추천 사이즈 보기"))}</button>
+        ${r && r.error ? `<p class="small" style="margin-top:10px;color:var(--danger)">${esc(t(r.error))}</p>` : ""}
+        ${r && !r.error ? `
+        <div class="notice" style="margin-top:12px">
+          <b>${esc(t("추천 사이즈"))}: ${esc(r.recommended)}</b>${r.usual !== r.recommended ? ` <span class="small">(${esc(t("평소 사이즈 {size}", { size: r.usual }))})</span>` : ""}<br>
+          ${reasonText ? `<span class="small">${esc(reasonText)}</span><br>` : ""}
+          ${recOut ? `<span class="small" style="color:var(--danger)">${esc(t("지금 고른 컬러는 이 사이즈가 품절이에요."))}</span><br>` : `<button type="button" class="btn btn--sm" id="sa-apply" style="margin-top:8px">${esc(t("{size} 선택하기", { size: r.recommended }))}</button><br>`}
+          <span class="small" style="color:var(--muted)">${esc(t("키·몸무게로 어림잡은 참고치예요. 아래 사이즈 실측표의 가슴단면도 함께 확인해 주세요."))}</span>
+        </div>` : ""}
+      </div>`;
+  }
+
+  function bindSizeAdvisor() {
+    document.getElementById("size-advisor-toggle")?.addEventListener("click", () => { advisor.open = !advisor.open; render(); });
+    document.getElementById("sa-run")?.addEventListener("click", () => {
+      advisor.heightCm = document.getElementById("sa-height").value;
+      advisor.weightKg = document.getElementById("sa-weight").value;
+      advisor.fit = document.getElementById("sa-fit").value;
+      advisor.protector = document.getElementById("sa-protector").checked;
+      /* 지금 고른 컬러에서 살 수 있는 사이즈만 추천 후보로 넘긴다 — 예전엔 품절 사이즈를 추천해 "선택하기"를 눌러도
+         담을 수 없었다. 그 컬러가 전부 품절이면 전체 사이즈로 추천하고, 아래 "이 사이즈가 품절이에요" 안내가 뜬다(2026-10-28 정기 감사). */
+      const outNow = outSizesForColor(state.color);
+      const inStock = p.sizes.filter(s => !p.soldOut.includes(s) && !outNow.includes(s));
+      advisor.result = recommendSize(advisor, { sizes: inStock.length ? inStock : p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
+      advisor.open = true;
+      try {
+        localStorage.setItem(ADVISOR_KEY, JSON.stringify({ heightCm: advisor.heightCm, weightKg: advisor.weightKg, fit: advisor.fit, protector: advisor.protector }));
+      } catch (e) {}
+      render();
+    });
+    document.getElementById("sa-apply")?.addEventListener("click", () => {
+      if (advisor.result && advisor.result.recommended) { state.size = advisor.result.recommended; render(); }
+    });
+  }
+
   function render() {
+    // 관리자가 사이즈표를 지정하지 않았거나 없는 키면 st가 undefined — 실측표 아코디언만 빼고 그린다(2026-10-28 정기 감사).
     const st = SIZE_TABLES[p.sizeTable];
     const outForColor = outSizesForColor(state.color);
-    const soldAll = p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s));
+    /* 사이즈가 아직 비어 있는 상품은 품절이 아니라 "판매 준비 중"으로 본다 — isProductFullyOutOfStock()과
+       같은 기준(빈 배열의 every()는 true라 예전엔 품절로 표시됐다). 고를 수 있는 컬러가 없으면 담을 수 없다. */
+    const noColor = !state.color;
+    const soldAll = noColor || (p.sizes.length > 0 && p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s)));
     const name = productName(p);
     const gallery = galleryFor(state.color);
     if (state.img >= gallery.length) state.img = 0;
@@ -156,7 +236,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <span class="small" style="margin:0 6px;color:var(--muted)">·</span>
           <a class="link-u small" href="qna.html?product=${encodeURIComponent(p.id)}">${t("상품 문의")}</a>
         </p>
-        <p class="lede" style="margin-top:18px">${esc(t(p.desc))}</p>
+        <p class="lede" style="margin-top:18px">${esc(productText(p, "desc"))}</p>
 
         <div class="opt">
           <div class="opt__label"><span>Color</span><b id="color-name"></b></div>
@@ -167,6 +247,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <div class="opt__label"><span>Size</span><b>${t("남녀공용 오버핏")}</b></div>
           <div class="chips" id="sizes"></div>
           ${p.modelInfo ? `<p class="small" style="margin-top:10px;color:var(--muted)">${esc(t("모델"))} · ${esc(p.modelInfo)}</p>` : ""}
+          ${sizeAdvisorHTML()}
         </div>
 
         <div class="opt">
@@ -187,7 +268,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
         <div class="buy-row">
           <button class="btn" type="button" id="add" ${soldAll ? "disabled" : ""}>
-            ${soldAll ? t("품절") : t("장바구니 담기")}
+            ${noColor ? t("구매할 수 있는 컬러가 없습니다") : soldAll ? t("품절") : t("장바구니 담기")}
           </button>
           <button class="btn btn--ghost" type="button" id="buy" ${soldAll ? "disabled" : ""}>${t("바로 주문")}</button>
           ${wishlistButtonHTML(p.id, "buy-row__wishlist")}
@@ -198,7 +279,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
              없다 — 그래서 "지금 고른 사이즈"가 아니라 "이 컬러에서 품절인 사이즈 전체"를 따로
              모아서 드롭다운으로 고르게 한다(다른 사이즈는 정상 구매 가능해도 신청 가능). */
           const outSizesNow = p.sizes.filter((s) => p.soldOut.includes(s) || outForColor.includes(s));
-          if (!outSizesNow.length) return "";
+          if (noColor || !outSizesNow.length) return "";
           return `
         <div class="notice" id="restock-notify-box" style="margin-top:20px">
           <b>${t("품절된 사이즈가 있나요?")}</b>
@@ -218,11 +299,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <button class="acc__btn" type="button" aria-expanded="true"><span>${t("제품 정보")}</span><span>+</span></button>
             <div class="acc__panel open">
               <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
-                ${p.details.map(d => `<li>${esc(t(d))}</li>`).join("")}
+                ${productDetails(p).map(d => `<li>${esc(d)}</li>`).join("")}
               </ul>
             </div>
           </div>
-          <div class="acc__item">
+          ${st ? `<div class="acc__item">
             <button class="acc__btn" type="button" aria-expanded="false"><span>${t("사이즈 실측 (cm)")}</span><span>+</span></button>
             <div class="acc__panel">
               <table class="spec">
@@ -232,7 +313,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
               <p class="small" style="margin-top:12px">${t("측정 방식에 따라 1~3cm 오차가 있을 수 있습니다.")}</p>
               <div class="ride-guide">${rideGuideHTML(p.sizeTable)}</div>
             </div>
-          </div>
+          </div>` : ""}
           <div class="acc__item">
             <button class="acc__btn" type="button" aria-expanded="false"><span>${t("세탁 · 관리")}</span><span>+</span></button>
             <div class="acc__panel">
@@ -279,7 +360,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       <button class="color-dot" type="button" data-c="${c}"
               aria-pressed="${c === state.color}" aria-label="${esc(t(COLORS[c].label))}"
               style="background:${COLORS[c].hex}"></button>`).join("");
-    document.getElementById("color-name").textContent = t(COLORS[state.color].label);
+    document.getElementById("color-name").textContent = state.color ? t(COLORS[state.color].label) : "";
     colorsEl.querySelectorAll(".color-dot").forEach(b =>
       b.addEventListener("click", () => {
         state.color = b.dataset.c;
@@ -307,6 +388,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     }).join("");
     sizesEl.querySelectorAll(".chip").forEach(b =>
       b.addEventListener("click", () => { state.size = b.dataset.s; render(); }));
+    bindSizeAdvisor();
 
     // 수량
     const qtyEl = document.getElementById("qty");
@@ -364,6 +446,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       const size = document.getElementById("restock-size").value;
       const email = document.getElementById("restock-email").value.trim();
       if (!email) return;
+      // novalidate라 형식이 틀린 주소도 그대로 서버로 갔다(서버 오류 문구만 보임) — 주문서와 같은 기준으로 먼저 확인한다(2026-10-28 정기 감사)
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast(t("이메일 형식을 확인해 주세요.")); return; }
       const btn = form.querySelector("button");
       btn.disabled = true;
       try {
@@ -373,7 +457,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           body: JSON.stringify({ productId: p.id, color: state.color, size, email }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "");
+        if (!res.ok) throw new Error(apiErrorText(data, ""));
         form.innerHTML = `<p class="small">${esc(t("신청 완료! 재입고되면 알려드릴게요."))}</p>`;
       } catch (err) {
         toast(err.message || t("신청에 실패했습니다"));
@@ -386,17 +470,25 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   render();
 
+  /* 위시리스트의 "재입고 알림 신청"은 product.html#restock-notify-box로 들어오는데, 이 상자는
+     상품을 받아온 뒤 render()가 비동기로 그려서 브라우저의 기본 앵커 스크롤 시점엔 아직 없다 —
+     그려진 뒤에 직접 스크롤한다(2026-10-28 정기 감사). */
+  if (location.hash === "#restock-notify-box") {
+    document.getElementById("restock-notify-box")?.scrollIntoView({ block: "center" });
+  }
+
   /* 검색엔진용 구조화 데이터(Product) — 컬러·사이즈를 바꿀 때마다 다시 만들 필요는 없어서
      render()가 아니라 여기서 한 번만 넣는다. 재고 0(품절)은 모든 컬러·사이즈 조합을 다 확인해서
      — soldOut(관리자가 손으로 체크한 전체 품절)과 outOfStockByColor(컬러별 실재고)를 합쳐 —
      진짜로 살 수 있는 조합이 하나도 없을 때만 OutOfStock으로 표시한다. */
-  const fullyOutOfStock = p.sizes.every((size) => p.soldOut.includes(size) || p.colors.every((c) => outSizesForColor(c).includes(size)));
+  // 카드 배지·위시리스트와 같은 판정(app.js isProductFullyOutOfStock — 사이즈·컬러가 비어 있으면 품절 아님)을 쓴다(2026-10-28 정기 감사).
+  const fullyOutOfStock = isProductFullyOutOfStock(p);
   const ld = {
     "@context": "https://schema.org/",
     "@type": "Product",
     name: productName(p),
     image: p.images.filter(Boolean).map((src) => new URL(src, location.href).href),
-    description: t(p.desc || p.short || ""),
+    description: productText(p, "desc") || productText(p, "short"),
     sku: p.id,
     brand: { "@type": "Brand", name: "REITEN" },
     offers: {
@@ -408,10 +500,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       itemCondition: "https://schema.org/NewCondition",
     },
   };
-  const ldScript = document.createElement("script");
-  ldScript.type = "application/ld+json";
-  ldScript.textContent = JSON.stringify(ld);
-  document.head.appendChild(ldScript);
+  // 서버가 이미 구조화 데이터를 넣어 보냈으면(server/lib/seo.js, 검색 로봇용) 같은 상품이 두 번 잡히지 않게 그대로 둔다.
+  if (!document.getElementById("ld-product")) {
+    const ldScript = document.createElement("script");
+    ldScript.type = "application/ld+json";
+    ldScript.id = "ld-product";
+    ldScript.textContent = JSON.stringify(ld);
+    document.head.appendChild(ldScript);
+  }
 
   // 추천
   const also = PRODUCTS.filter(x => x.id !== p.id).slice(0, 4);

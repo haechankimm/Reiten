@@ -48,9 +48,16 @@
   }
 
   const ORDER_STATUSES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
-  const RETURN_STATUSES = ["접수", "처리중", "완료", "반려"];
+  /* 반품·교환·주문취소 신청은 유형마다 쓰는 상태가 다르다(2026-10-02, 서버 routes/returns.js와 같은 표).
+     반품 "완료"는 환불 처리 창에서만, 교환은 "재발송" 단계가 있고, 취소 신청 "완료"는 실제 주문 취소. */
+  const RETURN_STATUSES_BY_TYPE = {
+    return: ["접수", "수거중", "처리중", "완료", "반려"],
+    exchange: ["접수", "수거중", "재발송", "완료", "반려"],
+    cancel: ["접수", "완료", "반려"],
+  };
+  const RETURN_STATUSES = ["접수", "수거중", "처리중", "재발송", "완료", "반려"];
   const ORDER_STATUS_CLASS = { "입금대기": "st-pending", "입금확인": "st-confirmed", "배송중": "st-shipping", "완료": "st-done", "취소": "st-neutral" };
-  const RETURN_STATUS_CLASS = { "접수": "st-pending", "처리중": "st-confirmed", "완료": "st-done", "반려": "st-neutral" };
+  const RETURN_STATUS_CLASS = { "접수": "st-pending", "수거중": "st-shipping", "처리중": "st-confirmed", "재발송": "st-shipping", "완료": "st-done", "반려": "st-neutral" };
 
   /* 날짜만으로는 "오늘 들어온 주문 중 어느 게 먼저인지" 구분이 안 된다는 피드백 — 시:분까지
      함께 보여준다(초 단위는 목록에서 불필요한 정보라 뺌). */

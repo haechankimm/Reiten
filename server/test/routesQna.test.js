@@ -60,7 +60,7 @@ test("POST /api/qna — general 문의는 성공하고, 비밀글이 아니면 �
 
 test("POST /api/qna — 비밀글은 목록 조회 시 본인/관리자가 아니면 내용이 가려진다", async () => {
   const app = buildApp();
-  await request(app).post("/api/qna").send({ productId: "reflect-heart-hoodie", name: "익명", question: "환불 언제 되나요?", secret: true });
+  await request(app).post("/api/qna").send({ productId: "reflect-heart-hoodie", name: "익명", question: "환불 언제 되나요?", secret: true, email: "anon@example.com" });
 
   const publicView = await request(app).get("/api/qna");
   assert.strictEqual(publicView.body[0].question, null);
@@ -68,7 +68,7 @@ test("POST /api/qna — 비밀글은 목록 조회 시 본인/관리자가 아�
 
 test("GET /api/admin/qna — 인증 없으면 401, 있으면 비밀글 내용도 그대로 보인다", async () => {
   const app = buildApp();
-  await request(app).post("/api/qna").send({ productId: "general", name: "익명", question: "비밀 문의", secret: true });
+  await request(app).post("/api/qna").send({ productId: "general", name: "익명", question: "비밀 문의", secret: true, email: "anon@example.com" });
 
   const unauth = await request(app).get("/api/admin/qna");
   assert.strictEqual(unauth.status, 401);
@@ -112,4 +112,51 @@ test("CS 템플릿 CRUD — 등록·조회·삭제가 전부 정상 동작한다
 
   const listedAfter = await request(app).get("/api/admin/qna-templates").set("Authorization", `Bearer ${TOKEN}`);
   assert.strictEqual(listedAfter.body.items.length, 0);
+});
+
+/* 2026-10-02 노출 감사 — 공개 목록은 관리자 전용 필드(내부 메모·담당자·연락 이메일)를 절대 내려주면 안 된다. */
+test("GET /api/qna — 내부 메모·담당자·이메일은 공개 목록에 없다(비밀글·일반글 모두)", async () => {
+  supabaseAdmin.__reset({
+    profiles: [{ id: ADMIN.id, role: "admin" }],
+    qna: [
+      { id: "q1", product_id: "general", name: "A", question: "비밀", secret: true, internal_note: "진상", assigned_to: "staff-1", email: "a@x.com", created_at: "2026-10-01T00:00:00Z" },
+      { id: "q2", product_id: "general", name: "B", question: "공개", secret: false, internal_note: "메모", assigned_to: "staff-2", email: "b@x.com", created_at: "2026-10-02T00:00:00Z" },
+    ],
+  });
+  const res = await request(buildApp()).get("/api/qna");
+  assert.strictEqual(res.status, 200);
+  for (const item of res.body) {
+    assert.ok(!("internalNote" in item), "internalNote 노출");
+    assert.ok(!("assignedTo" in item), "assignedTo 노출");
+    assert.ok(!("email" in item), "email 노출");
+  }
+  const secret = res.body.find((x) => x.id === "q1");
+  assert.strictEqual(secret.question, null);
+});
+
+test("GET /api/admin/qna — 관리자 목록에는 내부 메모·담당자가 그대로 있다", async () => {
+  supabaseAdmin.__reset({
+    profiles: [{ id: ADMIN.id, role: "admin" }],
+    qna: [{ id: "q1", product_id: "general", name: "A", question: "비밀", secret: true, internal_note: "진상", assigned_to: "staff-1", created_at: "2026-10-01T00:00:00Z" }],
+  });
+  const res = await request(buildApp()).get("/api/admin/qna").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.items[0].internalNote, "진상");
+  assert.strictEqual(res.body.items[0].assignedTo, "staff-1");
+  assert.strictEqual(res.body.items[0].question, "비밀");
+});
+
+test("POST /api/qna — 비회원 비밀글은 이메일 필수, 이메일은 저장되지만 공개 목록엔 안 나온다", async () => {
+  const app = buildApp();
+  const noEmail = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true });
+  assert.strictEqual(noEmail.status, 400);
+  const badEmail = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true, email: "not-an-email" });
+  assert.strictEqual(badEmail.status, 400);
+  const ok = await request(app).post("/api/qna").send({ productId: "general", name: "손님", question: "비밀 질문", secret: true, email: "guest@example.com" });
+  assert.strictEqual(ok.status, 200);
+  assert.ok(!("email" in ok.body));
+  const stored = (await supabaseAdmin.from("qna").select("*")).data[0];
+  assert.strictEqual(stored.email, "guest@example.com");
+  const admin = await request(app).get("/api/admin/qna").set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(admin.body.items[0].email, "guest@example.com", "관리자 화면에는 연락 이메일이 보인다");
 });

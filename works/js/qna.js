@@ -19,6 +19,8 @@
           <span class="small tnum">${fmtDate(q.at)}</span>
         </div>
         <div class="small" style="margin-top:6px">${esc(q.productId)} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
+        ${q.email ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("답변을 등록하면 {email}로 안내 메일이 갑니다", { email: q.email }))}</div>`
+          : q.hasAccount ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("회원 문의 — 답변을 등록하면 계정 이메일로 안내 메일이 갑니다"))}</div>` : ""}
         <p style="margin-top:10px">${esc(q.question)}</p>
         ${
           q.status === "답변완료"

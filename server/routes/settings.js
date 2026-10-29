@@ -4,18 +4,35 @@
    돈·재고를 건드리지 않는 순수 CRUD라 server.js 본체에서 가장 먼저 분리한 라우트 그룹 중 하나. */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
-const { requireAdmin } = require("../lib/auth");
+const { requireAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
+const { hasAreaPermission } = require("../lib/adminGuard");
 const { logAdminAction } = require("../lib/adminLog");
 const { PROTECTED_SETTING_LABELS: THANKS_COUPON_PROTECTED_LABELS } = require("../lib/thanksCoupons");
 const { LOYALTY_POINTS_RATE_SETTING_LABEL } = require("../lib/loyaltyPoints");
 const { ADMIN_ALERT_WEBHOOK_SETTING_LABEL } = require("../lib/adminWebhook");
+const { REVIEW_PHOTO_POINTS_SETTING_LABEL } = require("../lib/reviewRewards");
 
 // 감사쿠폰 라벨 + 적립금 적립률 라벨 + 긴급 알림 웹훅 URL 라벨 — 전부 admin_settings의 자유
 // 텍스트 label을 정확히 문자열 매칭해서 읽는 서버 로직이 있어(server.js/lib/loyaltyPoints.js/
 // lib/adminWebhook.js), 이름만 보호한다(값은 자유).
-const PROTECTED_SETTING_LABELS = [...THANKS_COUPON_PROTECTED_LABELS, LOYALTY_POINTS_RATE_SETTING_LABEL, ADMIN_ALERT_WEBHOOK_SETTING_LABEL];
+const PROTECTED_SETTING_LABELS = [...THANKS_COUPON_PROTECTED_LABELS, LOYALTY_POINTS_RATE_SETTING_LABEL, ADMIN_ALERT_WEBHOOK_SETTING_LABEL, REVIEW_PHOTO_POINTS_SETTING_LABEL];
 
 const router = express.Router();
+
+/* 보호 항목(적립률·감사쿠폰 할인율·사진 리뷰 적립금·긴급 알림 웹훅 주소)은 돈이 나가거나 알림이 어디로 갈지를 정하는
+   값이라 대표만 만들고 고칠 수 있다 — "정보" 권한만 있는 직원이 적립률을 100%로 바꾸거나 알림을 외부 주소로 돌릴 수
+   있었다. 같은 이름이 두 개 생기면 읽는 쪽이 조용히 기본값으로 돌아가므로 중복도 막는다(2026-10-28 정기 감사). */
+function isMaster(req) {
+  return ((req.user && req.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL;
+}
+function redactSecret(row) {
+  return row && row.label === ADMIN_ALERT_WEBHOOK_SETTING_LABEL && row.value ? { ...row, value: "(메인 관리자만 볼 수 있음)" } : row;
+}
+const MASTER_ONLY_SETTING = "이 항목은 적립금·쿠폰·긴급 알림에 쓰이는 값이라 메인 관리자만 바꿀 수 있습니다.";
+async function protectedLabelTaken(label, exceptId) {
+  const { data } = await supabaseAdmin.from("admin_settings").select("id").eq("label", label);
+  return (data || []).some((r) => String(r.id) !== String(exceptId || ""));
+}
 
 function toSettingDto(row) {
   return {
@@ -30,13 +47,18 @@ function toSettingDto(row) {
 router.get("/api/admin/settings", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin.from("admin_settings").select("*").order("sort_order", { ascending: true });
   if (error) return res.status(500).json({ error: "정보를 불러오지 못했습니다." });
-  res.json(data.map(toSettingDto));
+  // 긴급 알림 웹훅 주소는 그 주소만 알면 채널에 글을 쓸 수 있는 비밀값이라 대표에게만 보여준다(2026-10-28)
+  res.json(data.map((r) => (isMaster(req) ? r : redactSecret(r))).map(toSettingDto));
 });
 
 router.post("/api/admin/settings", requireAdmin, async (req, res) => {
   const { label, value, note, sortOrder } = req.body || {};
   const labelStr = String(label || "").trim().slice(0, 80);
   if (!labelStr) return res.status(400).json({ error: "이름을 입력해 주세요." });
+  if (PROTECTED_SETTING_LABELS.includes(labelStr)) {
+    if (!isMaster(req)) return res.status(403).json({ error: MASTER_ONLY_SETTING, code: "MASTER_ONLY" });
+    if (await protectedLabelTaken(labelStr)) return res.status(409).json({ error: "같은 이름의 항목이 이미 있습니다 — 기존 항목의 값을 수정해 주세요." });
+  }
 
   const { data, error } = await supabaseAdmin
     .from("admin_settings")
@@ -72,7 +94,15 @@ router.patch("/api/admin/settings/:id", requireAdmin, async (req, res) => {
     if (current && PROTECTED_SETTING_LABELS.includes(current.label) && v !== current.label) {
       return res.status(400).json({ error: "이 항목은 자동 쿠폰 발급에 쓰이고 있어 이름을 바꿀 수 없습니다 — 값만 수정해 주세요." });
     }
+    if (PROTECTED_SETTING_LABELS.includes(v) && (!current || current.label !== v)) {
+      if (!isMaster(req)) return res.status(403).json({ error: MASTER_ONLY_SETTING, code: "MASTER_ONLY" });
+      if (await protectedLabelTaken(v, req.params.id)) return res.status(409).json({ error: "같은 이름의 항목이 이미 있습니다 — 기존 항목의 값을 수정해 주세요." });
+    }
     patch.label = v;
+  }
+  if (!isMaster(req) && (value !== undefined || note !== undefined)) {
+    const { data: cur } = await supabaseAdmin.from("admin_settings").select("label").eq("id", req.params.id).maybeSingle();
+    if (cur && PROTECTED_SETTING_LABELS.includes(cur.label)) return res.status(403).json({ error: MASTER_ONLY_SETTING, code: "MASTER_ONLY" });
   }
   if (value !== undefined) patch.value = String(value || "").trim().slice(0, 500);
   if (note !== undefined) patch.note = String(note || "").trim().slice(0, 300);
@@ -108,10 +138,11 @@ router.get("/api/admin/backup/export", requireAdmin, async (req, res) => {
   const backup = {
     exportedAt: new Date().toISOString(),
     products: products.data,
-    coupons: coupons.data,
-    adminSettings: settings.data,
+    // 쿠폰 권한이 없는 직원에게는 쿠폰 코드(고객별 감사 쿠폰 포함)를 내보내지 않는다(2026-10-28 정기 감사)
+    coupons: isMaster(req) || (await hasAreaPermission(req, "coupons", "view")) ? coupons.data : [],
+    adminSettings: isMaster(req) ? settings.data : settings.data.map(redactSecret),
   };
-  const filename = `reiten-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const filename = `reiten-backup-${require("../lib/kst").kstDateKey(new Date())}.json`;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(JSON.stringify(backup, null, 2));

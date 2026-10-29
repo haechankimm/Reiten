@@ -70,7 +70,7 @@
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("사진 업로드에 실패했습니다"));
+        toast(serverMsg(body, t("사진 업로드에 실패했습니다")));
         return;
       }
       const { url } = await res.json();
@@ -153,7 +153,7 @@
   el("lf-delete").addEventListener("click", async () => {
     if (!lfEditingId) return;
     if (!confirm(t("이 룩북 칸을 삭제하시겠습니까? 되돌릴 수 없습니다."))) return;
-    await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "DELETE" });
+    if (!(await adminFetch(`/api/admin/lookbook/${encodeURIComponent(lfEditingId)}`, { method: "DELETE" }))) return;
     toast(t("삭제했습니다"));
     resetLookbookForm();
     paintAdminLookbook();
@@ -191,10 +191,11 @@
 
   async function paintAdminLookbook(loadMore = false) {
     lookbookState.page = loadMore ? lookbookState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/lookbook?page=${lookbookState.page}&pageSize=${lookbookState.pageSize}`);
+    // 룩북 편집 화면은 실제 페이지와 같은 배치를 보여줘야 해서 전부 불러온다(예전엔 50칸까지만, 2026-10-28)
+    const result = await adminFetchAll("/api/admin/lookbook");
     if (!result) return;
     lookbookState.total = result.total;
-    lookbookState.items = loadMore ? lookbookState.items.concat(result.items) : result.items;
+    lookbookState.items = result.items;
     renderLookbookVisual();
   }
 

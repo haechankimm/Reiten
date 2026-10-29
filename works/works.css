@@ -113,7 +113,9 @@
   }
   .nav-group-header:hover { background: var(--group-bg, var(--bg-surface-2)); }
   .nav-group-chevron { width: 12px; height: 12px; flex-shrink: 0; transition: transform .15s ease; opacity: .85; }
-  .nav-group-header[aria-expanded="false"] .nav-group-chevron { transform: rotate(-90deg); }
+  /* 아이콘 경로(M9 6l6 6-6 6)는 원래 오른쪽(›)을 가리킨다 — 예전엔 펼침=오른쪽, 접힘=위쪽(-90deg)으로 보여 방향이
+     거꾸로였다(2026-10-28 정기 감사). 펼침은 아래(90deg), 접힘은 원래 모양 그대로 오른쪽. */
+  .nav-group-header[aria-expanded="true"] .nav-group-chevron { transform: rotate(90deg); }
   .nav-group-body { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
   .nav-group-body[hidden] { display: none; }
   .nav-item--home { margin-bottom: 4px; }
@@ -269,9 +271,12 @@
   .split-rev { display: grid; grid-template-columns: 1.3fr 380px; gap: 20px; align-items: start; }
   @media (max-width: 960px) { .split-rev { grid-template-columns: 1fr; } }
   .plist { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%;
+  /* 독일어 상태 칩·결제수단이 길어 1440px에서도 오른쪽 칸이 목록 밖으로 넘쳤다(2026-10-28 정기 감사) —
+     두 칸 모두 minmax(0, …)로 줄어들 수 있게 하고, 칸 안의 글이 칸을 밀어내지 않도록 min-width:0을 준다. */
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 8px; width: 100%;
     appearance: none; border: none; border-bottom: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
     padding: 10px 12px; cursor: pointer; text-align: left; border-left: 2px solid transparent; }
+  .prow > * { min-width: 0; overflow-wrap: anywhere; }
   .plist > .prow:last-of-type { border-bottom: none; }
   .prow:hover { background: var(--bg-surface); }
   .prow.is-selected { background: var(--accent-soft); border-left-color: var(--accent); }
@@ -439,6 +444,15 @@
   .dlg-card .field { margin-bottom: 12px; }
   .dlg-card .pin-input { letter-spacing: .5em; text-align: center; font-size: 20px; }
   .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  /* 환불 처리·교환 재발송 창(works/js/refunds.js) — PIN 창보다 넓고, 내용이 길면 창 안에서 스크롤 */
+  .dlg-card--wide { width: min(94vw, 560px); max-height: 88vh; overflow-y: auto; }
+  .refund-lines { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+  .refund-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .refund-line select { width: 72px; flex: none; }
+  .refund-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; font-size: 12.5px; }
+  .refund-opts label { display: flex; gap: 6px; align-items: center; }
+  .refund-preview { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg-surface-2); margin: 8px 0; }
+  .refund-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
   .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px; margin-top: 12px; }
   .perm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
   .perm-row select { height: 30px; padding: 0 8px; }

@@ -53,6 +53,14 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
             <p class="err" data-i18n="연락처를 입력해 주세요.">연락처를 입력해 주세요.</p>
           </div>
         </div>
+        <!-- 반품인지 교환인지 받지 않아 모든 신청이 "반품"으로 접수됐다 — 서버 requestType(return/exchange)을 고르게 한다(2026-10-28 정기 감사) -->
+        <div class="field">
+          <label for="rq-type" data-i18n-html data-i18n='신청 유형 <span class="req">*</span>'>신청 유형 <span class="req">*</span></label>
+          <select id="rq-type" required>
+            <option value="return" data-i18n="반품" selected>반품</option>
+            <option value="exchange" data-i18n="교환">교환</option>
+          </select>
+        </div>
         <div class="field">
           <label for="rq-reason" data-i18n-html data-i18n='사유 <span class="req">*</span>'>사유 <span class="req">*</span></label>
           <select id="rq-reason" required>
@@ -71,6 +79,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         <div class="field">
           <label for="rq-detail" data-i18n="상세 내용">상세 내용</label>
           <textarea id="rq-detail" placeholder="교환하실 사이즈, 불량 부위 등을 적어주세요" data-i18n-attr="placeholder:교환하실 사이즈, 불량 부위 등을 적어주세요"></textarea>
+          <p class="small" style="margin-top:8px;color:var(--muted)" data-i18n="여러 상품 중 일부만 반품·교환하실 때는 상품명과 수량을 적어 주세요. 단순 변심 반품은 왕복 배송비가 환불 금액에서 차감되고, 상품 하자·오배송은 배송비를 판매자가 부담합니다.">여러 상품 중 일부만 반품·교환하실 때는 상품명과 수량을 적어 주세요. 단순 변심 반품은 왕복 배송비가 환불 금액에서 차감되고, 상품 하자·오배송은 배송비를 판매자가 부담합니다.</p>
         </div>
         <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="신청하기">신청하기</button>
       </form>
@@ -149,11 +158,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           reason: el("rq-reason").value,
           customReason: isOther ? custom.value.trim() : "",
           detail: el("rq-detail").value.trim(),
+          requestType: el("rq-type").value === "exchange" ? "exchange" : "return",
         }),
       });
       if (!res.ok) {
         let message = "";
-        try { message = (await res.json()).error || ""; } catch (e) {}
+        try { message = apiErrorText(await res.json(), ""); } catch (e) {}
         toast(message || t("접수에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
         btn.disabled = false;
         return;

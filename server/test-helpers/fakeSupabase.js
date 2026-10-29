@@ -64,6 +64,20 @@ class FakeQuery {
     }
     return this;
   }
+  /* 배송추적·구매확정 크론(lib/purchaseConfirm.js, 2026-10-02)이 쓰는 비교 필터 — is(null)·neq·lt·lte·gt·gte.
+     ISO 날짜 문자열은 사전순 비교가 시간순과 같아 그대로 비교한다. */
+  is(col, val) { return this._cmp(col, "is", val); }
+  not(col, op, val) { return this._cmp(col, op === "is" ? "notis" : "neq", val); }
+  neq(col, val) { return this._cmp(col, "neq", val); }
+  lt(col, val) { return this._cmp(col, "lt", val); }
+  lte(col, val) { return this._cmp(col, "lte", val); }
+  gt(col, val) { return this._cmp(col, "gt", val); }
+  gte(col, val) { return this._cmp(col, "gte", val); }
+  _cmp(col, op, val) {
+    this.cmpFilters = this.cmpFilters || [];
+    this.cmpFilters.push([col, op, val]);
+    return this;
+  }
   order(col, opts = {}) {
     this.orderCol = col;
     this.orderAsc = opts.ascending !== false;
@@ -119,6 +133,17 @@ class FakeQuery {
         this.filters.every(([col, val]) => r[col] === val) &&
         (this.inFilters || []).every(([col, values]) => values.includes(r[col])) &&
         (this.jsonContainsFilters || []).every(([col, needle]) => needle.every((v) => (r[col] || []).includes(v))) &&
+        (this.cmpFilters || []).every(([col, op, val]) => {
+          const v = r[col];
+          if (op === "is") return val === null ? v === null || v === undefined : v === val;
+          if (op === "notis") return val === null ? !(v === null || v === undefined) : v !== val;
+          if (op === "neq") return v !== val;
+          if (v === null || v === undefined) return false;
+          if (op === "lt") return v < val;
+          if (op === "lte") return v <= val;
+          if (op === "gt") return v > val;
+          return v >= val;
+        }) &&
         (!this.orFilters ||
           this.orFilters.some(({ col, op, pattern }) => {
             if (op !== "ilike" || !(col in r)) return false;
@@ -173,7 +198,11 @@ class FakeQuery {
   }
   then(resolve, reject) {
     try {
-      const { rows, count } = this._execute();
+      /* 실제 Supabase처럼 결과는 사본으로 돌려준다 — 저장된 행 객체를 그대로 넘기면 나중 update가 호출부가 들고 있던
+         "이전 값"까지 바꿔버려, 상태 전환 후속 처리(예: 입금확인 메일) 같은 경로가 테스트에서 아예 안 돌았다(2026-10-28). */
+      const out = this._execute();
+      const rows = typeof structuredClone === "function" ? structuredClone(out.rows) : JSON.parse(JSON.stringify(out.rows));
+      const count = out.count;
       if (this.mode === "single") {
         resolve(rows.length ? { data: rows[0], error: null } : { data: null, error: { message: "not found" } });
       } else if (this.mode === "maybeSingle") {
@@ -335,6 +364,24 @@ function createFakeSupabase(seed = {}) {
               delta: -r.delta, reason: "refund_reversal", created_at: new Date().toISOString(),
             })
           );
+        return { data: null, error: null };
+      }
+      /* restore_inventory/decrement_inventory(014_inventory_by_color.sql) 흉내 — 반품·취소 테스트용. */
+      if (fn === "restore_inventory" || fn === "decrement_inventory") {
+        if (!store.inventory) store.inventory = [];
+        for (const it of args.p_items || []) {
+          let row = store.inventory.find((r) => r.product_id === it.productId && (r.color || "") === (it.color || "") && r.size === it.size);
+          if (fn === "decrement_inventory") {
+            if (!row || row.qty < it.qty) return { data: null, error: { message: `OUT_OF_STOCK:${it.productId}:${it.color || ""}:${it.size}` } };
+            row.qty -= it.qty;
+          } else {
+            if (!row) {
+              row = { product_id: it.productId, color: it.color || "", size: it.size, qty: 0 };
+              store.inventory.push(row);
+            }
+            row.qty += it.qty;
+          }
+        }
         return { data: null, error: null };
       }
       return { data: null, error: { message: `fakeSupabase: unhandled rpc "${fn}"` } };

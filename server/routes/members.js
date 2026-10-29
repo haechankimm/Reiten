@@ -18,6 +18,8 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, requireMasterAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
+const { kstDateKey } = require("../lib/kst");
+const { isMissingSchemaError } = require("../lib/pgErrors");
 const { deleteCustomerAccount } = require("../lib/accountDeletion");
 const { DEFAULT_STAFF_PERMISSIONS, normalizePermissions, invalidateAdminCache } = require("../lib/adminGuard");
 const { paginationParams } = require("../lib/pagination");
@@ -115,16 +117,16 @@ router.get("/api/admin/members/export", requireAdmin, async (req, res) => {
     email: it.email,
     name: it.name,
     phone: it.phone,
-    createdAt: it.createdAt ? it.createdAt.slice(0, 10) : "",
+    createdAt: it.createdAt ? kstDateKey(new Date(it.createdAt)) : "",
     emailConfirmed: it.emailConfirmed ? "인증됨" : "미인증",
-    lastSignInAt: it.lastSignInAt ? it.lastSignInAt.slice(0, 10) : "없음",
+    lastSignInAt: it.lastSignInAt ? kstDateKey(new Date(it.lastSignInAt)) : "없음",
     banned: it.banned ? "차단됨" : "정상",
   });
 
   const sections = [{ title: "회원", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "customer").map(toExportRow) }];
   if (master) sections.push({ title: "관리자", columns: MEMBER_EXPORT_COLUMNS, rows: allRows.filter((r) => r.role === "admin").map(toExportRow) });
 
-  const filename = `reiten-members-${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `reiten-members-${require("../lib/kst").kstDateKey(new Date())}.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(toCsvGeneric(sections));
@@ -145,6 +147,56 @@ async function requireCustomerTarget(id, res) {
   }
   return true;
 }
+
+/* 고객 한눈에 보기(2026-10-02) — 회원 한 명의 계정 상태·주문·적립금·문의·반품을 한 번에. 상담 전화가 왔을 때
+   여러 탭을 오가지 않고 이 사람에 대해 필요한 걸 바로 보기 위한 읽기 전용 화면용. members 영역 "보기" 권한. */
+router.get("/api/admin/members/:id/overview", requireAdmin, async (req, res) => {
+  const id = req.params.id;
+  const { data: profile } = await supabaseAdmin.from("profiles").select("id, name, phone, role, created_at").eq("id", id).maybeSingle();
+  if (!profile) return res.status(404).json({ error: "회원을 찾을 수 없습니다." });
+  // 관리자 계정(대표 포함)의 주문·적립금은 회원 화면에서 열람하지 않는다(2026-10-28 정기 감사)
+  if (profile.role === "admin") return res.status(403).json({ error: "일반 회원 계정만 처리할 수 있습니다." });
+  const { data: userData } = await supabaseAdmin.auth.admin.getUserById(id);
+  const u = (userData && userData.user) || {};
+
+  const [ordersRes, ledgerRes, qnaRes, returnsRes] = await Promise.all([
+    supabaseAdmin.from("orders").select("*").eq("user_id", id).order("created_at", { ascending: false }).limit(50),
+    supabaseAdmin.from("loyalty_points_ledger").select("delta, reason, order_no, created_at").eq("user_id", id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("qna").select("id, product_id, question, status, secret, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
+    supabaseAdmin.from("return_requests").select("*").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
+  ]);
+  const orders = ordersRes.error ? [] : ordersRes.data || [];
+  const ledger = ledgerRes.error ? [] : ledgerRes.data || [];
+  const paid = orders.filter((o) => o.status !== "취소" && o.status !== "입금대기");
+
+  res.json({
+    profile: {
+      id,
+      email: u.email || "",
+      name: profile.name || "",
+      phone: profile.phone || "",
+      role: profile.role,
+      createdAt: profile.created_at,
+      lastSignInAt: u.last_sign_in_at || null,
+      emailConfirmed: !!u.email_confirmed_at,
+      banned: isUserBanned(u),
+    },
+    stats: {
+      orderCount: orders.length,
+      paidCount: paid.length,
+      paidTotal: paid.reduce((s, o) => s + (Number(o.total) || 0) - (Number(o.refunded_amount) || 0), 0),
+      cancelledCount: orders.filter((o) => o.status === "취소").length,
+      pointsBalance: ledger.reduce((s, r) => s + (Number(r.delta) || 0), 0),
+    },
+    orders: orders.map((o) => ({
+      no: o.order_no, at: o.created_at, status: o.status, total: o.total, refundedAmount: o.refunded_amount || 0,
+      items: (o.items || []).map((it) => `${it.name} × ${it.qty}`).join(", "), confirmedAt: o.confirmed_at || null,
+    })),
+    points: ledger.slice(0, 20).map((r) => ({ delta: r.delta, reason: r.reason, orderNo: r.order_no, at: r.created_at })),
+    qna: (qnaRes.error ? [] : qnaRes.data || []).map((q) => ({ id: q.id, productId: q.product_id, question: q.question, status: q.status, secret: q.secret, at: q.created_at })),
+    returns: (returnsRes.error ? [] : returnsRes.data || []).map((r) => ({ id: r.id, orderNo: r.order_no, requestType: r.request_type || "return", status: r.status, reason: r.reason, at: r.created_at })),
+  });
+});
 
 router.patch("/api/admin/members/:id/ban", requireAdmin, async (req, res) => {
   const id = req.params.id;
@@ -177,8 +229,14 @@ router.patch("/api/admin/members/:id/promote", requireMasterAdmin, async (req, r
   // 승격된 직원은 기본 권한으로 시작(이미 설정된 권한이 있으면 유지). 테이블이 없으면 조용히 건너뜀.
   const { data: existingPerm } = await supabaseAdmin.from("admin_permissions").select("user_id").eq("user_id", id).maybeSingle();
   if (!existingPerm) {
-    await supabaseAdmin.from("admin_permissions").insert({ user_id: id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS) });
+    const { error: permError } = await supabaseAdmin.from("admin_permissions").insert({ user_id: id, permissions: normalizePermissions(DEFAULT_STAFF_PERMISSIONS) });
     invalidateAdminCache(id);
+    // 권한 행 없이 운영자가 되면 전체 허용이라, 저장 실패 시 승격을 되돌린다(2026-10-28 정기 감사)
+    if (permError && !isMissingSchemaError(permError)) {
+      await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", id);
+      invalidateAdminCache(id);
+      return res.status(500).json({ error: "기본 권한 저장에 실패해 승격을 되돌렸습니다. 잠시 후 다시 시도해 주세요." });
+    }
   }
 
   logAdminAction(req, "member.promote", "member", id);

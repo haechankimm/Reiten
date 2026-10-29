@@ -185,7 +185,7 @@
           <button type="button" data-admin-lang="ko" aria-pressed="true">KO</button>
           <button type="button" data-admin-lang="de" aria-pressed="false">DE</button>
         </div>
-        <button type="button" class="icon-btn" id="theme-toggle" aria-label="테마 전환">
+        <button type="button" class="icon-btn" id="theme-toggle" aria-label="테마 전환" data-i18n-attr="aria-label:테마 전환">
           <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
           <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"/></svg>
         </button>
@@ -602,10 +602,11 @@
               <div class="field">
                 <label for="pf-type" data-i18n="타입">타입</label>
                 <select id="pf-type" required>
-                  <option value="hoodie">hoodie (후드티)</option>
-                  <option value="zip">zip (집업)</option>
-                  <option value="crop">crop (크롭)</option>
-                  <option value="tshirt">tshirt (티셔츠)</option>
+                  <!-- 타입 이름도 독일어로 보이게 data-i18n(2026-10-28 정기 감사) — 저장 값(value)은 그대로 -->
+                  <option value="hoodie" data-i18n="후드티">후드티</option>
+                  <option value="zip" data-i18n="후드집업">후드집업</option>
+                  <option value="crop" data-i18n="크롭 후드티">크롭 후드티</option>
+                  <option value="tshirt" data-i18n="티셔츠">티셔츠</option>
                 </select>
               </div>
               <div class="field">
@@ -647,6 +648,27 @@
                 <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
                 <textarea id="pf-details"></textarea>
               </div>
+              <!-- 영어·일본어 상품 문구(선택, 2026-10-28) — 비우면 한국어(또는 사전 번역)가 그대로 나온다. DB 마이그레이션 044 필요 -->
+              <details class="field" style="grid-column:1/-1" id="pf-translations">
+                <summary data-i18n="영어·일본어 상품명·설명 (선택)">영어·일본어 상품명·설명 (선택)</summary>
+                <p class="small" style="color:var(--text-muted);margin:6px 0" data-i18n="비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.">비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.</p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+                  <div>
+                    <b>English</b>
+                    <input id="pf-en-name" placeholder="Name" style="margin-top:6px">
+                    <input id="pf-en-short" placeholder="Short description" style="margin-top:6px">
+                    <textarea id="pf-en-desc" placeholder="Description" style="margin-top:6px"></textarea>
+                    <textarea id="pf-en-details" placeholder="Details (one per line)" style="margin-top:6px"></textarea>
+                  </div>
+                  <div>
+                    <b>日本語</b>
+                    <input id="pf-ja-name" placeholder="商品名" style="margin-top:6px">
+                    <input id="pf-ja-short" placeholder="一言説明" style="margin-top:6px">
+                    <textarea id="pf-ja-desc" placeholder="商品説明" style="margin-top:6px"></textarea>
+                    <textarea id="pf-ja-details" placeholder="詳細(1行に1つ)" style="margin-top:6px"></textarea>
+                  </div>
+                </div>
+              </details>
               <div class="field" style="grid-column:1/-1">
                 <label data-i18n="컬러">컬러</label>
                 <div class="chips" id="pf-colors"></div>
@@ -895,6 +917,17 @@
             <div id="alert-result" class="small" style="margin-top:10px;white-space:pre-wrap"></div>
           </div>
 
+          <!-- 운영 점검·전체 백업(마스터 전용, 2026-10-02) — 매일 아침 요약 알림도 같은 점검표를 본다 -->
+          <div class="panel" id="ops-panel" hidden>
+            <b data-i18n="운영 점검 · 자동 백업">운영 점검 · 자동 백업</b>
+            <p class="small" style="margin-top:6px" data-i18n="메일·알림·결제·배송조회 설정, DB 마이그레이션, 최근 발송 실패를 한 번에 점검합니다. 문제가 있으면 매일 아침 요약 알림에도 표시돼요. 주문·회원까지 포함한 전체 데이터는 매주 월요일 새벽 관리자 메일로 자동 백업됩니다.">메일·알림·결제·배송조회 설정, DB 마이그레이션, 최근 발송 실패를 한 번에 점검합니다. 문제가 있으면 매일 아침 요약 알림에도 표시돼요. 주문·회원까지 포함한 전체 데이터는 매주 월요일 새벽 관리자 메일로 자동 백업됩니다.</p>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn--sm" id="ops-check-run" data-i18n="지금 점검하기">지금 점검하기</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="ops-backup-full" data-i18n="전체 백업 받기(주문·회원 포함)">전체 백업 받기(주문·회원 포함)</button>
+            </div>
+            <div id="ops-check-result" class="small" style="margin-top:10px;display:grid;gap:4px"></div>
+          </div>
+
           <div class="panel">
             <b data-i18n="전체 데이터 백업">전체 데이터 백업</b>
             <p class="small" style="margin-top:6px" data-i18n="상품·쿠폰·이 페이지의 정보 항목을 하나의 JSON 파일로 내려받습니다. 결제·주문·재고 데이터는 포함되지 않습니다.">상품·쿠폰·이 페이지의 정보 항목을 하나의 JSON 파일로 내려받습니다. 결제·주문·재고 데이터는 포함되지 않습니다.</p>
@@ -980,6 +1013,21 @@
             </div>
           </div>
           <div id="dashboard-stats" class="stat-row"></div>
+          <!-- 월간 정산 리포트(매달 1일 자동 메일과 같은 엑셀) — 메일이 실패해도 여기서 바로 받거나 다시 보낸다(2026-10-02) -->
+          <div class="panel">
+            <b data-i18n="월간 정산 리포트">월간 정산 리포트</b>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매달 1일 자동으로 메일이 가는 정산 엑셀(주문·쿠폰·환불)을 원하는 달로 바로 받거나 다시 보낼 수 있어요. 부분 환불도 실제 환불액으로 계산됩니다.">매달 1일 자동으로 메일이 가는 정산 엑셀(주문·쿠폰·환불)을 원하는 달로 바로 받거나 다시 보낼 수 있어요. 부분 환불도 실제 환불액으로 계산됩니다.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input type="month" id="settle-month" style="max-width:180px">
+              <button type="button" class="btn btn--sm" id="settle-download" data-i18n="엑셀 받기">엑셀 받기</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="settle-send" data-i18n="메일로 다시 보내기">메일로 다시 보내기</button>
+            </div>
+          </div>
+          <div class="panel">
+            <b data-i18n="아침 업무 요약 알림">아침 업무 요약 알림</b>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.">매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.</p>
+            <button type="button" class="btn btn--sm btn--ghost" id="briefing-test" data-i18n="지금 요약 받아보기">지금 요약 받아보기</button>
+          </div>
           <div class="panel">
             <b data-i18n="최근 14일 매출">최근 14일 매출</b>
             <div id="dashboard-revenue-chart" class="chart-bars"></div>
@@ -1074,7 +1122,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
               <div class="field" style="margin:0">
                 <label for="al-admin" data-i18n="관리자 검색">관리자 검색</label>
-                <input id="al-admin" placeholder="예: haechankimm" data-i18n-attr="placeholder:예: haechankimm">
+                <input id="al-admin" placeholder="예: 이메일 앞부분" data-i18n-attr="placeholder:예: 이메일 앞부분">
               </div>
               <div class="field" style="margin:0">
                 <label for="al-action" data-i18n="작업 종류">작업 종류</label>
@@ -1145,6 +1193,7 @@
 <script src="js/pin.js"></script>
 <script src="js/orders.js"></script>
 <script src="js/paymentlog.js"></script>
+<script src="js/refunds.js"></script>
 <script src="js/returns-inventory.js"></script>
 <script src="js/qna.js"></script>
 <script src="js/reviews-coupons.js"></script>

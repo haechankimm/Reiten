@@ -5,6 +5,9 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { requireMasterAdmin } = require("../lib/auth");
 const { sendTelegram, findTelegramChats } = require("../lib/telegram");
 const { sendPushToAdmins, configured: pushConfigured } = require("../lib/push");
+const { runOpsCheck } = require("../lib/opsCheck");
+const { buildBackup } = require("../lib/backup");
+const { logAdminAction } = require("../lib/adminLog");
 
 const router = express.Router();
 
@@ -26,6 +29,20 @@ router.post("/api/admin/alerts/test", requireMasterAdmin, async (req, res) => {
     sendPushToAdmins({ title: "✅ REITEN 테스트 알림", body: "이 알림이 보이면 폰 푸시가 정상입니다.", tab: "home" }),
   ]);
   res.json({ telegram, push });
+});
+
+/* 운영 점검(lib/opsCheck.js) — 메일·알림·결제·배송조회 설정, 마이그레이션, 최근 발송 실패·미해결 오류를 한 번에. */
+router.get("/api/admin/alerts/ops-check", requireMasterAdmin, async (req, res) => {
+  res.json(await runOpsCheck());
+});
+
+/* 전체 데이터 백업 파일(lib/backup.js — 매주 자동 메일과 같은 파일)을 지금 바로 받기. 개인정보가 있어 마스터 전용. */
+router.get("/api/admin/alerts/backup", requireMasterAdmin, async (req, res) => {
+  const { filename, buffer, summary } = await buildBackup();
+  logAdminAction(req, "backup.full_download", "backup", filename, summary);
+  res.setHeader("Content-Type", "application/gzip");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
 });
 
 module.exports = router;

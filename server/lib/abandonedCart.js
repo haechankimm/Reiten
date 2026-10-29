@@ -42,8 +42,13 @@ async function remindAbandonedCarts() {
       .limit(1);
     if (later && later.length) continue;
 
-    await sendCustomerAbandonedCart({ customer: row.customer, items: row.items, total: row.total });
-    sent++;
+    // 한 통이 실패해도 나머지는 계속 보낸다(예전엔 예외 하나로 반복 전체가 멈췄다, 2026-10-28)
+    try {
+      await sendCustomerAbandonedCart({ customer: row.customer, items: row.items, total: row.total });
+      sent++;
+    } catch (err) {
+      console.error("[abandoned-cart] 메일 발송 실패:", row.payment_id, err.message);
+    }
   }
   return { sent };
 }

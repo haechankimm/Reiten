@@ -69,7 +69,10 @@ function toExportRow(o) {
 }
 
 function csvEscape(v) {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  /* 고객이 이름·주소에 "=HYPERLINK(...)"처럼 넣으면 엑셀이 CSV를 열 때 수식으로 실행된다(2026-10-28 정기 감사) —
+     수식 시작 문자 앞에 '를 붙여 글자로만 보이게 한다. */
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s; // 숫자(음수 금액 등)는 그대로
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
