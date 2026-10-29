@@ -52,10 +52,14 @@
       const staff = result.items.find((x) => x.id === id);
       const label = staff.name || staff.email;
 
-      card.querySelector(".staff-save").addEventListener("click", async () => {
+      card.querySelector(".staff-save").addEventListener("click", async (e) => {
         const permissions = {};
         card.querySelectorAll("select[data-area]").forEach((sel) => { permissions[sel.dataset.area] = sel.value; });
+        // 응답 전에 다시 누르면 같은 저장이 두 번 나가고 활동 로그도 두 줄 쌓였다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+        const btn = e.currentTarget;
+        btn.disabled = true;
         const r = await adminFetch(`/api/admin/staff/${encodeURIComponent(id)}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) });
+        btn.disabled = false;
         if (!r) return;
         toast(t("권한을 저장했습니다"));
         paintAdminStaff();

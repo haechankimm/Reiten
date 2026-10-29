@@ -1,6 +1,8 @@
   const REQUEST_TYPE_LABEL = { return: "반품", exchange: "교환", cancel: "주문취소 신청" };
   const REQUEST_TYPE_CLASS = { return: "st-neutral", exchange: "st-neutral", cancel: "st-pending" };
 
+  /* 신청 사유(r.reason)는 고객 신청 폼의 고정 한국어 선택지라 사전 키 그대로 t()로 번역한다(2026-10-28 정기 감사).
+     고객이 직접 쓴 customReason·detail은 번역하지 않는다. */
   function returnCardHTML(r) {
     const requestType = r.requestType || "return";
     return `
@@ -13,7 +15,7 @@
           <span class="small tnum">${fmtDate(r.at)}</span>
         </div>
         <p class="small" style="margin-top:6px">${esc(r.contactName)} · ${esc(r.contactTel)}</p>
-        <p style="margin-top:8px">${esc(r.reason)}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
+        <p style="margin-top:8px">${esc(t(r.reason))}${r.customReason ? " — " + esc(r.customReason) : ""}${r.detail ? " · " + esc(r.detail) : ""}</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-chip admin-return-status-chip ${RETURN_STATUS_CLASS[r.status] || "st-neutral"}">${esc(t(r.status))}</span>
           <select class="admin-return-status">${(RETURN_STATUSES_BY_TYPE[requestType] || RETURN_STATUSES).map((s) => `<option value="${s}" ${s === r.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
@@ -27,7 +29,7 @@
           ${r.refunded && requestType !== "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("환불 완료"))}</span>` : ""}
           ${r.refunded && requestType === "cancel" ? `<span class="small" style="color:var(--text-muted)">${esc(t("주문 취소 처리됨"))}</span>` : ""}
         </div>
-        ${r.reshipTrackingNo ? `<p class="small" style="margin-top:6px">${esc(t("재발송"))}: ${esc((COURIERS.find((c) => c.key === r.reshipCourier) || {}).label || r.reshipCourier || "")} ${esc(r.reshipTrackingNo)}</p>` : ""}
+        ${r.reshipTrackingNo ? `<p class="small" style="margin-top:6px">${esc(t("재발송"))}: ${esc(t((COURIERS.find((c) => c.key === r.reshipCourier) || {}).label || r.reshipCourier || ""))} ${esc(r.reshipTrackingNo)}</p>` : ""}
         ${requestType === "cancel" && r.status !== "완료" && r.status !== "반려" ? `<p class="small" style="margin-top:6px;color:var(--text-muted)">${esc(t("'완료'로 저장하면 주문이 실제로 취소되고 재고 복원·환불까지 자동으로 처리됩니다(출고 전 주문만)."))}</p>` : ""}
         <textarea class="admin-return-note" rows="2" style="margin-top:8px" placeholder="${esc(t("내부 메모 (고객에게 보이지 않음)"))}" maxlength="2000">${esc(r.internalNote || "")}</textarea>
       </div>`;
@@ -64,7 +66,11 @@
           body: JSON.stringify({ status, assignedTo, internalNote, expectedStatus: prevItem ? prevItem.status : undefined }),
         });
         btn.disabled = false;
-        if (!result) return;
+        if (!result) {
+          // 다른 관리자가 먼저 바꿨으면(409 STALE) 옛 상태를 들고 있어 다시 저장해도 계속 실패했다 — 목록을 다시 불러온다(2026-10-28 정기 감사).
+          if (lastAdminFetchError && lastAdminFetchError.code === "STALE") paintAdminReturns();
+          return;
+        }
 
         /* 저장 버튼을 눌러도 화면이 그대로라 "정말 반영됐는지 알기 어렵다"는 피드백 — 토스트
            문구만 다르고 정작 카드의 상태 뱃지(item.status)는 갱신 안 하던 버그였다. 환불 결과와
@@ -229,7 +235,7 @@
         return `
         <div class="inv-size${invSizeClass(qty)}">
           <span class="inv-size-label">${esc(size)}</span>
-          <input type="number" min="0" class="admin-inv-qty" data-color="${esc(color)}" data-size="${esc(size)}" value="${qty}">
+          <input type="number" min="0" step="1" class="admin-inv-qty" data-color="${esc(color)}" data-size="${esc(size)}" value="${qty}">
         </div>`;
       })
       .join("");
@@ -344,13 +350,19 @@
         <div class="inv-color-chips">${colorChips}</div>
         <div class="inv-card-sizes" data-active-color="${esc(activeColor)}">${invSizeRowHTML(sizes, qtyByColorSize, activeColor)}</div>
         <div class="inv-bulk-qty">
-          <input type="number" min="0" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
+          <input type="number" min="0" step="1" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
           <button type="button" class="btn btn--sm btn--ghost inv-bulk-qty-apply">${esc(t("전체 적용"))}</button>
         </div>
         <div class="inv-card-log" hidden></div>
       </div>`;
       })
       .join("");
+
+    /* 아래에서 이 컨테이너에 click·change·wheel 리스너를 붙이는데, 예전엔 로그인 때 한 번만 그려서 문제가 없었다.
+       상품 저장 뒤에도 다시 그리게 되면서(2026-10-28 정기 감사) 리스너가 겹쳐 "전체 적용"이 두 번 나가고 휠이 2씩
+       움직일 수 있어, 다시 그릴 때마다 리스너 없는 빈 컨테이너로 바꿔 끼운다. */
+    const prevBody = el("admin-inventory-body");
+    prevBody.replaceWith(prevBody.cloneNode(false));
 
     el("admin-inventory-body").innerHTML =
       legend + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-items:start">${cards}</div>`;
@@ -389,9 +401,15 @@
       if (bulkBtn) {
         const card = bulkBtn.closest("[data-product]");
         const input = card.querySelector(".inv-bulk-qty-input");
+        /* 빈 칸에서 누르면 Number("")=0이라 그 컬러 전 사이즈가 0(품절)으로 저장됐다(2026-10-28 정기 감사) —
+           빈 값은 아무것도 안 하고, 소수(2.5개)도 막아 0 이상의 정수만 받는다. */
+        if (input.value.trim() === "") {
+          toast(t("0 이상의 정수를 입력해 주세요."));
+          return;
+        }
         const qty = Number(input.value);
-        if (!Number.isFinite(qty) || qty < 0) {
-          toast(t("0 이상의 숫자를 입력해 주세요."));
+        if (!Number.isInteger(qty) || qty < 0) {
+          toast(t("0 이상의 정수를 입력해 주세요."));
           return;
         }
         const productId = card.dataset.product;
@@ -443,6 +461,15 @@
       const productId = card.dataset.product;
       const color = input.dataset.color;
       const size = input.dataset.size;
+      /* 소수(2.5)·빈 칸·음수도 그대로 변경사항에 쌓였다가 저장 때 서버에서 막혀 전체가 실패했다(2026-10-28 정기 감사) —
+         0 이상의 정수가 아니면 알리고 직전 값(저장 대기 값 또는 저장된 값)으로 되돌린다. */
+      if (input.value.trim() === "" || !Number.isInteger(qty) || qty < 0) {
+        toast(t("0 이상의 정수를 입력해 주세요."));
+        const pend = pendingChanges.get(`${productId}:${color}:${size}`);
+        const meta = productMeta.get(productId);
+        input.value = pend ? pend.qty : (meta && meta.qtyByColorSize.get(`${color}:${size}`)) ?? 0;
+        return;
+      }
       pendingChanges.set(`${productId}:${color}:${size}`, { productId, color, size, qty });
       box.className = "inv-size" + invSizeClass(qty);
       updateSaveBtn();

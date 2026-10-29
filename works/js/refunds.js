@@ -8,6 +8,13 @@
     overlay.className = "dlg-overlay";
     overlay.innerHTML = `<div class="dlg-card dlg-card--wide">${innerHTML}</div>`;
     document.body.appendChild(overlay);
+    /* Esc로 닫기(2026-10-28 정기 감사). 수량·금액을 고르던 중 잃지 않게 바깥 클릭으로는 닫지 않는다.
+       각 창이 overlay.remove()로 직접 닫기도 하므로, 이미 닫힌 창이면 리스너만 정리한다. */
+    const onKey = (e) => {
+      if (!overlay.isConnected) { document.removeEventListener("keydown", onKey); return; }
+      if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", onKey); }
+    };
+    document.addEventListener("keydown", onKey);
     return overlay;
   }
 
@@ -149,7 +156,7 @@
       <p class="small" style="color:var(--text-muted)">${esc(t("새로 보내는 교환 상품의 운송장을 입력하면 고객에게 안내 메일이 갑니다. 환불은 없습니다. 교환으로 나가는 상품의 재고는 재고 탭에서 조정해 주세요."))}</p>
       <div class="field">
         <label for="rs-courier">${esc(t("택배사"))}</label>
-        <select id="rs-courier">${COURIERS.map((c) => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join("")}</select>
+        <select id="rs-courier">${COURIERS.map((c) => `<option value="${esc(c.key)}">${esc(t(c.label))}</option>`).join("")}</select>
       </div>
       <div class="field">
         <label for="rs-tracking">${esc(t("운송장번호"))}</label>
@@ -164,10 +171,14 @@
     overlay.querySelector("#rs-run").addEventListener("click", async () => {
       const trackingNo = overlay.querySelector("#rs-tracking").value.trim();
       if (!trackingNo) { const e = overlay.querySelector("#rs-err"); e.textContent = t("운송장번호를 입력해 주세요."); e.classList.add("on"); return; }
+      // 응답 전에 다시 누르면 재발송 안내 메일이 두 번 나갔다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+      const btn = overlay.querySelector("#rs-run");
+      btn.disabled = true;
       const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(returnId)}/reship`, {
         method: "POST",
         body: JSON.stringify({ courier: overlay.querySelector("#rs-courier").value, trackingNo }),
       });
+      btn.disabled = false;
       if (!result) return;
       toast(t("교환 상품 재발송을 저장했습니다"));
       overlay.remove();
@@ -197,7 +208,11 @@
     overlay.querySelector("#rl-run").addEventListener("click", async () => {
       const lines = [...overlay.querySelectorAll("select[data-index]")].map((s) => ({ index: Number(s.dataset.index), qty: Number(s.value) })).filter((l) => l.qty > 0);
       if (!lines.length) { toast(t("복원할 수량을 골라 주세요")); return; }
+      // 응답 전에 다시 누르면 같은 수량이 재고에 두 번 더해졌다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+      const btn = overlay.querySelector("#rl-run");
+      btn.disabled = true;
       const result = await adminFetch(`/api/admin/returns/${encodeURIComponent(returnId)}/restock`, { method: "POST", body: JSON.stringify({ lines }) });
+      btn.disabled = false;
       if (!result) return;
       toast(t("재고를 복원했습니다"));
       overlay.remove();

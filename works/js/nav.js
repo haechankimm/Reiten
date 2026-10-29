@@ -258,9 +258,16 @@
     return fallback;
   }
 
+  /* 마지막 adminFetch 실패의 상태·코드 — adminFetch는 실패 시 null만 돌려줘서, 409 STALE(다른 관리자가 먼저
+     바꿈)인지 알 길이 없어 저장 화면이 옛 값을 그대로 들고 있었다(2026-10-28 정기 감사). 기존 호출부는 그대로 두고
+     필요한 곳만 이 값을 확인한다. 성공하면 null로 비운다. */
+  let lastAdminFetchError = null;
+
   async function adminFetch(path, opts) {
+    lastAdminFetchError = null;
     const token = await getAccessToken();
     if (!token) {
+      lastAdminFetchError = { status: 401, code: "" };
       toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       return null;
     }
@@ -270,11 +277,13 @@
     });
     if (!res.ok) {
       if (res.status === 401) {
+        lastAdminFetchError = { status: 401, code: "" };
         toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       } else {
         let message = "";
         let code = "";
         try { const body = await res.json(); message = serverMsg(body, ""); code = body.code || ""; } catch (e) {}
+        lastAdminFetchError = { status: res.status, code };
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
         // PIN 토큰이 만료·무효가 되면 새로고침해서 PIN 입력 창부터 다시 띄운다.
         if ((res.status === 403 && (code === "PIN_REQUIRED" || code === "PIN_SETUP_REQUIRED")) || code === "PIN_LOCKED") {

@@ -38,10 +38,12 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
   const { data: mailFails } = await db.from("system_error_log").select("id").eq("type", "notification_failed").gte("created_at", since);
   const fails = (mailFails || []).length;
-  if (fails >= 3) out.push({ level: "error", key: "mail_failures", label: `최근 24시간 알림 발송 실패 ${fails}건 — '발송 실패 아웃박스'를 확인하세요` });
+  /* 숫자가 끼는 문구는 그대로 t()에 넣으면 사전에 없어 Works 독일어 화면에서 한국어로 남았다(2026-10-28 정기 감사) —
+     label(아침 요약 알림 등 한국어 그대로 쓰는 곳)은 그대로 두고, 화면 번역용 키·변수(i18n)를 함께 내려준다. */
+  if (fails >= 3) out.push({ level: "error", key: "mail_failures", label: `최근 24시간 알림 발송 실패 ${fails}건 — '발송 실패 아웃박스'를 확인하세요`, i18n: { key: "최근 24시간 알림 발송 실패 {n}건 — '발송 실패 아웃박스'를 확인하세요", vars: { n: fails } } });
   const { data: unresolved } = await db.from("system_error_log").select("id").eq("resolved", false);
   const open = (unresolved || []).length;
-  if (open) out.push({ level: "warn", key: "system_errors", label: `해결 안 된 시스템 오류 ${open}건` });
+  if (open) out.push({ level: "warn", key: "system_errors", label: `해결 안 된 시스템 오류 ${open}건`, i18n: { key: "해결 안 된 시스템 오류 {n}건", vars: { n: open } } });
   return out;
 }
 

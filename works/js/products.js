@@ -582,6 +582,8 @@
       el("pf-view-live").href = `/product.html?id=${encodeURIComponent(result.id)}`;
       el("pf-view-live").hidden = false;
       paintAdminProducts();
+      // 사이즈·컬러를 바꾼 상품이 재고 탭엔 옛 칸으로 남아 있었다(2026-10-28 정기 감사) — 재고 화면도 같이 새로 그린다.
+      if (canView("inventory") && typeof paintAdminInventory === "function") paintAdminInventory();
     } finally {
       btn.disabled = false;
     }
@@ -603,7 +605,7 @@
     return `
       <div class="grid-card" data-id="${esc(p.id)}">
         <div class="grid-card-thumb">
-          <label class="grid-card-select" onclick="event.stopPropagation()">
+          <label class="grid-card-select">
             <input type="checkbox" class="product-select" data-id="${esc(p.id)}" ${selectedProductIds.has(p.id) ? "checked" : ""}>
           </label>
           ${img ? `<img src="${esc(img)}" alt="">` : ""}
@@ -640,6 +642,11 @@
     colorSelect.innerHTML = Object.values(COLORS).map((c) => `<option value="${esc(c.key)}">${esc(t(c.label))}</option>`).join("");
     if ([...colorSelect.options].some((o) => o.value === prevColorValue)) colorSelect.value = prevColorValue;
 
+    /* 인라인 onclick은 CSP(helmet 기본값 script-src-attr 'none')에 막혀 실행되지 않았다(2026-10-28 정기 감사) —
+       체크박스 칸 클릭이 카드로 번지지 않게 하는 처리를 여기서 리스너로 붙인다. */
+    el("products-list").querySelectorAll(".grid-card-select").forEach((label) =>
+      label.addEventListener("click", (e) => e.stopPropagation())
+    );
     el("products-list").querySelectorAll(".product-select").forEach((cb) =>
       cb.addEventListener("change", () => {
         if (cb.checked) selectedProductIds.add(cb.dataset.id);
@@ -661,6 +668,9 @@
         if (!confirm(t("정말 삭제하시겠습니까? 되돌릴 수 없습니다.") + "\n" + id)) return;
         if (!(await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }))) return;
         if (pfEditingId === id) resetProductForm();
+        // 선택해 둔 상품을 하나씩 지우면 일괄 처리 바에 지워진 상품이 계속 "N개 선택됨"으로 남았다(2026-10-28 정기 감사).
+        selectedProductIds.delete(id);
+        updateProductsBulkBar();
         toast(t("상품을 삭제했습니다"));
         paintAdminProducts();
       })

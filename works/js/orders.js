@@ -68,7 +68,7 @@
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
           <div class="small" style="color:var(--text-muted);margin-top:2px">${esc(orderPaymentMethodLabel(o))}</div>
-          <div style="margin-top:3px;display:flex;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
+          <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
         </span>
       </button>`;
   }
@@ -83,6 +83,7 @@
     return parts.length ? `<p class="small" style="margin-top:8px;color:var(--text-muted)">${esc(parts.join(" · "))}</p>` : "";
   }
 
+  /* 상품 줄: 옵션이 없는 상품은 빈 괄호 "()"가 찍혔다(2026-10-28 정기 감사) — 옵션이 있을 때만 괄호를 붙인다. */
   function orderDetailHTML(o) {
     return `
       <div class="detail-head">
@@ -101,7 +102,7 @@
       </div>
       ${orderVirtualAccountHTML(o)}
       <div class="detail-items">
-        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)} (${esc(it.options)}) × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
+        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)}${it.options ? ` (${esc(it.options)})` : ""} × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
         ${o.refundedAmount ? `<div class="detail-total" style="color:var(--danger)"><span>${esc(t("환불된 금액"))}</span><span class="tnum">−${money(o.refundedAmount)}</span></div>` : ""}
       </div>
@@ -132,7 +133,7 @@
       <div class="detail-ship">
         <select id="od-courier">
           <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
-          ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
+          ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(t(c.label))}</option>`).join("")}
         </select>
         <input type="text" id="od-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}">
         <button type="button" class="primary-btn" id="od-save">${esc(t("저장"))}</button>
@@ -220,11 +221,19 @@
         const internalNote = el("od-internal-note").value.trim();
         const isNewCancel = status === "취소" && o.status !== "취소";
         const isUncancel = o.status === "취소" && status !== "취소";
+        // 응답 전에 한 번 더 누르면 같은 저장(취소·환불 포함)이 두 번 나갔다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+        const saveBtn = el("od-save");
+        saveBtn.disabled = true;
         const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
           method: "PATCH",
           body: JSON.stringify({ status, courier, trackingNo, cancelReason, assignedTo, internalNote, expected: { status: o.status, trackingNo: o.trackingNo || "" } }),
         });
-        if (!result) return;
+        saveBtn.disabled = false;
+        if (!result) {
+          // 다른 관리자가 먼저 바꿨으면(409 STALE) 옛 값을 들고 있어 다시 눌러도 계속 실패했다 — 최신 내용을 다시 불러온다(2026-10-28 정기 감사).
+          if (lastAdminFetchError && lastAdminFetchError.code === "STALE") paintAdminOrders(false, { keepSelection: true });
+          return;
+        }
         o.status = status;
         o.courier = courier;
         o.trackingNo = trackingNo;

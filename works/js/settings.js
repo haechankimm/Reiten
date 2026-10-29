@@ -178,15 +178,26 @@
     paintAdminAccounts();
   });
 
+  /* 서버(routes/settings.js의 PROTECTED_SETTING_LABELS)가 메인 관리자만 고칠 수 있게 막는 항목 — 운영자에게도 "수정"
+     버튼이 보여 눌러 고친 뒤 저장하면 403만 떴다(2026-10-28 정기 감사). 라벨이 바뀌면 서버 쪽 상수와 같이 고친다. */
+  const MASTER_ONLY_SETTING_LABELS = [
+    "첫 구매 감사 쿠폰 할인율(%)", "재구매 감사 쿠폰 발급 기준(누적 구매 횟수)", "재구매 감사 쿠폰 할인율(%)",
+    "적립금 적립률(%)", "긴급 알림 웹훅 URL", "사진 리뷰 적립금(원)",
+  ];
+  // 서버가 운영자에게 웹훅 주소 대신 내려주는 자리표시 문구 — 이 값만 번역한다(다른 값은 관리자가 쓴 원문).
+  const REDACTED_SETTING_VALUE = "(메인 관리자만 볼 수 있음)";
+
   function settingRowHTML(item) {
+    const canEditThis = !MASTER_ONLY_SETTING_LABELS.includes(item.label) || (adminMe && adminMe.isMaster);
+    const value = item.value === REDACTED_SETTING_VALUE ? t(item.value) : item.value;
     return `
       <div class="panel" data-id="${esc(item.id)}" style="display:flex;gap:12px;align-items:center">
         <div style="flex:1;min-width:0">
           <b>${esc(item.label)}</b>
-          ${item.value ? `<div class="small tnum" style="word-break:break-all">${isUrl(item.value) ? `<a href="${esc(item.value)}" target="_blank" rel="noopener">${esc(item.value)}</a>` : esc(item.value)}</div>` : ""}
+          ${value ? `<div class="small tnum" style="word-break:break-all">${isUrl(value) ? `<a href="${esc(value)}" target="_blank" rel="noopener">${esc(value)}</a>` : esc(value)}</div>` : ""}
           ${item.note ? `<div class="small" style="color:var(--muted);margin-top:2px">${esc(item.note)}</div>` : ""}
         </div>
-        <button type="button" class="btn btn--sm admin-setting-edit">${esc(t("수정"))}</button>
+        ${canEditThis ? `<button type="button" class="btn btn--sm admin-setting-edit">${esc(t("수정"))}</button>` : ""}
       </div>`;
   }
 
@@ -217,11 +228,13 @@
       <span></span>
       <span>${esc(tpl.label)}${tpl.keywords && tpl.keywords.length ? `<div class="small" style="color:var(--text-muted)">${esc(tpl.keywords.join(", "))}</div>` : ""}</span>
       <span></span>
-      <button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>
+      ${hasAreaEdit("qna") ? `<button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>` : "<span></span>"}
     </div>`;
   }
 
   async function paintQnaTemplates() {
+    // 템플릿 추가·삭제는 서버에서 "qna"(문의·CS 템플릿) 영역 수정 권한을 따른다 — 정보 탭 권한이 아니라 그 권한으로 보이고 숨긴다(2026-10-28 정기 감사).
+    el("qna-template-form").hidden = !hasAreaEdit("qna");
     const result = await adminFetch("/api/admin/qna-templates");
     qnaTemplates = (result && result.items) || [];
     el("qna-template-list").innerHTML = qnaTemplates.length
@@ -324,8 +337,8 @@
     "staff.pin_set": "직원 PIN 지정",
     "admin.invite": "관리자 초대",
     "admin.revoke": "관리자 권한 해제",
-    "admin.pin_setup": "PIN 설정",
-    "admin.pin_change": "PIN 변경",
+    "admin.pin_setup": "PIN 설정함", // PIN 설정 창 제목 "PIN 설정"(PIN festlegen)과 번역이 겹치지 않게 별도 키(2026-10-28 정기 감사)
+    "admin.pin_change": "PIN 변경함", // 상단 "PIN 변경"(PIN ändern) 버튼과 번역이 겹치지 않게 별도 키(2026-10-28 정기 감사)
     "admin.pin_locked": "PIN 잠김",
     "backup.full_download": "전체 백업 다운로드(주문·회원 포함)",
     "report.settlement_download": "정산 리포트 받기",

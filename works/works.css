@@ -113,7 +113,9 @@
   }
   .nav-group-header:hover { background: var(--group-bg, var(--bg-surface-2)); }
   .nav-group-chevron { width: 12px; height: 12px; flex-shrink: 0; transition: transform .15s ease; opacity: .85; }
-  .nav-group-header[aria-expanded="false"] .nav-group-chevron { transform: rotate(-90deg); }
+  /* 아이콘 경로(M9 6l6 6-6 6)는 원래 오른쪽(›)을 가리킨다 — 예전엔 펼침=오른쪽, 접힘=위쪽(-90deg)으로 보여 방향이
+     거꾸로였다(2026-10-28 정기 감사). 펼침은 아래(90deg), 접힘은 원래 모양 그대로 오른쪽. */
+  .nav-group-header[aria-expanded="true"] .nav-group-chevron { transform: rotate(90deg); }
   .nav-group-body { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
   .nav-group-body[hidden] { display: none; }
   .nav-item--home { margin-bottom: 4px; }
@@ -269,9 +271,12 @@
   .split-rev { display: grid; grid-template-columns: 1.3fr 380px; gap: 20px; align-items: start; }
   @media (max-width: 960px) { .split-rev { grid-template-columns: 1fr; } }
   .plist { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%;
+  /* 독일어 상태 칩·결제수단이 길어 1440px에서도 오른쪽 칸이 목록 밖으로 넘쳤다(2026-10-28 정기 감사) —
+     두 칸 모두 minmax(0, …)로 줄어들 수 있게 하고, 칸 안의 글이 칸을 밀어내지 않도록 min-width:0을 준다. */
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 8px; width: 100%;
     appearance: none; border: none; border-bottom: 1px solid var(--border); background: var(--bg-canvas); color: var(--text-primary);
     padding: 10px 12px; cursor: pointer; text-align: left; border-left: 2px solid transparent; }
+  .prow > * { min-width: 0; overflow-wrap: anywhere; }
   .plist > .prow:last-of-type { border-bottom: none; }
   .prow:hover { background: var(--bg-surface); }
   .prow.is-selected { background: var(--accent-soft); border-left-color: var(--accent); }

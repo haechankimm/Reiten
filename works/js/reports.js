@@ -106,6 +106,16 @@
     /* 주문취소 · 환불 사유 통계 — orders.cancel_reason(관리자 취소·미입금 자동취소)과 고객이
        "주문취소 신청"(return-request.html)에서 직접 고른/입력한 사유(request_type='cancel')를
        합쳐서 보여준다(server.js의 computeDashboardStats, 033_cancel_requests.sql). */
+    /* 취소 사유는 고정 문구 뒤에 고객이 쓴 글이 붙기도 한다("기타 — 직접 입력", "고객 취소 신청: 단순변심 — …",
+       server/routes/dashboard.js·returns.js) — 통째로 t()에 넣으면 사전에 없어 독일어 화면에서도 한국어로 남았다
+       (2026-10-28 정기 감사). 고정 문구 부분만 번역하고 고객이 쓴 글은 그대로 둔다. */
+    const cancelReasonText = (reason) => {
+      const s = String(reason || "");
+      const m = /^고객 취소 신청(?:: ([\s\S]*))?$/.exec(s);
+      if (m) return t("고객 취소 신청") + (m[1] ? ": " + cancelReasonText(m[1]) : "");
+      const i = s.indexOf(" — ");
+      return i > 0 ? `${t(s.slice(0, i))} — ${s.slice(i + 3)}` : t(s);
+    };
     const cancelMax = Math.max(1, ...(d.cancelReasons || []).map((r) => r.count));
     el("dashboard-cancel-reasons").innerHTML = (d.cancelReasons || []).length
       ? d.cancelReasons
@@ -113,7 +123,7 @@
             (r) => `
           <div class="best-row">
             <span></span>
-            <span>${esc(t(r.reason))}</span>
+            <span>${esc(cancelReasonText(r.reason))}</span>
             <span class="tnum">${esc(t("{n}건", { n: r.count }))}</span>
             <div class="best-bar-track"><div class="best-bar-fill" style="width:${Math.round((r.count / cancelMax) * 100)}%"></div></div>
           </div>`
@@ -259,6 +269,8 @@
     if (canView("returns")) paintAdminReturns();
     if (canView("inventory")) paintAdminInventory();
     if (canView("qna")) paintQnaTemplates().then(() => paintAdminQna());
+    // 문의 권한이 없으면 정보 탭의 CS 템플릿 패널째 숨긴다 — 템플릿 조회·수정 모두 서버가 "qna" 권한으로 막는다(2026-10-28 정기 감사)
+    else el("qna-template-form").closest(".panel").hidden = true;
     if (canView("products")) paintAdminProducts();
     if (canView("coupons")) paintAdminCoupons();
     if (canView("reviews")) paintAdminReviews();

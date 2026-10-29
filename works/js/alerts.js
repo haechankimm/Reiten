@@ -58,7 +58,8 @@
     const r = await adminFetch("/api/admin/alerts/ops-check");
     if (!r) { box.textContent = ""; return; }
     const icon = { error: "⛔", warn: "⚠️", ok: "✅" };
-    box.innerHTML = r.checks.map((c) => `<div>${icon[c.level] || ""} ${esc(t(c.label))}</div>`).join("");
+    // 숫자가 끼는 항목은 서버가 주는 번역 키·변수(c.i18n)로 번역한다 — serverMsg와 같은 규칙(2026-10-28 정기 감사)
+    box.innerHTML = r.checks.map((c) => `<div>${icon[c.level] || ""} ${esc(c.i18n ? serverMsg(c, c.label) : t(c.label))}</div>`).join("");
   });
   el("ops-backup-full")?.addEventListener("click", () =>
     downloadExportFile("/api/admin/alerts/backup", "reiten-backup", "json.gz")

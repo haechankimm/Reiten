@@ -602,10 +602,11 @@
               <div class="field">
                 <label for="pf-type" data-i18n="타입">타입</label>
                 <select id="pf-type" required>
-                  <option value="hoodie">hoodie (후드티)</option>
-                  <option value="zip">zip (집업)</option>
-                  <option value="crop">crop (크롭)</option>
-                  <option value="tshirt">tshirt (티셔츠)</option>
+                  <!-- 타입 이름도 독일어로 보이게 data-i18n(2026-10-28 정기 감사) — 저장 값(value)은 그대로 -->
+                  <option value="hoodie" data-i18n="후드티">후드티</option>
+                  <option value="zip" data-i18n="후드집업">후드집업</option>
+                  <option value="crop" data-i18n="크롭 후드티">크롭 후드티</option>
+                  <option value="tshirt" data-i18n="티셔츠">티셔츠</option>
                 </select>
               </div>
               <div class="field">

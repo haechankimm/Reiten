@@ -71,7 +71,10 @@
       document.body.appendChild(overlay);
       const form = overlay.querySelector("form");
       const errEl = overlay.querySelector("#dlg-err");
-      const close = (result) => { overlay.remove(); resolve(result); };
+      /* Esc로 닫기(2026-10-28 정기 감사) — 취소 가능한 창만. 입력 중인 PIN·비밀번호를 잃지 않게 바깥 클릭으로는 닫지 않는다. */
+      const onKey = (e) => { if (e.key === "Escape" && dismissible) close(false); };
+      const close = (result) => { overlay.remove(); document.removeEventListener("keydown", onKey); resolve(result); };
+      document.addEventListener("keydown", onKey);
       overlay.querySelector("input")?.focus();
       overlay.querySelector("#dlg-cancel")?.addEventListener("click", () => close(false));
       form.addEventListener("submit", async (e) => {
@@ -209,7 +212,10 @@
     { tab: "calendar", panel: "admin-home", hide: ["#handoff-submit", ".handoff-delete"], disable: ["#handoff-input"] },
     { tab: "notices", panel: "admin-notices", hidePanel: ["#notice-form"], hide: [".notice-delete", ".notice-edit"] },
     { tab: "outbox", panel: "admin-outbox", hide: [".outbox-resolve"] },
-    { tab: "settings", panel: "admin-settings", hidePanel: ["#settings-form", "#qna-template-form"], hide: [".admin-setting-edit", ".qt-delete"] },
+    /* CS 템플릿(#qna-template-form·.qt-delete)은 서버에서 "qna" 영역 권한을 따르므로(adminGuard의 qna-templates)
+       정보 탭 규칙으로 숨기지 않는다 — 정보 탭이 보기 전용이면 문의 수정 권한이 있어도 템플릿 패널째 사라졌다
+       (2026-10-28 정기 감사). 대신 settings.js의 paintQnaTemplates가 hasAreaEdit("qna")로 직접 보이고 숨긴다. */
+    { tab: "settings", panel: "admin-settings", hidePanel: ["#settings-form"], hide: [".admin-setting-edit"] },
   ];
 
   function applyReadOnly() {

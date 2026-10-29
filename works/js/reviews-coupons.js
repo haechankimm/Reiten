@@ -222,10 +222,13 @@
         const code = btn.closest("[data-code]").dataset.code;
         const c = couponsState.items.find((x) => x.code === code);
         if (!c) return;
+        // 응답 전에 두 번 누르면 켜짐→꺼짐→켜짐처럼 요청이 겹쳐 최종 상태가 뒤섞였다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+        btn.disabled = true;
         const result = await adminFetch(`/api/admin/coupons/${encodeURIComponent(code)}`, {
           method: "PATCH",
           body: JSON.stringify({ active: !c.active }),
         });
+        btn.disabled = false;
         if (!result) return;
         c.active = result.active;
         renderAdminCoupons();

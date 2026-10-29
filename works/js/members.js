@@ -25,6 +25,7 @@
       </div>`;
   }
 
+  /* "주문 보기": 주문 조회 권한이 없는 직원은 눌러도 403만 떴다(2026-10-28 정기 감사) — 볼 수 있을 때만 버튼을 보인다. */
   function memberRowHTML(m) {
     const lastSignIn = m.lastSignInAt ? fmtDate(m.lastSignInAt) : t("로그인 기록 없음");
     return `
@@ -41,7 +42,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button type="button" class="btn btn--sm member-overview">${esc(t("한눈에 보기"))}</button>
-          <button type="button" class="btn btn--sm member-view-orders">${esc(t("주문 보기"))}</button>
+          ${canView("orders") ? `<button type="button" class="btn btn--sm member-view-orders">${esc(t("주문 보기"))}</button>` : ""}
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm member-resend">${esc(t("인증 메일 재발송"))}</button>` : ""}
           ${!m.emailConfirmed ? `<button type="button" class="btn btn--sm btn--ghost member-verify">${esc(t("수동으로 인증 처리"))}</button>` : ""}
           ${isMasterAdmin ? `<button type="button" class="btn btn--sm member-promote">${esc(t("운영자로 승격"))}</button>` : ""}
@@ -78,11 +79,10 @@
         const result = await adminFetch(`/api/admin/admins/${encodeURIComponent(id)}`, { method: "DELETE" });
         btn.disabled = false;
         if (!result) return;
-        membersState.adminItems = membersState.adminItems.filter((x) => x.id !== id);
-        membersState.items = [{ ...item, role: "customer", isMaster: false }, ...membersState.items];
-        membersState.total += 1;
+        /* 관리자 행을 복사해 일반회원 목록 맨 앞에 끼워 넣었더니 회원 행에 필요한 필드(인증·차단·마지막 로그인)가
+           비어 "이메일 미인증"·"로그인 기록 없음"으로 잘못 보였다(2026-10-28 정기 감사) — 서버에서 다시 받아 그린다. */
         toast(t("일반회원으로 강등했습니다"));
-        renderAdminMembers();
+        paintAdminMembers();
       })
     );
 
@@ -253,10 +253,14 @@
         ${section(t("문의"), d.qna.length ? d.qna.map((q) => `
           <div class="small" style="padding:3px 0">${fmtDate(q.at)} · ${esc(t(q.status))}${q.secret ? " · 🔒" : ""} · ${esc(String(q.question || "").slice(0, 60))}</div>`).join("") : empty)}
         ${section(t("반품·교환·취소 신청"), d.returns.length ? d.returns.map((r) => `
-          <div class="small" style="padding:3px 0">${fmtDate(r.at)} · ${esc(t(REQUEST_LABEL[r.requestType] || r.requestType))} · ${esc(r.orderNo)} · ${esc(t(r.status))} · ${esc(r.reason || "")}</div>`).join("") : empty)}
+          <div class="small" style="padding:3px 0">${fmtDate(r.at)} · ${esc(t(REQUEST_LABEL[r.requestType] || r.requestType))} · ${esc(r.orderNo)} · ${esc(t(r.status))} · ${esc(r.reason ? t(r.reason) : "")}</div>`).join("") : empty)}
         <div class="dlg-actions" style="margin-top:16px"><button type="button" class="btn" id="mo-close">${esc(t("닫기"))}</button></div>
       </div>`;
     document.body.appendChild(overlay);
-    overlay.querySelector("#mo-close").addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    /* Esc로도 닫히게(2026-10-28 정기 감사) — 읽기 전용 창이라 바깥 클릭·Esc로 닫아도 잃는 입력이 없다. */
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+    document.addEventListener("keydown", onKey);
+    overlay.querySelector("#mo-close").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   }
