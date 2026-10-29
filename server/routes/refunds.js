@@ -16,6 +16,7 @@ const { updateWithOptionalColumnFallback } = require("../lib/dbUpdate");
 const { sendCustomerRefundIssued, sendCustomerExchangeShipped, sendAdminRefundFailed } = require("../lib/mailer");
 const { SITE, COURIERS } = require("../../소스 코드/assets/js/data.js");
 
+const { serializeByOrder } = require("../lib/orderLock");
 const router = express.Router();
 
 async function loadOrder(orderNo) {
@@ -70,7 +71,7 @@ router.post("/api/admin/refunds/preview", requireAdmin, async (req, res) => {
   res.json({ ...calc, paymentMethod: order.payment_method || null, hasAccount: !!order.user_id, pointsEarned: Number(order.points_earned) || 0 });
 });
 
-router.post("/api/admin/refunds", requireAdmin, async (req, res) => {
+router.post("/api/admin/refunds", requireAdmin, serializeByOrder((req) => String((req.body || {}).orderNo || "").trim(), async (req, res) => {
   const { orderNo, returnId, lines, kind, fault, shippingDeduction, amount, restock, reason } = req.body || {};
   const order = await loadOrder(orderNo);
   if (!order) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
@@ -93,7 +94,8 @@ router.post("/api/admin/refunds", requireAdmin, async (req, res) => {
     { db: supabaseAdmin, portone, logInventoryChange },
     {
       order, selection: lines, kind: refundKind, fault, shippingDeduction, amountOverride: amount,
-      restock: restock !== false, reason: reasonText, returnRequestId: returnRequest ? returnRequest.id : null,
+      // 반품 신청에서 "재고 복원"을 이미 눌렀다면 환불 때 또 복원하지 않는다(2026-10-28 정기 감사 — 재고 이중 복원)
+      restock: restock !== false && !(returnRequest && returnRequest.restocked), reason: reasonText, returnRequestId: returnRequest ? returnRequest.id : null,
       adminEmail: req.user.email || null, shippingFee: SITE.shipping.fee,
     }
   );
@@ -124,11 +126,11 @@ router.post("/api/admin/refunds", requireAdmin, async (req, res) => {
     returnId: returnRequest ? returnRequest.id : null,
   });
   res.json({ ok: true, refund });
-});
+}));
 
 /* 교환 상품 재발송 — 운송장을 저장하고 상태를 "재발송"으로, 고객에게 안내 메일. 환불은 절대 없다.
    reship_* 컬럼(043)이 아직 없으면 운송장 정보를 내부 메모 끝에 붙여 남긴다(정보가 사라지지 않게). */
-router.post("/api/admin/returns/:id/reship", requireAdmin, async (req, res) => {
+router.post("/api/admin/returns/:id/reship", requireAdmin, serializeByOrder(async (req) => { const { data } = await supabaseAdmin.from("return_requests").select("order_no").eq("id", req.params.id).maybeSingle(); return data && data.order_no; }, async (req, res) => {
   const courier = String((req.body || {}).courier || "").trim();
   const trackingNo = String((req.body || {}).trackingNo || "").trim().slice(0, 60);
   if (!COURIERS.some((c) => c.key === courier)) return res.status(400).json({ error: "택배사를 선택해 주세요." });
@@ -159,6 +161,6 @@ router.post("/api/admin/returns/:id/reship", requireAdmin, async (req, res) => {
   }
   logAdminAction(req, "return.reship", "return", rr.id, { orderNo: rr.order_no, courier, trackingNo });
   res.json({ ok: true, item: { id: saved.id, status: saved.status, reshipCourier: courier, reshipTrackingNo: trackingNo } });
-});
+}));
 
 module.exports = router;

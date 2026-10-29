@@ -2014,6 +2014,23 @@ const I18N = {
   ["결제할 금액이 없는 주문입니다. 다시 시도해 주세요.", {"en": "There's nothing to pay for this order. Please try again.", "ja": "お支払い金額のないご注文です。もう一度お試しください。", "de": "Für diese Bestellung ist nichts zu bezahlen. Bitte erneut versuchen."}],
   ["입금 기한이 지났거나 가상계좌 주문이라 입금대기로 되돌릴 수 없습니다. 입금을 확인했다면 입금확인으로 되돌려 주세요.", {"de": "Zahlungsfrist abgelaufen oder virtuelles Konto – kein Zurücksetzen auf „Zahlung ausstehend“. Bei bestätigter Zahlung bitte „Zahlung bestätigt“ wählen."}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+/* ---------- 2026-10-28 정기 감사(5): API 실행 테스트로 찾은 검증 문구 ---------- */
+[
+  ["올바르지 않은 주문 상태입니다.", {"de": "Ungültiger Bestellstatus."}],
+  ["주문을 이전 단계로 되돌릴 수 없습니다.", {"de": "Die Bestellung kann nicht auf einen früheren Schritt zurückgesetzt werden."}],
+  ["'환불·주문취소' 권한이 없어 환불된 주문을 되돌릴 수 없습니다. 마스터 관리자에게 문의하세요.", {"de": "Ohne Berechtigung „Erstattung·Stornierung“ kann eine erstattete Bestellung nicht wiederhergestellt werden. Bitte an den Master-Admin wenden."}],
+  ["주문취소 신청은 승인할 때 재고가 이미 복원됩니다.", {"de": "Bei Stornoanträgen wird der Bestand bereits bei der Genehmigung wiederhergestellt."}],
+  ["사용 한도는 1 이상의 숫자로 입력해 주세요.", {"de": "Bitte als Nutzungslimit eine Zahl ab 1 eingeben."}],
+  ["이미 취소된 주문입니다.", {"en": "This order has already been cancelled.", "ja": "すでにキャンセルされたご注文です。", "de": "Diese Bestellung wurde bereits storniert."}],
+  ["이미 출고된 주문은 취소 대신 반품으로 신청해 주세요.", {"en": "This order has already shipped. Please request a return instead.", "ja": "すでに出荷済みのご注文です。キャンセルではなく返品をお申し込みください。"}],
+  ["출고 전 주문은 반품·교환 대신 주문취소로 신청해 주세요.", {"en": "This order hasn't shipped yet. Please request a cancellation instead.", "ja": "出荷前のご注文です。返品・交換ではなくキャンセルをお申し込みください。"}],
+  ["이미 접수된 신청이 처리 중입니다. 처리 결과를 기다려 주세요.", {"en": "A request for this order is already being processed. Please wait for the result.", "ja": "すでに受け付けたお申し込みを処理中です。結果をお待ちください。"}],
+  ["반품·교환 신청이 처리 중이라 지금은 구매확정할 수 없습니다.", {"en": "A return or exchange is in progress, so the purchase can't be confirmed right now.", "ja": "返品・交換を処理中のため、現在は購入確定できません。"}],
+  ["주문자 정보 형식이 올바르지 않습니다.", {"en": "The customer information is invalid.", "ja": "ご注文者情報の形式が正しくありません。"}],
+  ["연락처를 숫자로 정확히 입력해 주세요.", {"en": "Please enter a valid phone number.", "ja": "電話番号を正しく入力してください。"}],
+  ["이메일 주소를 정확히 입력해 주세요.", {"en": "Please enter a valid email address.", "ja": "メールアドレスを正しく入力してください。"}],
+  ["한 상품은 한 번에 99개까지 주문할 수 있습니다.", {"en": "You can order up to 99 of one item at a time.", "ja": "1つの商品は一度に99個までご注文いただけます。"}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

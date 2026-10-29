@@ -1,4 +1,6 @@
 require("dotenv").config();
+const { serializeByOrder } = require("./lib/orderLock");
+
 const crypto = require("crypto");
 const fs = require("fs");
 const Sentry = require("@sentry/node");
@@ -9,7 +11,7 @@ const helmet = require("helmet");
 const compression = require("compression");
 const multer = require("multer");
 const cron = require("node-cron");
-const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS } = require("../소스 코드/assets/js/data.js");
+const { SITE, PRODUCTS: STATIC_PRODUCTS, CHARM_PRICE, EXTRA_PRICE, EXTRAS, COURIERS, CHARMS } = require("../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("./lib/supabase");
 const { requireAuth, optionalAuth, requireAdmin, MASTER_ADMIN_EMAIL } = require("./lib/auth");
 const { isEmailBanned, BANNED_MESSAGE } = require("./lib/bans");
@@ -91,7 +93,7 @@ const { sendMorningBriefing } = require("./lib/briefing");
 const { buildBackup } = require("./lib/backup");
 const { applyOrderCancelSideEffects } = require("./lib/orderCancel");
 const { loadPreviousRefunds, refundedQtyByIndex } = require("./lib/refunds");
-const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders } = require("./lib/purchaseConfirm");
+const { confirmationEnabled, canConfirm, confirmOrder, checkDeliveries, autoConfirmOrders, hasOpenReturnRequest } = require("./lib/purchaseConfirm");
 const { toCustomerOrderDto } = require("./lib/customerOrders");
 const { buildSettlement } = require("./lib/settlement");
 const { getReviewPhotoPoints } = require("./lib/reviewRewards");
@@ -554,10 +556,24 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
   if (!customer || typeof customer !== "object") {
     return { error: { status: 400, body: { error: "customer 정보가 없습니다." } } };
   }
+  /* 주문자 정보는 문자열만, 연락처는 숫자 9~11자리, 이메일은 형식 검사 — "abc" 같은 연락처로 주문하면 나중에 주문조회·
+     반품 신청을 영영 못 했고, 객체를 보내면 "[object Object]"가 이름으로 저장됐다(2026-10-28 정기 감사). */
+  for (const f of [...REQUIRED_CUSTOMER_FIELDS, "addr2", "memo"]) {
+    if (customer[f] !== undefined && customer[f] !== null && typeof customer[f] !== "string") {
+      return { error: { status: 400, body: { error: "주문자 정보 형식이 올바르지 않습니다." } } };
+    }
+  }
   const missing = REQUIRED_CUSTOMER_FIELDS.filter((f) => !String(customer[f] || "").trim());
   if (missing.length) {
     const fields = missing.join(", ");
     return { error: { status: 400, body: { error: `필수 항목이 비었습니다: ${fields}`, i18n: { key: "필수 항목이 비었습니다: {fields}", vars: { fields } } } } };
+  }
+  const telDigitsOnly = String(customer.tel).replace(/\D/g, "");
+  if (telDigitsOnly.length < 9 || telDigitsOnly.length > 11) {
+    return { error: { status: 400, body: { error: "연락처를 숫자로 정확히 입력해 주세요.", code: "INVALID_TEL" } } };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(customer.email).trim())) {
+    return { error: { status: 400, body: { error: "이메일 주소를 정확히 입력해 주세요.", code: "INVALID_EMAIL" } } };
   }
   // 차단된 회원이 로그아웃하고 같은 이메일로 비회원 주문하는 길도 막는다(lib/bans.js).
   if (await isEmailBanned(customer.email)) {
@@ -585,6 +601,24 @@ async function validateAndPriceOrder(body, products, userId, { banned = false } 
       i18n: { key: "{name} {size} 사이즈는 지금 판매하지 않습니다. 장바구니에서 빼고 다시 담아 주세요.", vars: { name, size } },
       code: "INVALID_SIZE", index: badSizeIndex,
     } } };
+  }
+
+  /* 참 줄은 실제 있는 참만(아무 키나 받던 것), 같은 상품·컬러·사이즈를 여러 줄로 나눠 한 줄 상한(99개)을 넘기는 것도 막는다
+     (2026-10-28 정기 감사) */
+  const validCharmKeys = new Set((CHARMS || []).map((c) => c.key).filter((k) => k !== "none"));
+  if (rawItems.some((raw) => raw && typeof raw === "object" && raw.charm && raw.charm.key && raw.charm.key !== "none" && !validCharmKeys.has(raw.charm.key))) {
+    return { error: { status: 400, body: { error: "존재하지 않는 상품·참(charm) 또는 잘못된 수량이 포함되어 있습니다." } } };
+  }
+  {
+    const perVariant = new Map();
+    for (const raw of rawItems) {
+      if (!raw || typeof raw !== "object") continue;
+      const k = `${raw.productId}|${raw.color || ""}|${raw.size || ""}`;
+      perVariant.set(k, (perVariant.get(k) || 0) + (Math.floor(Number(raw.qty)) || 0));
+    }
+    if ([...perVariant.values()].some((q) => q > 99)) {
+      return { error: { status: 400, body: { error: "한 상품은 한 번에 99개까지 주문할 수 있습니다.", code: "QTY_LIMIT" } } };
+    }
   }
 
   const items = rawItems.map((raw) => priceItem(raw, products, PRICE_OPTS));
@@ -1795,6 +1829,10 @@ app.post("/api/orders/confirm", optionalAuth, lookupLimiter, async (req, res) =>
   if (!canConfirm(order)) {
     return res.status(409).json({ error: order.confirmed_at ? "이미 구매확정된 주문입니다." : "배송이 시작된 주문만 구매확정할 수 있습니다." });
   }
+  // 반품·교환 처리 중에는 직접 구매확정도 막는다(자동 확정과 같은 기준 — 적립 후 반품 악용 방지, 2026-10-28)
+  if (await hasOpenReturnRequest(supabaseAdmin, order.order_no)) {
+    return res.status(409).json({ error: "반품·교환 신청이 처리 중이라 지금은 구매확정할 수 없습니다.", code: "RETURN_IN_PROGRESS" });
+  }
   const result = await confirmOrder(order);
   if (!result.ok) return res.status(result.already ? 409 : 500).json({ error: result.already ? "이미 구매확정된 주문입니다." : "구매확정에 실패했습니다." });
   res.json({ ok: true, confirmedAt: result.confirmedAt, pointsCredited: result.pointsCredited });
@@ -1830,7 +1868,7 @@ app.post("/api/returns", optionalAuth, writeLimiter, async (req, res) => {
      관리자가 매번 수작업으로 걸러야 했다. */
   const { data: orderRow, error: orderLookupError } = await supabaseAdmin
     .from("orders")
-    .select("order_no, customer")
+    .select("order_no, customer, status")
     .eq("order_no", orderNoStr)
     .maybeSingle();
   if (orderLookupError) {
@@ -1839,6 +1877,20 @@ app.post("/api/returns", optionalAuth, writeLimiter, async (req, res) => {
   }
   if (!orderRow || normalizeTel(orderRow.customer.tel) !== normalizeTel(telStr)) {
     return res.status(404).json({ error: "일치하는 주문을 찾을 수 없습니다. 주문번호와 연락처를 다시 확인해 주세요." });
+  }
+  /* 주문 상태에 맞는 신청만 받는다(2026-10-28 정기 감사 — 취소된 주문에 취소 신청, 입금 전 주문에 반품 신청이 그대로
+     접수됐다): 주문취소는 출고 전(입금대기·입금확인), 반품·교환은 출고 후(배송중·완료). 같은 종류 신청이 처리 중이면 중복 접수 안 함. */
+  const st = orderRow.status;
+  if (requestTypeStr === "cancel" && !(st === "입금대기" || st === "입금확인")) {
+    return res.status(409).json({ error: st === "취소" ? "이미 취소된 주문입니다." : "이미 출고된 주문은 취소 대신 반품으로 신청해 주세요.", code: "INVALID_ORDER_STATE" });
+  }
+  if (requestTypeStr !== "cancel" && !(st === "배송중" || st === "완료")) {
+    return res.status(409).json({ error: st === "취소" ? "이미 취소된 주문입니다." : "출고 전 주문은 반품·교환 대신 주문취소로 신청해 주세요.", code: "INVALID_ORDER_STATE" });
+  }
+  {
+    const { data: openReqs } = await supabaseAdmin.from("return_requests").select("id, status, request_type").eq("order_no", orderNoStr);
+    const dup = (openReqs || []).some((r) => (r.request_type || "return") === requestTypeStr && r.status !== "완료" && r.status !== "반려");
+    if (dup) return res.status(409).json({ error: "이미 접수된 신청이 처리 중입니다. 처리 결과를 기다려 주세요.", code: "DUPLICATE_REQUEST" });
   }
 
   let { data, error } = await supabaseAdmin
@@ -2259,6 +2311,17 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
       results.push({ orderNo, ok: false, error: "결제가 확인된 주문은 입금대기로 되돌릴 수 없습니다." });
       continue;
     }
+    if (patch.status !== undefined && !ORDER_STATUS_VALUES.includes(patch.status)) {
+      results.push({ orderNo, ok: false, error: "올바르지 않은 주문 상태입니다." });
+      continue;
+    }
+    {
+      const rank = { 입금대기: 0, 입금확인: 1, 배송중: 2, 완료: 3 };
+      if (patch.status !== undefined && rank[patch.status] < rank[prev.status] && !(prev.status === "완료" && patch.status === "배송중")) {
+        results.push({ orderNo, ok: false, error: "주문을 이전 단계로 되돌릴 수 없습니다." });
+        continue;
+      }
+    }
 
     if ((patch.status === "배송중" && prev.status !== "배송중" && !prev.tracking_no) || (patch.tracking_no && !prev.tracking_no && prev.status !== "배송중")) {
       patch.shipped_at = new Date().toISOString();
@@ -2284,7 +2347,8 @@ app.patch("/api/admin/orders/bulk", requireAdmin, async (req, res) => {
    status가 (처음으로) "취소"가 되는 순간에는 미입금 자동취소·반품승인환불과 같은 원칙으로
    ① 재고 복원 ② 카드결제 건이면 포트원 환불 자동 시도 ③ 고객 안내 메일까지 한 번에 처리한다
    (cancelReason은 선택 — 입력하면 사유가 저장되고 고객 메일에도 그대로 노출됨). */
-app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
+const ORDER_STATUS_VALUES = ["입금대기", "입금확인", "배송중", "완료", "취소"];
+app.patch("/api/admin/orders/:no", requireAdmin, serializeByOrder((req) => req.params.no, async (req, res) => {
   const { status, courier, trackingNo, cancelReason, assignedTo, internalNote, expected } = req.body || {};
 
   const patch = {};
@@ -2320,7 +2384,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
      (2026-09-01 코드 감사에서 발견). */
   const { data: prev, error: prevError } = await supabaseAdmin
     .from("orders")
-    .select("status, tracking_no, payment_method")
+    .select("*")
     .eq("order_no", req.params.no)
     .single();
   if (prevError || !prev) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
@@ -2337,6 +2401,28 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   const cancelReasonStr = cancelReason ? String(cancelReason).trim().slice(0, 300) : "";
   const isNewCancel = patch.status === "취소" && prev.status !== "취소";
+  /* 상태값·흐름 검사(2026-10-28 정기 감사, API 실행 테스트로 확인):
+     ① 정해진 다섯 상태만 받는다(그 밖의 값은 DB 제약에 걸려 "저장 실패" 500이 났다)
+     ② 앞 단계로 되돌리기 금지 — 배송중·완료 → 입금확인으로 되돌리면 "입금 확인" 메일·적립 예정액 계산이 다시 돌고
+        (부분 취소로 줄어든 적립 예정액이 원래대로 부풀어 구매확정 때 더 지급됨), 반품 환불 후 "취소" 금지 검사도 피해 갔다.
+        배송 처리를 잘못 누른 경우만 고려해 완료 → 배송중은 허용한다. 취소 → 다른 상태(되돌리기)는 아래에서 따로 검사. */
+  if (patch.status !== undefined && !ORDER_STATUS_VALUES.includes(patch.status)) {
+    return res.status(400).json({ error: "올바르지 않은 주문 상태입니다.", code: "INVALID_STATUS" });
+  }
+  if (patch.status !== undefined && prev.status !== "취소" && patch.status !== "취소" && patch.status !== prev.status) {
+    const rank = { 입금대기: 0, 입금확인: 1, 배송중: 2, 완료: 3 };
+    const backward = rank[patch.status] < rank[prev.status];
+    if (backward && !(prev.status === "완료" && patch.status === "배송중") && patch.status !== "입금대기") {
+      return res.status(400).json({ error: "주문을 이전 단계로 되돌릴 수 없습니다.", code: "INVALID_STATUS_BACK" });
+    }
+  }
+  // 환불까지 끝난 결제 주문(카드·가상계좌 또는 환불 기록 있음)을 되살리는 것도 돈이 걸린 처리라 환불 권한이 필요하다
+  if (prev.status === "취소" && patch.status !== undefined && patch.status !== "취소") {
+    const moneyMoved = prev.payment_method === "card" || prev.payment_method === "virtual_account" || Number(prev.refunded_amount) > 0;
+    if (moneyMoved && !(await hasAreaPermission(req, "refunds"))) {
+      return res.status(403).json({ error: "'환불·주문취소' 권한이 없어 환불된 주문을 되돌릴 수 없습니다. 마스터 관리자에게 문의하세요.", code: "FORBIDDEN_AREA", area: "refunds" });
+    }
+  }
   /* 입금된 주문을 "입금대기"로 되돌리는 건 막는다 — 되돌린 뒤 취소하면 "입금 전 취소"로 보여 환불 권한 검사를
      건너뛰면서도 카드는 전액 환불됐다(2026-10-28 정기 감사). 카드결제는 처음부터 결제된 주문이라 항상 막는다. */
   if (patch.status === "입금대기" && prev.status !== "입금대기" && (prev.status !== "취소" || prev.payment_method === "card")) {
@@ -2461,7 +2547,7 @@ app.patch("/api/admin/orders/:no", requireAdmin, async (req, res) => {
 
   logAdminAction(req, "order.update", "order", req.params.no, patch);
   res.json({ ok: true, cancel: cancelResult, uncancel: uncancelResult });
-});
+}));
 
 /* 반품·교환·주문취소 신청 관리자 라우트(목록·상태 저장·재고 복원)는 routes/returns.js로 옮겼다(2026-10-02 —
    유형별 처리 규칙을 테스트할 수 있게). 환불 실행은 routes/refunds.js + lib/refunds.js. */
@@ -2675,13 +2761,17 @@ function toCouponDto(c) {
   };
 }
 
-function couponPatchFromBody(body, { forCreate, existingDiscountType }) {
+function couponPatchFromBody(body, { forCreate, existingDiscountType, existingDiscountValue }) {
   const patch = {};
   if (forCreate || body.discountType !== undefined) {
     if (!["percent", "amount"].includes(body.discountType)) {
       return { error: "discountType은 percent 또는 amount여야 합니다." };
     }
     patch.discount_type = body.discountType;
+    /* 할인 방식만 정률로 바꾸면 기존 값(예: 1000원)이 그대로 1000%가 됐다 — 값을 같이 안 보내도 기존 값으로 검사한다(2026-10-28) */
+    if (!forCreate && body.discountValue === undefined && body.discountType === "percent" && Number(existingDiscountValue) > 100) {
+      return { error: "정률 할인은 100을 넘을 수 없습니다." };
+    }
   }
   if (forCreate || body.discountValue !== undefined) {
     const v = Math.floor(Number(body.discountValue));
@@ -2705,7 +2795,13 @@ function couponPatchFromBody(body, { forCreate, existingDiscountType }) {
     patch.min_subtotal = Math.max(0, Math.floor(Number(body.minSubtotal) || 0));
   }
   if (body.usageLimit !== undefined) {
-    patch.usage_limit = body.usageLimit === null || body.usageLimit === "" ? null : Math.max(1, Math.floor(Number(body.usageLimit)));
+    if (body.usageLimit === null || body.usageLimit === "") patch.usage_limit = null;
+    else {
+      // 숫자가 아닌 값이 들어오면 NaN이 저장돼 결과적으로 "무제한" 쿠폰이 됐다(2026-10-28 정기 감사)
+      const n = Math.floor(Number(body.usageLimit));
+      if (!Number.isFinite(n) || n < 1) return { error: "사용 한도는 1 이상의 숫자로 입력해 주세요." };
+      patch.usage_limit = n;
+    }
   }
   if (body.startsAt !== undefined) patch.starts_at = body.startsAt || null;
   if (body.endsAt !== undefined) patch.ends_at = body.endsAt || null;
@@ -2739,12 +2835,13 @@ app.post("/api/admin/coupons", requireAdmin, async (req, res) => {
 app.patch("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
   const { data: existing } = await supabaseAdmin
     .from("coupons")
-    .select("discount_type")
+    .select("discount_type, discount_value")
     .eq("code", req.params.code.toUpperCase())
     .maybeSingle();
   const { patch, error: patchError } = couponPatchFromBody(req.body || {}, {
     forCreate: false,
     existingDiscountType: existing?.discount_type,
+    existingDiscountValue: existing?.discount_value,
   });
   if (patchError) return res.status(400).json({ error: patchError });
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });

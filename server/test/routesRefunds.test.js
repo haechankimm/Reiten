@@ -123,3 +123,23 @@ test("교환 재발송 — 운송장 저장·상태 '재발송', 환불 없음 /
   const bad = await request(buildApp()).post("/api/admin/returns/rt1/reship").set(auth).send({ courier: "cj", trackingNo: "1" });
   assert.strictEqual(bad.status, 400);
 });
+
+test("같은 주문 환불을 동시에 두 번 보내도 한 번만 환불된다(2026-10-28 정기 감사 — 더블클릭 이중 환불)", async () => {
+  // PG 호출에 약간의 지연을 줘 두 요청이 겹치게 한다
+  portone.cancelPayment = async (paymentId, reason, opts) => {
+    await new Promise((r) => setTimeout(r, 15));
+    cancelCalls.push({ paymentId, reason, ...(opts || {}) });
+  };
+  const app = buildApp();
+  const body = { orderNo: "C1", kind: "partial_cancel", lines: [{ index: 0, qty: 2 }] };
+  const [a, b] = await Promise.all([
+    request(app).post("/api/admin/refunds").set(auth).send(body),
+    request(app).post("/api/admin/refunds").set(auth).send(body),
+  ]);
+  const statuses = [a.status, b.status].sort();
+  assert.strictEqual(statuses[0], 200);
+  assert.ok(statuses[1] >= 400, "두 번째 요청은 남은 수량이 없어 거절돼야 함");
+  assert.strictEqual(cancelCalls.length, 1);
+  const inv = (await supabaseAdmin.from("inventory").select("*")).data[0];
+  assert.strictEqual(inv.qty, 2);
+});

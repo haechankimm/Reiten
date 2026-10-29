@@ -17,6 +17,7 @@ function orderNo(seq, date = new Date()) {
 /* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.
    productId + charm + extras 조합만으로 상품/참/추가아이템 가격을 다시 계산한다. */
 function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
+  if (!raw || typeof raw !== "object") return null; // null·문자열 줄이 섞이면 500이 났다(2026-10-28)
   /* `Number(raw.qty) || 1`처럼 falsy 체크로 기본값을 주면 qty:0(명시적으로 보낸 잘못된 값)이
      0은 falsy라서 조용히 1개로 둔갑해버린다(2026-09-01 코드 감사에서 발견) — 그래서 0 이하·
      숫자가 아닌 값은 아예 거부(null)하고, 상한(99)만 clamp한다. */
@@ -48,7 +49,7 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
 
   return {
     name: String(serverName || raw.name || "").slice(0, 200),
-    options: Array.isArray(raw.opts) ? raw.opts.map((o) => `${o.label} ${o.value}`).join(" / ") : "",
+    options: Array.isArray(raw.opts) ? raw.opts.filter((o) => o && typeof o === "object").map((o) => `${String(o.label ?? "")} ${String(o.value ?? "")}`.slice(0, 120)).join(" / ").slice(0, 500) : "",
     qty,
     unit,
     sum: unit * qty,

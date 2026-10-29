@@ -5,6 +5,7 @@
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
+const { hasAreaPermission } = require("../lib/adminGuard");
 const { logAdminAction } = require("../lib/adminLog");
 const { PROTECTED_SETTING_LABELS: THANKS_COUPON_PROTECTED_LABELS } = require("../lib/thanksCoupons");
 const { LOYALTY_POINTS_RATE_SETTING_LABEL } = require("../lib/loyaltyPoints");
@@ -137,7 +138,8 @@ router.get("/api/admin/backup/export", requireAdmin, async (req, res) => {
   const backup = {
     exportedAt: new Date().toISOString(),
     products: products.data,
-    coupons: coupons.data,
+    // 쿠폰 권한이 없는 직원에게는 쿠폰 코드(고객별 감사 쿠폰 포함)를 내보내지 않는다(2026-10-28 정기 감사)
+    coupons: isMaster(req) || (await hasAreaPermission(req, "coupons", "view")) ? coupons.data : [],
     adminSettings: isMaster(req) ? settings.data : settings.data.map(redactSecret),
   };
   const filename = `reiten-backup-${require("../lib/kst").kstDateKey(new Date())}.json`;

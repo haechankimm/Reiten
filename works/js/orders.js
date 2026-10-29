@@ -18,6 +18,9 @@
       if (s === o.status) return true;
       if (s === "입금대기" && (paid || o.paymentMethod === "card" || o.paymentMethod === "virtual_account")) return false;
       if (s === "취소" && (o.status === "배송중" || o.status === "완료") && Number(o.refundedAmount) > 0) return false;
+      // 앞 단계로 되돌리기는 서버가 막는다(배송 처리 실수로 완료 → 배송중만 허용)
+      const rank = { 입금대기: 0, 입금확인: 1, 배송중: 2, 완료: 3 };
+      if (o.status !== "취소" && s !== "취소" && rank[s] < rank[o.status] && !(o.status === "완료" && s === "배송중")) return false;
       return true;
     });
   }

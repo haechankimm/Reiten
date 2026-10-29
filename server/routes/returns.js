@@ -12,6 +12,8 @@ const { updateWithOptionalColumnFallback, selectWithOptionalColumnFallback } = r
 const { hasAreaPermission } = require("../lib/adminGuard");
 const { applyOrderCancelSideEffects } = require("../lib/orderCancel");
 
+const { serializeByOrder } = require("../lib/orderLock");
+const { loadPreviousRefunds } = require("../lib/refunds");
 const router = express.Router();
 
 /* 반품 신청 목록 필터 — orders와 같은 규칙(q는 주문번호·이름·연락처 부분 일치, dateFrom/dateTo는 KST 하루 범위). */
@@ -81,7 +83,7 @@ const RETURN_STATUSES_BY_TYPE = {
   cancel: ["접수", "완료", "반려"],
 };
 
-router.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
+router.patch("/api/admin/returns/:id", requireAdmin, serializeByOrder(async (req) => { const { data } = await supabaseAdmin.from("return_requests").select("order_no").eq("id", req.params.id).maybeSingle(); return data && data.order_no; }, async (req, res) => {
   const { status, assignedTo, internalNote, expectedStatus } = req.body || {};
   const statusStr = status !== undefined ? String(status || "").trim() : undefined;
   if (status !== undefined && !statusStr) {
@@ -155,20 +157,25 @@ router.patch("/api/admin/returns/:id", requireAdmin, async (req, res) => {
   logAdminAction(req, "return.update", "return", req.params.id, patch);
 
   res.json({ ok: true, requestType, cancel });
-});
+}));
 
 /* 반품 승인 시 재고 복원 — return_requests는 주문번호만 갖고 있고 어떤 항목을 반품했는지는
    따로 기록하지 않으므로(전체 반품 전제), 해당 주문의 전체 항목을 복원한다. 부분 반품이면
    관리자가 이 버튼 대신 재고 탭에서 직접 수량을 조정해야 한다. 중복 복원(재고가 두 번 늘어나는
    사고)을 막기 위해 restocked 플래그로 한 번만 허용한다. */
-router.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => {
+router.post("/api/admin/returns/:id/restock", requireAdmin, serializeByOrder(async (req) => { const { data } = await supabaseAdmin.from("return_requests").select("order_no").eq("id", req.params.id).maybeSingle(); return data && data.order_no; }, async (req, res) => {
   const { data: ret, error: retError } = await supabaseAdmin
     .from("return_requests")
-    .select("id, order_no, restocked")
+    .select("*")
     .eq("id", req.params.id)
     .single();
   if (retError || !ret) return res.status(404).json({ error: "반품 신청을 찾을 수 없습니다." });
   if (ret.restocked) return res.status(400).json({ error: "이미 재고를 복원한 반품입니다." });
+  /* 재고가 주문 수량보다 많이 되돌아가던 경로 차단(2026-10-28 정기 감사, 실행 테스트로 재현):
+     주문취소 신청은 승인할 때 이미 재고가 복원되고, 반품은 환불 처리에서 고른 상품만 복원한다 — 이 버튼은 그 밖(교환 등)에만. */
+  if ((ret.request_type || "return") === "cancel") {
+    return res.status(400).json({ error: "주문취소 신청은 승인할 때 재고가 이미 복원됩니다.", code: "ALREADY_RESTORED" });
+  }
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("orders")
@@ -181,19 +188,33 @@ router.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => 
      안 주면 예전처럼 주문 전체를 복원한다. 반품 환불은 환불 처리(POST /api/admin/refunds)에서 고른 상품만
      같이 복원하므로 이 버튼을 따로 누를 필요가 없다. */
   const lines = Array.isArray(req.body && req.body.lines) ? req.body.lines : null;
-  let sourceItems = order.items || [];
+  // 환불 처리 때 이미 재고로 되돌린 수량은 빼고, 같은 상품을 여러 줄로 보내도 주문 수량을 넘지 않게 합쳐서 검사한다
+  const { rows: prevRefunds } = await loadPreviousRefunds(supabaseAdmin, ret.order_no);
+  const alreadyRestored = new Map();
+  for (const r of prevRefunds) {
+    if (!r.restocked) continue;
+    for (const ln of r.lines || []) alreadyRestored.set(ln.index, (alreadyRestored.get(ln.index) || 0) + (Number(ln.qty) || 0));
+  }
+  const allItems = order.items || [];
+  const wanted = new Map();
   if (lines) {
-    const picked = [];
     for (const ln of lines) {
       const idx = Number(ln && ln.index);
       const qty = Math.floor(Number(ln && ln.qty));
-      const it = sourceItems[idx];
-      if (!it || !Number.isFinite(qty) || qty < 1 || qty > (Number(it.qty) || 0)) {
+      if (!Number.isInteger(idx) || !allItems[idx] || !Number.isFinite(qty) || qty < 1) {
         return res.status(400).json({ error: "복원할 상품·수량이 올바르지 않습니다." });
       }
-      picked.push({ ...it, qty });
+      wanted.set(idx, (wanted.get(idx) || 0) + qty);
     }
-    sourceItems = picked;
+  } else {
+    allItems.forEach((it, idx) => wanted.set(idx, Number(it.qty) || 0));
+  }
+  const sourceItems = [];
+  for (const [idx, qty] of wanted) {
+    const left = (Number(allItems[idx].qty) || 0) - (alreadyRestored.get(idx) || 0);
+    if (lines && qty > left) return res.status(400).json({ error: "복원할 상품·수량이 올바르지 않습니다." });
+    const q = Math.min(qty, left);
+    if (q > 0) sourceItems.push({ ...allItems[idx], qty: q });
   }
   const restoreItems = restoreItemsFromOrder(sourceItems);
 
@@ -211,6 +232,6 @@ router.post("/api/admin/returns/:id/restock", requireAdmin, async (req, res) => 
   logAdminAction(req, "return.restock", "return", req.params.id, { orderNo: ret.order_no, items: restoreItems });
 
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

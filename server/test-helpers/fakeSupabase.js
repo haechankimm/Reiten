@@ -198,7 +198,11 @@ class FakeQuery {
   }
   then(resolve, reject) {
     try {
-      const { rows, count } = this._execute();
+      /* 실제 Supabase처럼 결과는 사본으로 돌려준다 — 저장된 행 객체를 그대로 넘기면 나중 update가 호출부가 들고 있던
+         "이전 값"까지 바꿔버려, 상태 전환 후속 처리(예: 입금확인 메일) 같은 경로가 테스트에서 아예 안 돌았다(2026-10-28). */
+      const out = this._execute();
+      const rows = typeof structuredClone === "function" ? structuredClone(out.rows) : JSON.parse(JSON.stringify(out.rows));
+      const count = out.count;
       if (this.mode === "single") {
         resolve(rows.length ? { data: rows[0], error: null } : { data: null, error: { message: "not found" } });
       } else if (this.mode === "maybeSingle") {
