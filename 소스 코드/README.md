@@ -57,7 +57,7 @@
 > 실행 후 Works 정보 탭 "지금 점검하기"로 확인하고, 아래 "Supabase 마이그레이션" 표와 이 섹션의 상태를 갱신한다.
 
 **🔴 바로 처리 (운영에 영향)**
-0. **(2026-11-09 신규) 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행** — Finder `Reiten/server/migrations`에서 열어
+0. ~~(2026-11-09) 마이그레이션 045·046 실행, Sentry 연결~~ — **완료(2026-11-09 사용자: 045·046 실행, Render `SENTRY_DSN` 설정, Works "Sentry 연결 테스트" 전송 확인)**. 아래는 당시 안내 원문. 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행 — Finder `Reiten/server/migrations`에서 열어
    SQL Editor에 붙여넣기(브랜치를 main에 머지·Pull한 뒤 보임). 045 = 서버 여러 대 사이 처리 잠금(서버 1대일 땐 없어도 안전, **늘리기 전 필수**),
    046 = 주문 목록·자동취소 조회 색인(결과는 같고 속도만). 실행 후 "지금 점검하기"에 "DB 마이그레이션 045"가 정상으로 뜨면 끝.
    `047_shared_rate_limits.sql`은 **서버를 2대 이상으로 늘릴 때만** 실행하고 Render에 `RATE_LIMIT_SHARED=on`(요청 제한을 서버끼리 함께 셈).
@@ -462,9 +462,9 @@
 | `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ✅ 실행 확인(2026-10-02, `products.media` 컬럼 확인) |
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
-| `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ⚠️ **미실행(2026-11-09 신규)** — 서버 1대일 땐 없어도 동작 그대로, 서버를 늘리기 전 필수 |
+| `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ✅ 실행함(2026-11-09 사용자) |
 | `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ⚠️ 미실행 — **서버 증설 때만** 실행 + `RATE_LIMIT_SHARED=on` |
-| `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ⚠️ **미실행(2026-11-09 신규)** — 선택, 결과는 같고 주문이 많아질 때 속도만 |
+| `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
