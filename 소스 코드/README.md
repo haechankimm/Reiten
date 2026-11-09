@@ -47,7 +47,11 @@
 
 > **📌 마이그레이션 작업 방식 (영구 규칙, 2026-11-09 사용자 지정)** — DB를 바꿔야 하면 Claude는 **항상 `server/migrations/`에 새 번호의
 > `.sql` 파일을 추가**한다(여러 번 실행해도 안전하게 `if not exists` 형태, 파일 맨 위 주석에 무엇을 하는지·실행 안 해도 되는지 적기).
-> 사용자는 Finder의 `Reiten/server/migrations` 폴더에서 그 파일을 열어 **Supabase SQL Editor에 붙여넣어 실행**한다. 채팅에 SQL을 길게
+> 사용자는 Finder의 `Reiten/server/migrations` 폴더에서 그 파일을 열어 **Supabase SQL Editor에 붙여넣어 실행**한다.
+> **파일이 안 보일 때(2026-11-09 사용자 혼란 사례)**: ① Claude가 아직 main에 머지하지 않았거나 ② 머지 전에 Pull 했거나 ③ GitHub Desktop의
+> "Current branch"가 main이 아닌 경우다. Claude는 마이그레이션 파일을 만든 작업은 **끝나자마자 PR→CI 통과→main 머지**까지 하고, 보고할 때
+> "main에 머지됨 — 지금 Pull 하면 보임"과 파일 번호를 함께 적는다. 사용자는 GitHub Desktop에서 Current branch = **main** 확인 → Fetch origin → Pull origin.
+> 그래도 안 보이면 GitHub 웹의 https://github.com/haechankimm/Reiten/tree/main/server/migrations 에서 같은 파일을 열어 복사하면 된다. 채팅에 SQL을 길게
 > 붙여넣는 방식은 쓰지 않고, 파일 이름·무엇이 바뀌는지만 알려 준다. 이 폴더에 파일이 보이려면 브랜치가 **main에 머지된 뒤 GitHub Desktop으로
 > Fetch/Pull** 해야 한다(머지 전에 먼저 보려면 GitHub Desktop에서 작업 브랜치 `claude/remote-control-review-3hq2cb`로 전환).
 > 실행 후 Works 정보 탭 "지금 점검하기"로 확인하고, 아래 "Supabase 마이그레이션" 표와 이 섹션의 상태를 갱신한다.
