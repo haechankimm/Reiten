@@ -41,8 +41,15 @@
 > 2026-10-02 3차(사용자 요청 19개 일괄 처리 — 환불·반품 재설계, 배송추적·구매확정, 노출 감사, 검색 노출·네이버쇼핑, 운영 자동화)의
 > 상세는 아래 "최근 작업 이력" 맨 위 항목을 볼 것.
 
+> **📌 마이그레이션 작업 방식 (영구 규칙, 2026-11-09 사용자 지정)** — DB를 바꿔야 하면 Claude는 **항상 `server/migrations/`에 새 번호의
+> `.sql` 파일을 추가**한다(여러 번 실행해도 안전하게 `if not exists` 형태, 파일 맨 위 주석에 무엇을 하는지·실행 안 해도 되는지 적기).
+> 사용자는 Finder의 `Reiten/server/migrations` 폴더에서 그 파일을 열어 **Supabase SQL Editor에 붙여넣어 실행**한다. 채팅에 SQL을 길게
+> 붙여넣는 방식은 쓰지 않고, 파일 이름·무엇이 바뀌는지만 알려 준다. 이 폴더에 파일이 보이려면 브랜치가 **main에 머지된 뒤 GitHub Desktop으로
+> Fetch/Pull** 해야 한다(머지 전에 먼저 보려면 GitHub Desktop에서 작업 브랜치 `claude/remote-control-review-3hq2cb`로 전환).
+> 실행 후 Works 정보 탭 "지금 점검하기"로 확인하고, 아래 "Supabase 마이그레이션" 표와 이 섹션의 상태를 갱신한다.
+
 **🔴 바로 처리 (운영에 영향)**
-1. **마이그레이션 `043_refunds_delivery_confirm.sql` 실행(⚠️ 미실행, 3차 신규)** — Supabase SQL Editor에 붙여넣어 실행. 실행 전에는
+1. **마이그레이션 `043_refunds_delivery_confirm.sql` 실행(2026-11-09 사용자가 SQL Editor에서 실행함 — 아직 "지금 점검하기"로 확인 전, 점검 기능은 PR #4 머지 후 배포돼야 동작)** — Supabase SQL Editor에 붙여넣어 실행. 실행 전에는
    ① 부분 환불 이력(`order_refunds`)이 저장되지 않아 같은 주문을 여러 번 나눠 환불하면 앞의 환불을 모름(Works 환불 창에 빨간 경고가 뜸)
    ② 배송조회·구매확정이 꺼져 적립금이 예전처럼 결제 확인 즉시 지급 ③ 사진 리뷰 적립금·비회원 문의 이메일·교환 재발송 운송장이 저장 안 됨.
    실행 후 Works 정보 탭 "운영 점검 · 자동 백업" → "지금 점검하기"에서 "DB 마이그레이션 043"이 정상으로 바뀌면 끝.
@@ -97,7 +104,7 @@
     `npm audit`·Dependabot을 확인하고 확실한 버그는 고쳐 커밋, 판단이 필요한 건 보고만 한다(Routine "REITEN 주간 정기 감사").
     첫 실행 10/28 수동 감사 결과는 아래 "최근 작업 이력" 2026-10-28 항목. **보고만 하고 안 고친 항목**도 거기 정리돼 있다.
 
-**상태 메모(2026-10-29)**: 마이그레이션 `001`~`042` 실행 확인, **`043`·`044` 미실행**. 브랜치는 아직 main 미반영 — PR #3 머지 이후 커밋 전부를
+**상태 메모(2026-10-29)**: 마이그레이션 `001`~`042` 실행 확인, **`043`·`044`는 2026-11-09 사용자가 실행(점검 확인 전)**. 브랜치는 아직 main 미반영 — PR #3 머지 이후 커밋 전부를
 **PR #4**(https://github.com/haechankimm/Reiten/pull/4, CI 통과)로 올려 둠. 머지하면 Render가 배포한다. `npm audit`: 10월 신규 high/critical(body-parser·multer·proxy-addr·qs)은 패치 버전으로 해결, 남은 건 low/moderate
 (`exceljs`·`node-cron` 내부 `uuid` 등 메이저 업그레이드 필요 — Dependabot PR로 추적). 서버 테스트 253건. 새 환경변수(전부 선택): `SWEETTRACKER_API_KEY`(배송조회),
 `BACKUP_EMAIL=off`(주간 백업 끄기), `MORNING_BRIEFING=off`(아침 요약 끄기). 크론(KST): 매시 15분 배송조회, 03:40 자동 구매확정,
@@ -431,8 +438,8 @@
 | `040_admin_pin_and_permissions.sql` | 관리자 PIN(`admin_pins`) + 직원별 영역 권한(`admin_permissions`), RLS 포함 | ✅ 실행 확인(2026-10-02, 테이블 확인 — 마스터 PIN 설정됨) |
 | `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ✅ 실행 확인(2026-10-02, `products.media` 컬럼 확인) |
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
-| `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ⚠️ **미실행** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
-| `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ⚠️ **미실행(선택)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
+| `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
+| `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
 가장 급한 항목들은 위 "다음 세션이 가장 먼저 할 일"에 이미 뽑아뒀습니다. 나머지는 그룹별로 정리했습니다.
