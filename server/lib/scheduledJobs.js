@@ -5,6 +5,7 @@ const { supabaseAdmin } = require("./supabase");
 const { sendAdminRestockAlert, sendCustomerAutoCancelled, sendAdminSettlementReport, sendAdminBackup } = require("./mailer");
 const kakao = require("./kakao");
 const { runExclusive } = require("./dbLock");
+const { sharedEnabled } = require("./rateLimitStore");
 
 const { releaseCouponUsage } = require("./coupons");
 const { reversePointsForOrder } = require("./loyaltyPoints");
@@ -319,5 +320,12 @@ scheduleExclusive("settlement", "0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
+
+/* 공유 요청 제한(RATE_LIMIT_SHARED=on, 마이그레이션 047)의 지난 카운터 정리 — 매일 04:50(KST), 하루 지난 것만 */
+scheduleExclusive("rate-limit-cleanup", "50 4 * * *", async () => {
+  if (!sharedEnabled()) return;
+  const { error } = await supabaseAdmin.from("rate_limits").delete().lt("reset_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+  if (error) console.error("[rate-limit] 지난 카운터 정리 실패:", error.message);
+}, { timezone: "Asia/Seoul" });
 
 module.exports = { cancelStalePendingOrders, closeExpiredVirtualAccounts, checkRestockNeeded, sendMonthlySettlement };

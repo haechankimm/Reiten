@@ -1160,3 +1160,11 @@
   };
   Object.keys(DE).forEach((k) => { I18N[k] = Object.assign({}, I18N[k], { de: DE[k] }); });
 })();
+
+/* ---------- 2026-11-09: Sentry 연결 테스트 ---------- */
+[
+  ["Sentry 연결 테스트", "Sentry-Verbindung testen"],
+  ["Sentry로 테스트 오류를 보냈습니다. 1~2분 뒤 Sentry의 Issues에 보이면 연결 성공입니다.", "Testfehler an Sentry gesendet. Erscheint er in 1–2 Minuten unter Issues, ist die Verbindung erfolgreich."],
+  ["SENTRY_DSN이 설정되지 않았습니다(Render 환경변수)", "SENTRY_DSN ist nicht gesetzt (Render-Umgebungsvariable)"],
+  ["Sentry로 보내지 못했습니다. DSN 값을 다시 확인해 주세요.", "Senden an Sentry fehlgeschlagen. Bitte den DSN-Wert prüfen."],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

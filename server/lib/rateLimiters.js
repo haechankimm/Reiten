@@ -9,6 +9,8 @@
    optionalAuth/requireAuth 뒤에 둬야 req.user가 채워져 있다 — 앞에 두면 그냥 IP로 센다).
    한도 초과 문구는 번역 사전(i18n.js)에 들어 있어 영어·일본어 화면에서도 번역돼 보인다(apiErrorText). */
 const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+/* 서버 여러 대면 RATE_LIMIT_SHARED=on으로 DB에서 함께 센다(lib/rateLimitStore.js, 마이그레이션 047). 기본은 서버 메모리. */
+const { storeFor } = require("./rateLimitStore");
 
 const WINDOW_MS = 15 * 60 * 1000;
 const TOO_MANY = {
@@ -21,8 +23,9 @@ function memberOrIpKey(req) {
   return `ip:${ipKeyGenerator(req.ip || "")}`;
 }
 
-function makeLimiter(max, { skip } = {}) {
+function makeLimiter(name, max, { skip } = {}) {
   return rateLimit({
+    store: storeFor(name),
     windowMs: WINDOW_MS,
     max,
     standardHeaders: true,
@@ -36,25 +39,26 @@ function makeLimiter(max, { skip } = {}) {
 /* 주문 접수·결제 준비 — 돈이 걸린 경로라 넉넉히 두되(결제창을 몇 번 다시 열어도 막히지 않게),
    무통장 주문으로 재고를 잔뜩 잡아두는 장난은 막을 수준. 카드결제 "확인" 요청(paymentId만 보냄)은
    이미 결제가 끝난 뒤라 절대 막지 않는다(막히면 결제는 됐는데 주문완료 화면을 못 보는 사고). */
-const orderLimiter = makeLimiter(30, { skip: (req) => !!(req.body && req.body.paymentId) });
+const orderLimiter = makeLimiter("order", 30, { skip: (req) => !!(req.body && req.body.paymentId) });
 
 /* 비회원 주문 조회(주문번호+연락처) — 무차별 대입 대상이라 따로 센다. */
-const lookupLimiter = makeLimiter(30);
+const lookupLimiter = makeLimiter("lookup", 30);
 
 /* 장바구니 쿠폰 확인 — 코드 대입 방지용으로만 제한, 주문 한도와는 별개. */
-const couponLimiter = makeLimiter(30);
+const couponLimiter = makeLimiter("coupon", 30);
 
 /* 글쓰기류(문의·리뷰·반품 신청·품절 알림 신청·공감) — 기존 writeLimiter 이름 그대로. */
-const writeLimiter = makeLimiter(20);
+const writeLimiter = makeLimiter("write", 20);
 
 /* 로그인 잠금 보고·회원 탈퇴처럼 계정 보안과 직결된 경로. */
-const authLimiter = makeLimiter(20);
+const authLimiter = makeLimiter("auth", 20);
 
 /* 화면 오류 보고(POST /api/client-errors) — 오류가 반복되는 페이지가 서버·Sentry 한도를 다 쓰지 않게 IP당 15분 30건. */
-const clientErrorLimiter = makeLimiter(30);
+const clientErrorLimiter = makeLimiter("clientError", 30);
 
 /* 전체 /api 기본 한도 — 공유 IP 환경과 Works(관리자 화면은 요청이 많음)를 감안해 넉넉하게. */
 const apiLimiter = rateLimit({
+  store: storeFor("api"),
   windowMs: WINDOW_MS,
   max: 1000,
   standardHeaders: true,
