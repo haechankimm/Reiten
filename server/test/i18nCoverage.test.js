@@ -14,7 +14,8 @@ const SITE = path.join(ROOT, "소스 코드");
 const WORKS = path.join(ROOT, "works");
 
 function loadDictionary() {
-  const src = fs.readFileSync(path.join(SITE, "assets", "js", "i18n.js"), "utf8");
+  // 고객용 사전 + Works 전용 독일어(i18n.de.js, 2026-11-09 분리)
+  const src = ["i18n.js", "i18n.de.js"].map((f) => fs.readFileSync(path.join(SITE, "assets", "js", f), "utf8")).join("\n");
   const ctx = {
     document: { documentElement: { lang: "ko", setAttribute() {} }, addEventListener() {}, querySelectorAll() { return []; } },
     localStorage: { getItem() { return null; }, setItem() {} },
@@ -69,7 +70,7 @@ function missingFor(files, langs, dict) {
 
 test("고객 화면 문구는 모두 영어·일본어 번역이 있다", () => {
   const dict = loadDictionary();
-  const files = [...filesIn(SITE, [".html"], ["img"]), ...filesIn(path.join(SITE, "assets", "js"), [".js"], ["i18n.js"])];
+  const files = [...filesIn(SITE, [".html"], ["img"]), ...filesIn(path.join(SITE, "assets", "js"), [".js"], ["i18n.js", "i18n.de.js"])];
   assert.deepEqual(missingFor(files, ["en", "ja"], dict), []);
 });
 

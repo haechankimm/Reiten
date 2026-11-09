@@ -7,7 +7,9 @@ const path = require("path");
 const vm = require("vm");
 
 function loadDictionary() {
-  const src = fs.readFileSync(path.join(__dirname, "..", "..", "소스 코드", "assets", "js", "i18n.js"), "utf8");
+  // 고객용 사전 + Works 전용 독일어(i18n.de.js, 2026-11-09 분리)
+  const dir = path.join(__dirname, "..", "..", "소스 코드", "assets", "js");
+  const src = ["i18n.js", "i18n.de.js"].map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
   const ctx = {
     document: { documentElement: { lang: "ko", setAttribute() {} }, addEventListener() {}, querySelectorAll() { return []; } },
     localStorage: { getItem() { return null; }, setItem() {} },
