@@ -1188,3 +1188,9 @@ html[data-admin-theme="grass"][data-theme="night"] {
 /* 라이더 사이즈 추천(product.html) */
 .size-advisor { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper-2); }
 .size-advisor .field { margin-bottom: 10px; }
+
+/* iOS Safari는 글자 크기가 16px 미만인 입력칸을 누르면 화면을 멋대로 확대하고 그대로 둔다 — 주문서·로그인 입력칸이 14px라
+   휴대폰에서 칸을 누를 때마다 화면이 커졌다(2026-11-09). 터치 기기에서는 입력칸을 16px로 둔다. */
+@media (hover: none) and (pointer: coarse) {
+  input, select, textarea, .field input, .field select, .field textarea { font-size: 16px; }
+}
