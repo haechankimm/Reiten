@@ -50,6 +50,9 @@ const writeLimiter = makeLimiter(20);
 /* 로그인 잠금 보고·회원 탈퇴처럼 계정 보안과 직결된 경로. */
 const authLimiter = makeLimiter(20);
 
+/* 화면 오류 보고(POST /api/client-errors) — 오류가 반복되는 페이지가 서버·Sentry 한도를 다 쓰지 않게 IP당 15분 30건. */
+const clientErrorLimiter = makeLimiter(30);
+
 /* 전체 /api 기본 한도 — 공유 IP 환경과 Works(관리자 화면은 요청이 많음)를 감안해 넉넉하게. */
 const apiLimiter = rateLimit({
   windowMs: WINDOW_MS,
@@ -59,4 +62,4 @@ const apiLimiter = rateLimit({
   message: TOO_MANY,
 });
 
-module.exports = { orderLimiter, lookupLimiter, couponLimiter, writeLimiter, authLimiter, apiLimiter, memberOrIpKey };
+module.exports = { orderLimiter, lookupLimiter, couponLimiter, writeLimiter, authLimiter, apiLimiter, memberOrIpKey, clientErrorLimiter };

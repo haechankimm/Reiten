@@ -924,8 +924,14 @@
             <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
               <button type="button" class="btn btn--sm" id="ops-check-run" data-i18n="지금 점검하기">지금 점검하기</button>
               <button type="button" class="btn btn--sm btn--ghost" id="ops-backup-full" data-i18n="전체 백업 받기(주문·회원 포함)">전체 백업 받기(주문·회원 포함)</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="ops-diag-copy" data-i18n="진단 리포트 복사">진단 리포트 복사</button>
             </div>
             <div id="ops-check-result" class="small" style="margin-top:10px;display:grid;gap:4px"></div>
+            <!-- 진단 리포트(2026-11-09) — 복사한 글을 Claude 같은 AI에게 붙여넣으면 지금 문제와 고칠 순서를 바로 알 수 있다 -->
+            <div id="ops-diag-box" hidden style="margin-top:10px">
+              <p class="small" style="margin:0 0 6px" data-i18n="이메일·전화번호·주소는 자동으로 가렸어요. 아래 글을 AI에게 그대로 붙여넣으세요.">이메일·전화번호·주소는 자동으로 가렸어요. 아래 글을 AI에게 그대로 붙여넣으세요.</p>
+              <textarea id="ops-diag-text" rows="10" readonly style="width:100%;font-family:ui-monospace,monospace;font-size:12px"></textarea>
+            </div>
           </div>
 
           <div class="panel">
@@ -1185,6 +1191,7 @@
   </div>
 </div>
 
+<script src="/assets/js/errorReport.js"></script>
 <script src="/assets/js/data.js"></script>
 <script src="/assets/js/i18n.js"></script>
 <script src="/assets/js/auth-client.js"></script>

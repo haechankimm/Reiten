@@ -19,3 +19,18 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npm test
+
+  # 고객 화면 기기별 레이아웃·JS 오류 검사(2026-11-09) — server/scripts/uiLayoutCheck.js
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm i --no-save --no-package-lock playwright@1.49.1
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/uiLayoutCheck.js
