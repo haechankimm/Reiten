@@ -35,7 +35,7 @@
 > "지금 사이트에 뭐가 있는지"를 보는 문서입니다 — 고객이 체감하는 기능이나 Works 화면에 새
 > 메뉴/버튼이 추가되면 코드 용어 없이 그 문서에도 한 줄 추가할 것.
 
-### 📌 현재 상태 요약 (2026-10-29 정기 감사·2차 디버깅 반영 — 다음 세션은 여기부터)
+### 📌 현재 상태 요약 (2026-11-09 구조 정리·다중 서버 대비 반영 — 다음 세션은 여기부터)
 
 > 아래 "(지난 기록) 다음 세션이 가장 먼저 할 일"은 2026-08~09 작업 목록으로 대부분 끝났다. 지금 기준으로 남은 일만 여기 모았다.
 > 2026-10-02 3차(사용자 요청 19개 일괄 처리 — 환불·반품 재설계, 배송추적·구매확정, 노출 감사, 검색 노출·네이버쇼핑, 운영 자동화)의
@@ -49,6 +49,11 @@
 > 실행 후 Works 정보 탭 "지금 점검하기"로 확인하고, 아래 "Supabase 마이그레이션" 표와 이 섹션의 상태를 갱신한다.
 
 **🔴 바로 처리 (운영에 영향)**
+0. **(2026-11-09 신규) 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행** — Finder `Reiten/server/migrations`에서 열어
+   SQL Editor에 붙여넣기(브랜치를 main에 머지·Pull한 뒤 보임). 045 = 서버 여러 대 사이 처리 잠금(서버 1대일 땐 없어도 안전, **늘리기 전 필수**),
+   046 = 주문 목록·자동취소 조회 색인(결과는 같고 속도만). 실행 후 "지금 점검하기"에 "DB 마이그레이션 045"가 정상으로 뜨면 끝.
+   **Sentry 켜기**: sentry.io 무료 가입 → 프로젝트(Node.js) 생성 → DSN을 Render 환경변수 `SENTRY_DSN`에 넣으면 서버 오류와
+   **고객 화면 자바스크립트 오류**(2026-11-09 추가)가 함께 모인다. 넣기 전엔 화면 오류가 Render 로그(`[client-error]`)에만 남는다.
 1. **마이그레이션 `043_refunds_delivery_confirm.sql` 실행(2026-11-09 사용자가 SQL Editor에서 실행함 — 아직 "지금 점검하기"로 확인 전, 점검 기능은 PR #4 머지 후 배포돼야 동작)** — Supabase SQL Editor에 붙여넣어 실행. 실행 전에는
    ① 부분 환불 이력(`order_refunds`)이 저장되지 않아 같은 주문을 여러 번 나눠 환불하면 앞의 환불을 모름(Works 환불 창에 빨간 경고가 뜸)
    ② 배송조회·구매확정이 꺼져 적립금이 예전처럼 결제 확인 즉시 지급 ③ 사진 리뷰 적립금·비회원 문의 이메일·교환 재발송 운송장이 저장 안 됨.
@@ -95,7 +100,15 @@
     반품 "환불 처리" 1건(무통장 주문이면 "직접 송금" 기록만 남음) / 사진 리뷰 승인 → 적립금 지급 / 상품 페이지 사이즈 추천 결과가 실측과 맞는지.
 
 **🟢 확인·결정 필요**
-13. Supabase 백업: 3차에서 **주간 전체 백업 메일**(매주 월 04:20 KST, 주문·회원 포함 gzip JSON → `ADMIN_NOTIFY_EMAIL`, 끄기 `BACKUP_EMAIL=off`)과
+13. **Supabase 유료(Pro) 전환 — 상품 런칭에 맞춰 진행 예정(2026-11-09 사용자 결정). 전환 당일 체크리스트**:
+    ① Supabase 대시보드 → Organization → Billing에서 Pro로 변경(코드 수정 없음 — 주소·키 그대로라 Render 설정도 그대로).
+    ② **Spend cap(지출 상한)** 켜 두기 — 트래픽 폭주·실수로 요금이 늘어나는 것 방지. ③ Database → Backups에서 **매일 자동 백업**이 보이는지 확인,
+    필요하면 PITR(시점 복구) 추가 옵션은 매출 규모를 보고 결정(별도 요금). ④ 전환 후에도 주간 메일 백업(`lib/backup.js`)은 "다른 곳에 한 부 더"
+    용도로 유지 — 단 고객 개인정보가 메일함에 쌓이므로 메일 보관이 부담되면 Render `BACKUP_EMAIL=off`. ⑤ Auth → Rate limits·SMTP는 지금 설정 그대로
+    (메일은 Resend SMTP). ⑥ 런칭 직전 마이그레이션 표의 ⚠️ 미실행 항목(045·046) 실행 → Works "지금 점검하기"·"진단 리포트 복사"로 상태 확인.
+    ⑦ 트래픽이 늘어 **Render 서버를 2대 이상**으로 늘릴 때: 045 실행 확인(필수), 요청 제한을 공유 저장소(Redis 등)로 옮길지 결정(위 2026-11-09 (2) 이력 참고).
+    ⑧ 실제 복구 연습 1회: Pro 백업에서 복원하는 화면 위치만이라도 미리 확인(사고 때 처음 보면 늦음).
+    (이하 기존 메모) Supabase 백업: 3차에서 **주간 전체 백업 메일**(매주 월 04:20 KST, 주문·회원 포함 gzip JSON → `ADMIN_NOTIFY_EMAIL`, 끄기 `BACKUP_EMAIL=off`)과
     Works "전체 백업 받기(주문·회원 포함)" 버튼(마스터)을 추가했지만, 시점 복구가 되는 건 Supabase Pro(PITR)뿐 → 매출이 붙으면 Pro 권장.
     Database → Backups 화면도 한 번 확인.
 14. Render 리전: 서버 왕복 0.4~1.0초 → 지역 확인 후 Singapore 이전 검토(새 서비스 생성·도메인 이동·옛 서비스 즉시 Suspend — 크론 중복 주의).
@@ -439,6 +452,8 @@
 | `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ✅ 실행 확인(2026-10-02, `products.media` 컬럼 확인) |
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
+| `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ⚠️ **미실행(2026-11-09 신규)** — 서버 1대일 땐 없어도 동작 그대로, 서버를 늘리기 전 필수 |
+| `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ⚠️ **미실행(2026-11-09 신규)** — 선택, 결과는 같고 주문이 많아질 때 속도만 |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
@@ -543,6 +558,19 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-09 (2) — 구조 정리·다중 서버 대비·오류 수집·화면 자동 검사·유료 전환 준비(사용자 요청: 추천안 1~4번 실행, 6번 준비).**
+- **구조 정리(1)**: `server.js` 3,320줄 → 304줄. 결제·주문·재고·쿠폰·크론까지 `routes/`·`lib/` 18개 파일로 분리(위 3-7 "파일 구조" 참고).
+  코드는 그대로 옮기고 import만 정리 — 라우트·미들웨어·크론 순서와 API 36개 응답이 전후 동일함을 비교로 확인. 커밋 `650555d`.
+- **다중 서버 대비(2)**: `lib/dbLock.js` + 마이그레이션 045. 결제 확정·환불/주문 변경·PIN 확인을 서버끼리도 한 번에 하나씩, 크론 9종은 한 대만 실행.
+  045 미실행이면 예전처럼 메모리 잠금(서버 1대 기준 그대로). 테스트 5건. **아직 서버별로 따로인 것**(늘릴 때 참고): 요청 제한 카운터
+  (`express-rate-limit` 메모리 저장 — 서버 N대면 한도가 사실상 N배), 상품 목록 15초 캐시·관리자 권한/PIN 10초 캐시(권한 회수가 최대 10초 늦게 반영).
+- **화면 오류 수집(3)**: `assets/js/errorReport.js`(고객 화면은 app.js가, Works는 index.html이 불러옴) → `POST /api/client-errors` → Sentry(`SENTRY_DSN`)·서버 로그.
+  경로만 보내고 쿼리·입력값은 안 보냄, 페이지당 5건, IP당 15분 30건. DB 저장 없음.
+- **화면 자동 검사(4)**: `npm test`에 번역 누락 검사(고객 문구 en·ja, Works 문구 de) 추가, GitHub Actions `ui` 작업이 `server/scripts/uiLayoutCheck.js`로
+  17개 페이지 × 320~768px × ko/en/ja 가로 넘침·JS 오류 검사.
+- **조회 색인**: 마이그레이션 046(주문 최신순·상태별·결제 이탈 리마인드).
+- 서버 테스트 264건.
 
 **2026-11-09 — PR #4 머지(main `1116c74`), 마이그레이션 043·044 사용자 실행, 진단 리포트 복사, 모바일 보정.**
 - Works 정보 탭 **"진단 리포트 복사"**(마스터 전용, `lib/diagnostics.js`·`GET /api/admin/alerts/diagnostic-report`): 운영 점검·최근 시스템 오류·결제 이상·멈춘 주문을
@@ -2072,6 +2100,20 @@ design tokens  →  base/타이포  →  buttons  →  header(+언어 드롭다�
 `server/orders.json`/`reviews.json` 같은 파일이 아니라 **Supabase(Postgres)** 에 저장됩니다 — 동시에
 여러 주문이 들어와도 재고가 꼬이지 않도록 하기 위함입니다(8번의 재고 동시성 항목 참고).
 자세한 배경과 실행 방법은 [12번](#12-nodejs-백엔드-서버-선택) 참고.
+
+> **파일 구조(2026-11-09 최신 — 이 문단이 기준, 아래 2026-09 문단은 지난 기록)**: `server.js`(304줄)는 공통 미들웨어(보안 헤더·
+> 요청 제한·JSON·관리자 관문·정적 파일)와 **라우트 마운트 순서**만 정한다. 마운트 순서가 곧 매칭 순서라(웹훅은 `express.json()` 앞,
+> SSR은 `express.static` 앞) 순서를 바꿀 때는 기동 시 `lib/routeShadowing.js` 검사가 충돌을 막는다. 돈이 걸린 로직까지 전부 분리됨:
+> - 결제·주문: `routes/paymentWebhook.js`(포트원 웹훅) · `routes/checkout.js`(공개 상품 목록, 카드결제 준비, `POST /api/order`, `/api/config`)
+>   · `lib/orderPricing.js`(장바구니 검증·가격 재계산) · `lib/orderFinalize.js`(주문 저장·재고 차감·카드/가상계좌 확정, 결제별 잠금)
+>   · `lib/orderNotify.js`(입금확인·출고 알림) · `lib/thanksCouponIssue.js`(감사 쿠폰) · `lib/catalog.js`(상품 목록 15초 캐시·실재고 품절)
+> - 고객: `routes/customerOrders.js`(주문 조회·구매확정·반품/교환/취소 신청) · `routes/seo.js`(상품·상점 SSR, 네이버 EP, 사이트맵) · `routes/clientErrors.js`(화면 오류 보고)
+> - 관리자: `routes/adminOrders.js`(주문 목록·내보내기·일괄·상태 변경) · `routes/inventory.js` · `routes/coupons.js`(+적립금 잔액) · `routes/adminLogin.js`
+>   · `routes/auditLog.js` · `routes/adminNotifications.js`(알림센터·시스템 오류)
+> - 크론: `lib/scheduledJobs.js`(require하는 순간 등록, 서버 여러 대면 `runExclusive`로 한 대만 실행) · 상수 `lib/orderRules.js`(`PENDING_CANCEL_HOURS`)
+> - 잠금: `lib/dbLock.js` — 결제(`payment:`)·주문(`order:`, `lib/orderLock.js`)·PIN(`pin:`)을 서버 안 메모리 + `app_locks` 표(045) 두 겹으로.
+> 분리 검증 방법(다음에 또 옮길 때 재사용): 가짜 DB(`SUPABASE_URL=fake`)로 서버를 띄워 ① 등록된 미들웨어·라우트·크론 목록 ② 주요 API 36개
+> 응답을 옮기기 전후로 비교 → 둘 다 완전히 같았다(2026-11-09).
 
 > **파일 구조(2026-09-01부터, "server.js 라우트 분리 1단계")**: `server.js`가 3,207줄까지
 > 커져서 "코드를 추가할 때마다 전체를 훑어야 하는" 부담과 "같은 로직이 두 곳에 복붙되는"
