@@ -48,6 +48,7 @@ const inventoryRoutes = require("./routes/inventory");
 const couponsRoutes = require("./routes/coupons");
 const clientErrorsRoutes = require("./routes/clientErrors");
 const { assertNoRouteShadowing } = require("./lib/routeShadowing");
+const { htmlWithVersions, immutableAssets } = require("./lib/assetVersion");
 
 const { adminGuard } = require("./lib/adminGuard");
 const { staticGuard } = require("./lib/staticGuard");
@@ -69,6 +70,10 @@ process.on("uncaughtException", (err) => {
 const PORT = process.env.PORT || 3000;
 const SITE_DIR = path.join(__dirname, "..", "소스 코드");
 const WORKS_DIR = path.join(__dirname, "..", "works");
+const siteHtml = htmlWithVersions([SITE_DIR]);
+const siteAssets = immutableAssets([SITE_DIR]);
+const worksHtml = htmlWithVersions([WORKS_DIR, SITE_DIR]);
+const worksAssets = immutableAssets([WORKS_DIR, SITE_DIR]);
 
 const app = express();
 
@@ -169,17 +174,22 @@ app.use(staticGuard(path.join(SITE_DIR, "404.html")));
    (http://works.localhost:3000 으로 접속하면 됨). */
 app.use((req, res, next) => {
   if (req.hostname === "works.reiten.kr" || req.hostname === "works.localhost") {
-    return express.static(WORKS_DIR)(req, res, next);
+    // HTML은 CSS·JS 주소에 내용 지문(?v=)을 붙여 보내고, 지문 붙은 파일은 1년 캐시(lib/assetVersion.js, 2026-11-09)
+    return worksHtml(req, res, () => worksAssets(req, res, () => express.static(WORKS_DIR)(req, res, next)));
   }
   next();
 });
 
 app.use(seoRoutes);
 
+/* 고객 사이트 HTML·지문 붙은 CSS/JS(lib/assetVersion.js, 2026-11-09) — 아래 express.static보다 먼저 */
+app.use(siteAssets);
+app.use(siteHtml);
+
 app.use(
   express.static(SITE_DIR, {
     setHeaders: (res, filePath) => {
-      // 제품 사진은 파일명이 안 바뀌므로 7일 캐시. HTML/CSS/JS는 재배포 시 즉시 반영되도록 캐시하지 않는다.
+      // 제품 사진은 파일명이 안 바뀌므로 7일 캐시. 지문(?v=) 없이 온 CSS/JS·HTML은 매번 확인(지문 붙은 것은 위 siteAssets가 1년 캐시).
       if (filePath.includes(`${path.sep}img${path.sep}`)) {
         res.setHeader("Cache-Control", "public, max-age=604800, immutable");
       }
