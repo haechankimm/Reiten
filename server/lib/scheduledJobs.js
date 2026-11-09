@@ -4,6 +4,7 @@ const cron = require("node-cron");
 const { supabaseAdmin } = require("./supabase");
 const { sendAdminRestockAlert, sendCustomerAutoCancelled, sendAdminSettlementReport, sendAdminBackup } = require("./mailer");
 const kakao = require("./kakao");
+const { runExclusive } = require("./dbLock");
 
 const { releaseCouponUsage } = require("./coupons");
 const { reversePointsForOrder } = require("./loyaltyPoints");
@@ -19,6 +20,12 @@ const { buildBackup } = require("./backup");
 const { checkDeliveries, autoConfirmOrders } = require("./purchaseConfirm");
 const { buildSettlement } = require("./settlement");
 const { PENDING_CANCEL_HOURS } = require("./orderRules");
+
+/* 서버가 여러 대면 크론도 서버마다 울린다 — 먼저 잡은 한 대만 실행하고 나머지는 건너뛴다(lib/dbLock.js runExclusive,
+   마이그레이션 045 전이면 예전처럼 그냥 실행). 서버 1대일 때 동작은 그대로다(2026-11-09). */
+function scheduleExclusive(name, spec, fn, opts) {
+  return cron.schedule(spec, () => runExclusive(`cron:${name}`, fn).catch((err) => console.error(`[cron:${name}] 실행 실패:`, err.message)), opts);
+}
 
 /* ---------- 미입금 주문 자동취소 ----------
    고객 화면에는 "24시간 내 미입금 시 자동 취소됩니다"라고 안내한다(2026-08-14부터 3일→24시간
@@ -165,25 +172,25 @@ async function closeExpiredVirtualAccounts() {
   }
 }
 
-cron.schedule("0 11 * * *", () => {
+scheduleExclusive("review-request", "0 11 * * *", () => {
   sendReviewRequests().catch((err) => console.error("[review-request] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
 /* 배송조회 자동화(SWEETTRACKER_API_KEY가 있을 때만) — 매시 15분, 배송완료면 주문 "완료" + delivered_at */
-cron.schedule("15 * * * *", () => {
+scheduleExclusive("tracking", "15 * * * *", () => {
   checkDeliveries().catch((err) => console.error("[tracking] 실행 실패:", err.message));
 });
 
 /* 자동 구매확정 — 매일 03:40(KST), 배송완료 7일·출고 14일 지난 주문(반품·교환 처리 중 제외) 확정 + 적립금 지급 */
-cron.schedule("40 3 * * *", () => {
+scheduleExclusive("purchase-confirm", "40 3 * * *", () => {
   autoConfirmOrders().catch((err) => console.error("[purchase-confirm] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
-cron.schedule("30 * * * *", () => {
+scheduleExclusive("abandoned-cart", "30 * * * *", () => {
   remindAbandonedCarts().catch((err) => console.error("[abandoned-cart] 실행 실패:", err.message));
 });
 
-cron.schedule("0 * * * *", () => {
+scheduleExclusive("auto-cancel", "0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
   closeExpiredVirtualAccounts().catch((err) => console.error("[auto-cancel] 가상계좌 만료 처리 실행 실패:", err.message));
 });
@@ -271,7 +278,7 @@ async function checkRestockNeeded() {
   sendAdminRestockAlert(items, RESTOCK_ALERT_DAYS).catch((err) => console.error("[mailer] 재입고 알림 메일 발송 실패:", err.message));
 }
 
-cron.schedule("0 9 * * 1", () => {
+scheduleExclusive("restock-alert", "0 9 * * 1", () => {
   checkRestockNeeded().catch((err) => console.error("[restock-alert] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
@@ -292,7 +299,7 @@ async function sendMonthlySettlement() {
 }
 
 /* 주간 전체 백업 — 매주 월요일 04:20(KST), 관리자 메일로 gzip JSON(lib/backup.js). 끄려면 BACKUP_EMAIL=off */
-cron.schedule("20 4 * * 1", async () => {
+scheduleExclusive("backup", "20 4 * * 1", async () => {
   if (process.env.BACKUP_EMAIL === "off") return;
   try {
     const backup = await buildBackup();
@@ -304,11 +311,11 @@ cron.schedule("20 4 * * 1", async () => {
 }, { timezone: "Asia/Seoul" });
 
 /* 아침 업무 요약 — 매일 08:57(KST), 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(+텔레그램)로 */
-cron.schedule("57 8 * * *", () => {
+scheduleExclusive("briefing", "57 8 * * *", () => {
   sendMorningBriefing().catch((err) => console.error("[briefing] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
-cron.schedule("0 9 1 * *", () => {
+scheduleExclusive("settlement", "0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 

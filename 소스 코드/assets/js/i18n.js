@@ -2182,6 +2182,12 @@ const I18N = {
   ["자동 복사가 막혀 있어요. 선택된 글을 직접 복사해 주세요.", {"de": "Automatisches Kopieren ist blockiert. Bitte kopieren Sie den markierten Text manuell."}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* ---------- 2026-11-09: 마이그레이션 045 점검 ---------- */
+[
+  ["DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)", {"de": "DB-Migration 045 wurde noch nicht ausgeführt (nötig, bevor mehr als ein Server betrieben wird)"}],
+  ["DB 마이그레이션 045", {"de": "DB-Migration 045"}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환

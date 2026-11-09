@@ -14,6 +14,8 @@ const {
 } = require("../lib/adminGuard");
 const { isMissingSchemaError } = require("../lib/pgErrors");
 
+const { withLock, LockBusyError } = require("../lib/dbLock");
+
 const router = express.Router();
 
 /* PIN 잠금 정책(2026-10-02 사용자 요청) — 6번째 오입력에서 잠근다.
@@ -104,22 +106,14 @@ router.post("/api/admin/pin/setup", requireAdmin, async (req, res) => {
 });
 
 /* 같은 계정의 PIN 확인·변경은 한 번에 하나씩 처리한다 — 틀린 PIN을 수십 개 동시에 보내면 모두 "실패 0회"를 읽고 1로
-   써서 6회 잠금을 우회할 수 있었다(2026-10-28 정기 감사). 서버는 한 대라 프로세스 안 잠금으로 충분하다. */
-const pinLocks = new Map();
+   써서 6회 잠금을 우회할 수 있었다(2026-10-28 정기 감사). 서버 안 메모리 줄 + 서버끼리 app_locks(lib/dbLock.js, 2026-11-09). */
 function serializePerUser(handler) {
   return async (req, res) => {
-    const key = req.user.id;
-    const prev = pinLocks.get(key) || Promise.resolve();
-    let release;
-    const mine = new Promise((r) => (release = r));
-    const chain = prev.then(() => mine);
-    pinLocks.set(key, chain);
-    await prev;
     try {
-      await handler(req, res);
-    } finally {
-      release();
-      if (pinLocks.get(key) === chain) pinLocks.delete(key);
+      await withLock(`pin:${req.user.id}`, () => handler(req, res));
+    } catch (e) {
+      if (e instanceof LockBusyError && !res.headersSent) return res.status(409).json({ error: e.message, code: e.code });
+      throw e;
     }
   };
 }

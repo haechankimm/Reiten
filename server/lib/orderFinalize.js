@@ -19,6 +19,7 @@ const { isMissingColumnError, extractMissingColumnName } = require("./pgErrors")
 const { confirmationEnabled } = require("./purchaseConfirm");
 const { sendPushToAdmins } = require("./push");
 const { getActiveProducts } = require("./catalog");
+const { withLock } = require("./dbLock");
 const { issueThanksCouponsIfEligible } = require("./thanksCouponIssue");
 const { notifyOrderStatusSideEffects } = require("./orderNotify");
 
@@ -128,22 +129,11 @@ async function decrementInventoryForItems(inventoryItems, products, ref) {
 /* 같은 결제(paymentId)의 주문 확정을 한 번에 하나씩만 돌린다(2026-10-28 정기 감사).
    포트원 웹훅과 결제 직후 브라우저 확인 요청이 거의 동시에 오면 둘 다 재고를 빼러 들어가는데, 재고가
    주문 수량의 2배보다 적으면 나중 쪽이 "재고 부족"으로 판정돼 **먼저 만들어진 정상 주문의 결제를 취소**
-   (가상계좌는 계좌 폐쇄)해버렸다. 서버는 한 대(Render 단일 인스턴스 — 크론도 이 전제로 돎)라 프로세스
-   안의 잠금으로 순서를 세우고, 잠금을 얻은 뒤 이미 만들어진 주문이 있으면 그 주문을 그대로 돌려준다. */
-const finalizeLocks = new Map();
+   (가상계좌는 계좌 폐쇄)해버렸다. 잠금(서버 안 메모리 + 서버끼리 app_locks)으로 순서를 세우고,
+   잠금을 얻은 뒤 이미 만들어진 주문이 있으면 그 주문을 그대로 돌려준다. */
 async function withPaymentLock(paymentId, fn) {
-  const prev = finalizeLocks.get(paymentId) || Promise.resolve();
-  let release;
-  const mine = new Promise((r) => (release = r));
-  const chain = prev.then(() => mine);
-  finalizeLocks.set(paymentId, chain);
-  await prev;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (finalizeLocks.get(paymentId) === chain) finalizeLocks.delete(paymentId);
-  }
+  // 서버 안 메모리 줄 + 서버끼리 app_locks 표(lib/dbLock.js, 2026-11-09) — 웹훅과 브라우저 확인이 다른 서버로 가도 한 번만 확정
+  return withLock(`payment:${paymentId}`, fn);
 }
 
 async function existingOrderForPayment(paymentId) {

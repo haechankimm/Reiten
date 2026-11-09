@@ -36,6 +36,10 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const trErr = trErr0 || (await db.from("product_colors").select("label_en, label_ja").limit(1)).error;
   if (trErr) out.push({ level: "warn", key: "migration_044", label: "DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)" });
   else out.push({ level: "ok", key: "migration_044", label: "DB 마이그레이션 044" });
+  // 045 — 서버 여러 대 사이 처리 잠금(lib/dbLock.js). 서버 1대일 때는 없어도 안전하지만 늘리기 전에 필요(2026-11-09)
+  const { error: lockErr } = await db.from("app_locks").select("key").limit(1);
+  if (lockErr) out.push({ level: "warn", key: "migration_045", label: "DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)" });
+  else out.push({ level: "ok", key: "migration_045", label: "DB 마이그레이션 045" });
 
   const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
   const { data: mailFails } = await db.from("system_error_log").select("id").eq("type", "notification_failed").gte("created_at", since);
