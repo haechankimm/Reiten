@@ -61,6 +61,28 @@
     // 숫자가 끼는 항목은 서버가 주는 번역 키·변수(c.i18n)로 번역한다 — serverMsg와 같은 규칙(2026-10-28 정기 감사)
     box.innerHTML = r.checks.map((c) => `<div>${icon[c.level] || ""} ${esc(c.i18n ? serverMsg(c, c.label) : t(c.label))}</div>`).join("");
   });
+  /* 진단 리포트 복사(서버 lib/diagnostics.js) — 가져온 글을 아래 칸에 보여 주고 클립보드에도 복사한다.
+     클립보드 권한이 막힌 브라우저에서도 칸을 선택해 직접 복사할 수 있게 글을 항상 화면에 남긴다. */
+  el("ops-diag-copy")?.addEventListener("click", async () => {
+    const btn = el("ops-diag-copy");
+    btn.disabled = true;
+    try {
+      const r = await adminFetch("/api/admin/alerts/diagnostic-report");
+      if (!r) return;
+      const box = el("ops-diag-text");
+      el("ops-diag-box").hidden = false;
+      box.value = r.report;
+      box.focus();
+      box.select();
+      let copied = false;
+      try { await navigator.clipboard.writeText(r.report); copied = true; } catch (e) {
+        try { copied = document.execCommand("copy"); } catch (e2) {}
+      }
+      toast(t(copied ? "진단 리포트를 복사했습니다" : "자동 복사가 막혀 있어요. 선택된 글을 직접 복사해 주세요."));
+    } finally {
+      btn.disabled = false;
+    }
+  });
   el("ops-backup-full")?.addEventListener("click", () =>
     downloadExportFile("/api/admin/alerts/backup", "reiten-backup", "json.gz")
   );

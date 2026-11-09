@@ -7,6 +7,7 @@ const { sendTelegram, findTelegramChats } = require("../lib/telegram");
 const { sendPushToAdmins, configured: pushConfigured } = require("../lib/push");
 const { runOpsCheck } = require("../lib/opsCheck");
 const { buildBackup } = require("../lib/backup");
+const { buildDiagnosticReport } = require("../lib/diagnostics");
 const { logAdminAction } = require("../lib/adminLog");
 
 const router = express.Router();
@@ -34,6 +35,11 @@ router.post("/api/admin/alerts/test", requireMasterAdmin, async (req, res) => {
 /* 운영 점검(lib/opsCheck.js) — 메일·알림·결제·배송조회 설정, 마이그레이션, 최근 발송 실패·미해결 오류를 한 번에. */
 router.get("/api/admin/alerts/ops-check", requireMasterAdmin, async (req, res) => {
   res.json(await runOpsCheck());
+});
+
+/* 진단 리포트(lib/diagnostics.js) — 복사해서 AI에게 붙여넣는 글. 개인정보는 가려지지만 내부 운영 상태가 들어 있어 마스터 전용. */
+router.get("/api/admin/alerts/diagnostic-report", requireMasterAdmin, async (req, res) => {
+  res.json({ report: await buildDiagnosticReport() });
 });
 
 /* 전체 데이터 백업 파일(lib/backup.js — 매주 자동 메일과 같은 파일)을 지금 바로 받기. 개인정보가 있어 마스터 전용. */

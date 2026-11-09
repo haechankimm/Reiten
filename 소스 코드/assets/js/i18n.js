@@ -2174,6 +2174,14 @@ const I18N = {
   ["DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)", {"de": "DB-Migration 044 wurde noch nicht ausgeführt (englische/japanische Texte für Produkte und Farben können nicht gespeichert werden)"}],
 ].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
 
+/* ---------- 2026-11-09: 진단 리포트 복사 ---------- */
+[
+  ["진단 리포트 복사", {"de": "Diagnosebericht kopieren"}],
+  ["이메일·전화번호·주소는 자동으로 가렸어요. 아래 글을 AI에게 그대로 붙여넣으세요.", {"de": "E-Mails, Telefonnummern und Adressen wurden automatisch ausgeblendet. Fügen Sie den Text unten unverändert in eine KI ein."}],
+  ["진단 리포트를 복사했습니다", {"de": "Diagnosebericht kopiert"}],
+  ["자동 복사가 막혀 있어요. 선택된 글을 직접 복사해 주세요.", {"de": "Automatisches Kopieren ist blockiert. Bitte kopieren Sie den markierten Text manuell."}],
+].forEach(([k, v]) => { I18N[k] = Object.assign({}, I18N[k], v); });
+
 /**
  * t("한국어 원문", { name: "값" })
  * - ko 상태: {var} 치환만 하고 그대로 반환
