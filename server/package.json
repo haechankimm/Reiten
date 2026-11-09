@@ -9,24 +9,24 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@google-analytics/data": "^7.0.0",
+    "@google-analytics/data": "^7.3.0",
     "@portone/server-sdk": "^0.19.0",
     "@sentry/node": "^10.70.0",
-    "@supabase/supabase-js": "^2.111.0",
-    "cloudinary": "^2.10.0",
+    "@supabase/supabase-js": "^2.119.0",
+    "cloudinary": "^2.11.0",
     "compression": "^1.8.2",
     "dotenv": "^16.6.1",
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
-    "express-rate-limit": "^8.6.1",
+    "express-rate-limit": "^8.7.3",
     "helmet": "^8.3.0",
     "multer": "^2.3.0",
     "node-cron": "^3.0.3",
-    "pdfkit": "^0.19.1",
+    "pdfkit": "^0.20.2",
     "resend": "^4.8.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "supertest": "^7.2.2"
+    "supertest": "^7.3.1"
   }
 }
