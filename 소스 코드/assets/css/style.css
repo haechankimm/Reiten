@@ -1194,3 +1194,9 @@ html[data-admin-theme="grass"][data-theme="night"] {
 @media (hover: none) and (pointer: coarse) {
   input, select, textarea, .field input, .field select, .field textarea { font-size: 16px; }
 }
+
+/* 320px 폭 기기(구형 iPhone SE·소형 안드로이드)에선 헤더 아이콘이 7px 넘쳐 모든 페이지가 가로로 흔들렸다(2026-11-09) */
+@media (max-width: 340px) {
+  .icon-btn { width: 32px; height: 32px; }
+  .hdr__tools { margin-right: -2px; }
+}
