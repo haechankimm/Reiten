@@ -30,6 +30,19 @@
     paintAlertPanel();
   });
 
+  /* Sentry 연결 테스트(2026-11-09) — 성공하면 Sentry 사이트 Issues에 "REITEN Sentry 연결 테스트"가 1~2분 안에 뜬다 */
+  el("alert-sentry-test")?.addEventListener("click", async () => {
+    const btn = el("alert-sentry-test");
+    btn.disabled = true;
+    el("alert-result").textContent = t("보내는 중…");
+    const r = await adminFetch("/api/admin/alerts/sentry-test", { method: "POST", body: "{}" });
+    btn.disabled = false;
+    if (!r) { el("alert-result").textContent = ""; return; }
+    el("alert-result").textContent = r.ok
+      ? t("Sentry로 테스트 오류를 보냈습니다. 1~2분 뒤 Sentry의 Issues에 보이면 연결 성공입니다.")
+      : t(r.reason || "Sentry로 보내지 못했습니다. DSN 값을 다시 확인해 주세요.");
+  });
+
   el("alert-find-chat")?.addEventListener("click", async () => {
     const r = await adminFetch("/api/admin/alerts/telegram-chats");
     if (!r) return;

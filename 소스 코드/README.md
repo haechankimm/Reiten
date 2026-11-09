@@ -41,6 +41,10 @@
 > 2026-10-02 3차(사용자 요청 19개 일괄 처리 — 환불·반품 재설계, 배송추적·구매확정, 노출 감사, 검색 노출·네이버쇼핑, 운영 자동화)의
 > 상세는 아래 "최근 작업 이력" 맨 위 항목을 볼 것.
 
+> **📌 머지 방식 (영구 규칙, 2026-11-09 사용자 지정)** — 사용자가 "앞으로 허락 없이 자동으로 머지"하라고 했다. Claude는 작업을 마치면
+> 작업 브랜치로 PR을 만들고 **GitHub Actions(test·ui)가 통과하면 바로 main에 머지**한다(묻지 않음). 머지 = Render 자동 배포이므로
+> CI가 빨간 상태에서는 절대 머지하지 않고, 머지한 뒤 사용자에게 무엇이 배포됐는지·마이그레이션 실행이 필요한지 알린다.
+
 > **📌 마이그레이션 작업 방식 (영구 규칙, 2026-11-09 사용자 지정)** — DB를 바꿔야 하면 Claude는 **항상 `server/migrations/`에 새 번호의
 > `.sql` 파일을 추가**한다(여러 번 실행해도 안전하게 `if not exists` 형태, 파일 맨 위 주석에 무엇을 하는지·실행 안 해도 되는지 적기).
 > 사용자는 Finder의 `Reiten/server/migrations` 폴더에서 그 파일을 열어 **Supabase SQL Editor에 붙여넣어 실행**한다. 채팅에 SQL을 길게
@@ -52,6 +56,8 @@
 0. **(2026-11-09 신규) 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행** — Finder `Reiten/server/migrations`에서 열어
    SQL Editor에 붙여넣기(브랜치를 main에 머지·Pull한 뒤 보임). 045 = 서버 여러 대 사이 처리 잠금(서버 1대일 땐 없어도 안전, **늘리기 전 필수**),
    046 = 주문 목록·자동취소 조회 색인(결과는 같고 속도만). 실행 후 "지금 점검하기"에 "DB 마이그레이션 045"가 정상으로 뜨면 끝.
+   `047_shared_rate_limits.sql`은 **서버를 2대 이상으로 늘릴 때만** 실행하고 Render에 `RATE_LIMIT_SHARED=on`(요청 제한을 서버끼리 함께 셈).
+   서버 1대일 때 켜면 요청마다 DB 왕복이 하나 늘어 느려질 뿐 이득이 없다.
    **Sentry 켜기**: sentry.io 무료 가입 → 프로젝트(Node.js) 생성 → DSN을 Render 환경변수 `SENTRY_DSN`에 넣으면 서버 오류와
    **고객 화면 자바스크립트 오류**(2026-11-09 추가)가 함께 모인다. 넣기 전엔 화면 오류가 Render 로그(`[client-error]`)에만 남는다.
 1. **마이그레이션 `043_refunds_delivery_confirm.sql` 실행(2026-11-09 사용자가 SQL Editor에서 실행함 — 아직 "지금 점검하기"로 확인 전, 점검 기능은 PR #4 머지 후 배포돼야 동작)** — Supabase SQL Editor에 붙여넣어 실행. 실행 전에는
@@ -453,6 +459,7 @@
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
 | `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ⚠️ **미실행(2026-11-09 신규)** — 서버 1대일 땐 없어도 동작 그대로, 서버를 늘리기 전 필수 |
+| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ⚠️ 미실행 — **서버 증설 때만** 실행 + `RATE_LIMIT_SHARED=on` |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ⚠️ **미실행(2026-11-09 신규)** — 선택, 결과는 같고 주문이 많아질 때 속도만 |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -558,6 +565,17 @@
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-09 (3) — 보완점 전부 처리(사용자 요청) + Sentry 테스트 버튼, 자동 머지 규칙.**
+- **번역 사전 분리**: Works 전용 독일어를 `assets/js/i18n.de.js`로(works/index.html만 불러옴) → 고객 페이지마다 내려가던 `i18n.js` 226KB → 121KB.
+  고객 사전 = 기존에서 독일어만 뺀 것, Works 사전 = 기존과 완전히 같음을 스크립트로 비교 확인. **앞으로 Works 문구의 독일어는 `i18n.de.js` 맨 아래 블록에**
+  넣는다(고객 문구의 en·ja는 지금처럼 `i18n.js`). 누락은 `test/i18nCoverage.test.js`가 잡는다.
+- **CSS·JS 캐시**: `lib/assetVersion.js` — 서버가 HTML을 보낼 때 로컬 CSS·JS 주소에 내용 지문(`?v=해시8자`)을 붙이고, 지문 붙은 요청은 1년 immutable 캐시.
+  파일이 바뀌면 지문이 바뀌어 재배포 즉시 반영. 빌드 단계·원본 파일 수정 없음. 고객 사이트·Works·상품/상점 SSR 모두 적용.
+- **서버 여러 대 요청 제한**: `lib/rateLimitStore.js` + 마이그레이션 047, `RATE_LIMIT_SHARED=on`일 때만(기본 꺼짐). DB 오류면 메모리로 자동 전환.
+- **Sentry 연결 테스트** 버튼(Works 정보 탭 긴급 알림 칸, 마스터) → `POST /api/admin/alerts/sentry-test`.
+- 안 쓰는 원본 이미지 `hoodie-heart.png`·`hoodie-exhaust.png`(3MB) 삭제 — 화면은 같은 이름의 .webp를 쓴다. 원본이 필요하면 git 이력에서 복구 가능.
+- 서버 테스트 272건.
 
 **2026-11-09 (2) — 구조 정리·다중 서버 대비·오류 수집·화면 자동 검사·유료 전환 준비(사용자 요청: 추천안 1~4번 실행, 6번 준비).**
 - **구조 정리(1)**: `server.js` 3,320줄 → 304줄. 결제·주문·재고·쿠폰·크론까지 `routes/`·`lib/` 18개 파일로 분리(위 3-7 "파일 구조" 참고).

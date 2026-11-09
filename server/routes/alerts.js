@@ -8,6 +8,7 @@ const { sendPushToAdmins, configured: pushConfigured } = require("../lib/push");
 const { runOpsCheck } = require("../lib/opsCheck");
 const { buildBackup } = require("../lib/backup");
 const { buildDiagnosticReport } = require("../lib/diagnostics");
+const Sentry = require("@sentry/node");
 const { logAdminAction } = require("../lib/adminLog");
 
 const router = express.Router();
@@ -35,6 +36,14 @@ router.post("/api/admin/alerts/test", requireMasterAdmin, async (req, res) => {
 /* 운영 점검(lib/opsCheck.js) — 메일·알림·결제·배송조회 설정, 마이그레이션, 최근 발송 실패·미해결 오류를 한 번에. */
 router.get("/api/admin/alerts/ops-check", requireMasterAdmin, async (req, res) => {
   res.json(await runOpsCheck());
+});
+
+/* Sentry 연결 테스트(2026-11-09) — SENTRY_DSN을 넣은 뒤 Sentry Issues에 테스트 오류가 뜨는지 확인하는 용도. */
+router.post("/api/admin/alerts/sentry-test", requireMasterAdmin, async (req, res) => {
+  if (!process.env.SENTRY_DSN) return res.json({ ok: false, reason: "SENTRY_DSN이 설정되지 않았습니다(Render 환경변수)" });
+  Sentry.captureException(new Error("REITEN Sentry 연결 테스트 — 이 오류는 Works에서 일부러 보낸 것입니다(무시하고 Resolve)"));
+  const flushed = await Sentry.flush(5000).catch(() => false);
+  res.json({ ok: !!flushed });
 });
 
 /* 진단 리포트(lib/diagnostics.js) — 복사해서 AI에게 붙여넣는 글. 개인정보는 가려지지만 내부 운영 상태가 들어 있어 마스터 전용. */

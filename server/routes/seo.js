@@ -8,6 +8,7 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, productUrl: seoProductUrl } = require("../lib/seo");
 const SITE_DIR = path.join(__dirname, "..", "..", "소스 코드");
 const { getActiveProducts } = require("../lib/catalog");
+const { versionHtml } = require("../lib/assetVersion");
 
 const router = express.Router();
 
@@ -46,7 +47,7 @@ router.get("/product.html", async (req, res, next) => {
 
   let html;
   try {
-    html = await fs.promises.readFile(path.join(SITE_DIR, "product.html"), "utf8");
+    html = versionHtml(await fs.promises.readFile(path.join(SITE_DIR, "product.html"), "utf8"), [SITE_DIR]);
   } catch (e) {
     return next();
   }
@@ -95,7 +96,7 @@ router.get("/shop.html", async (req, res, next) => {
   if (req.query.cat || req.query.q) return next();
   try {
     const products = await getActiveProducts();
-    let html = await fs.promises.readFile(path.join(SITE_DIR, "shop.html"), "utf8");
+    let html = versionHtml(await fs.promises.readFile(path.join(SITE_DIR, "shop.html"), "utf8"), [SITE_DIR]);
     if (!html.includes('id="grid"')) return next();
     html = html
       // 상품 페이지와 같은 이유로 함수 치환자를 쓴다(상품명에 $& 등이 있어도 안전, 2026-10-28 정기 감사).
