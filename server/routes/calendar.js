@@ -16,7 +16,13 @@ function toEventDto(r) {
 }
 
 const MAX_RANGE_DAYS = 366;
-const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+// 형식뿐 아니라 실제 있는 날짜인지(2026-02-30 같은 값은 DB에서 500이 났다) 확인한다(2026-10-28 정기 감사)
+const isDate = (s) => {
+  const str = String(s || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const d = new Date(str + "T00:00:00Z");
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === str;
+};
 function daysBetween(a, b) {
   return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
 }
@@ -109,10 +115,22 @@ router.patch("/api/admin/calendar-events/:id", requireAdmin, async (req, res) =>
     if (!isDate(date)) return res.status(400).json({ error: "날짜 형식이 올바르지 않습니다." });
     patch.event_date = date;
   }
-  if (endDate !== undefined) {
-    const { end, error: endError } = normalizeEnd(date !== undefined ? date : endDate, endDate);
-    if (endError) return res.status(400).json({ error: endError });
-    patch.end_date = end;
+  /* 시작일·종료일 중 하나만 바꿔도 저장된 다른 쪽과 비교한다 — 예전엔 종료일만 보내면 기간이 지워지고, 시작일만 보내면
+     종료일보다 늦은 시작일이 저장될 수 있었다(2026-10-28 정기 감사). */
+  if (date !== undefined || endDate !== undefined) {
+    let startForCheck = date;
+    let endForCheck = endDate;
+    if (date === undefined || endDate === undefined) {
+      const { data: cur } = await supabaseAdmin.from("calendar_events").select("*").eq("id", req.params.id).maybeSingle();
+      if (!cur) return res.status(404).json({ error: "존재하지 않는 일정입니다." });
+      if (startForCheck === undefined) startForCheck = cur.event_date;
+      if (endForCheck === undefined) endForCheck = cur.end_date || undefined;
+    }
+    if (endForCheck !== undefined) {
+      const { end, error: endError } = normalizeEnd(startForCheck, endForCheck);
+      if (endError) return res.status(400).json({ error: endError });
+      patch.end_date = end;
+    }
   }
   if (color !== undefined) patch.color = CALENDAR_COLORS.includes(color) ? color : "blue";
   if (memo !== undefined) patch.memo = String(memo || "").trim().slice(0, 500) || null;

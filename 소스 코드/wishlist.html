@@ -52,7 +52,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   renderHeader("");
 
   (async () => {
-    await Promise.all([loadProducts(), loadColors()]);
+    const [fromServer] = await Promise.all([loadProducts(), loadColors()]);
 
     const gridEl = document.getElementById("grid");
     const emptyEl = document.getElementById("empty");
@@ -69,6 +69,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     function paint() {
       const ids = Wishlist.read();
       const list = ids.map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean);
+      /* 판매 종료(비공개)·삭제된 상품 id가 남아 있으면 헤더 배지 숫자(Wishlist.count)와 화면 카드 수가
+         달랐다 — 서버 목록을 제대로 받아왔을 때만 아는 id만 남겨 다시 저장한다. 서버 없이 data.js 정적
+         목록만 있을 때 지우면 DB에만 있는 상품까지 사라지므로 그때는 건드리지 않는다(2026-10-28 정기 감사). */
+      if (fromServer && list.length !== ids.length) {
+        Wishlist.write(list.map((p) => p.id));
+      }
       gridEl.innerHTML = list.map((p, i) => productCard(p, i * 50, restockLinkHTML(p))).join("");
       emptyEl.hidden = list.length > 0;
       bindWishlistButtons(gridEl);

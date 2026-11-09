@@ -38,16 +38,19 @@ const uid = () => "u" + Date.now().toString(36) + (uidSeed++).toString(36);
    `const PRODUCTS`를 그대로 쓰는 코드가 전부 갱신된 값을 본다).
    서버가 없거나 요청이 실패하면 data.js의 정적 목록이 그대로 남는다.
    ========================================================= */
+// 서버 목록으로 교체했으면 true를 돌려준다 — 위시리스트가 "목록에 없는 id"를 정리해도 되는지 판단할 때 쓴다(2026-10-28 정기 감사).
 async function loadProducts() {
   try {
     const res = await fetch("/api/products");
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const data = await res.json();
     if (Array.isArray(data)) {
       PRODUCTS.length = 0;
       PRODUCTS.push(...data);
+      return true;
     }
   } catch (e) {}
+  return false;
 }
 
 /* 룩북 슬롯 — server/가 떠 있으면 관리자 패널에서 등록·수정한 DB 목록으로
@@ -76,7 +79,15 @@ async function loadColors() {
     const data = await res.json();
     if (Array.isArray(data)) {
       Object.keys(COLORS).forEach((k) => delete COLORS[k]);
-      data.forEach((c) => { COLORS[c.key] = c; });
+      data.forEach((c) => {
+        COLORS[c.key] = c;
+        /* 관리자가 Works에서 넣은 영어·일본어 색상 이름을 번역 사전에 등록한다 — 새로 추가한 색상은 사전에 없어
+           영어·일본어 화면에서도 한국어로 보였다(2026-10-29, 마이그레이션 044). 비어 있으면 기존 사전 번역을 그대로 둔다. */
+        const extra = {};
+        if (c.labelEn) extra.en = c.labelEn;
+        if (c.labelJa) extra.ja = c.labelJa;
+        if (Object.keys(extra).length) I18N[c.label] = Object.assign({}, I18N[c.label], extra);
+      });
     }
   } catch (e) {}
 }
@@ -564,7 +575,46 @@ function rideGuideHTML(key) {
    이미 필수로 입력받는 영문명(name)으로 대신한다 — 관리자가 상품마다 번역을 따로 입력할
    필요가 없다. */
 function productName(p) {
+  const tr = productTranslation(p);
+  if (tr && tr.name) return tr.name;
   return getLang() === "ko" ? p.nameKo : (p.name || p.nameKo);
+}
+
+/* 관리자가 Works에서 넣은 영어·일본어 상품 문구(044, 선택) — 없으면 한국어 원문을 사전으로 번역(t)해서 쓴다.
+   예전엔 관리자가 입력한 설명이 영어·일본어 화면에서도 한국어로만 나왔다(2026-10-28 정기 감사). */
+/* 주문에 저장된 상품명은 관리용 한글명이라, 고객 화면에서는 지금 언어의 상품명으로 바꿔 보여준다(상품을 못 찾으면 저장된 이름) */
+function orderItemName(it) {
+  const p = it && it.productId && typeof getProduct === "function" ? getProduct(it.productId) : null;
+  return p ? productName(p) : (it && it.name) || "";
+}
+
+/* 주문에 저장된 옵션 문구(options)는 담을 당시 언어로 굳어 있다 — 상품 줄은 원본 키(color·size)도 같이 저장되므로
+   (server.js itemsForStorage) 컬러·사이즈는 지금 언어로 다시 만든다. 장바구니 opts는 항상 컬러 → 사이즈 → (지퍼 참 →
+   추가 아이템) 순서라(product.html·customizer.html) 앞의 두 칸만 바꾸고 나머지는 저장된 문구를 그대로 붙인다.
+   컬러 정의를 못 찾으면(삭제된 색상 등) 저장된 문구를 그대로 쓴다(2026-10-28 정기 감사). */
+function orderItemOptions(it) {
+  const raw = (it && it.options) || "";
+  const c = it && it.color && typeof COLORS !== "undefined" ? COLORS[it.color] : null;
+  if (!c || !c.label) return raw;
+  const parts = [`${t("컬러")} ${t(c.label)}`];
+  if (it.size) parts.push(`${t("사이즈")} ${it.size}`);
+  return parts.concat(raw.split(" / ").slice(2).filter(Boolean)).join(" / ");
+}
+
+function productTranslation(p) {
+  const lang = getLang();
+  if (lang !== "en" && lang !== "ja") return null;
+  return (p && p.translations && p.translations[lang]) || null;
+}
+function productText(p, field) {
+  const tr = productTranslation(p);
+  if (tr && tr[field]) return tr[field];
+  return t(p[field] || "");
+}
+function productDetails(p) {
+  const tr = productTranslation(p);
+  if (tr && Array.isArray(tr.details) && tr.details.length) return tr.details;
+  return (p.details || []).map((d) => t(d));
 }
 
 /* =========================================================
@@ -585,6 +635,132 @@ function isProductFullyOutOfStock(p) {
       (p.soldOut || []).includes(size) ||
       colors.every((c) => ((p.outOfStockByColor && p.outOfStockByColor[c]) || []).includes(size))
   );
+}
+
+/* 서버가 보낸 문구 변수(예: 권한 이름 "주문·배송")도 사전에 있으면 같이 번역한다 — 없으면 그대로 */
+function translatedVars(vars) {
+  const out = {};
+  Object.keys(vars || {}).forEach((k) => {
+    out[k] = typeof vars[k] === "string" ? t(vars[k]) : vars[k];
+  });
+  return out;
+}
+
+/* 서버(API) 오류 응답을 지금 언어로 바꿔 보여준다 — 서버는 한국어 문구(error)와, 숫자 등이 끼는 문구는
+   번역용 키·변수(i18n: { key, vars })를 함께 내려준다. 한국어 원문이 곧 사전 키라(i18n.js) t()로 바로
+   번역되고, 사전에 없으면 한국어 원문 그대로 나온다. 영어·일본어 손님에게 한국어 오류만 뜨던 문제 수정(2026-10-02). */
+function apiErrorText(body, fallback) {
+  if (body && body.i18n && typeof body.i18n.key === "string") return t(body.i18n.key, translatedVars(body.i18n.vars));
+  if (body && typeof body.error === "string" && body.error) return t(body.error);
+  return fallback;
+}
+
+/* 포트원 결제창이 실패로 끝났을 때(창 닫기·승인 거절) 보여줄 문구 — 포트원(PG)이 주는 message는 한국어 원문이라
+   영어·일본어 손님에게 그대로 보였다. ko는 PG의 상세 문구를 그대로 쓰고, 그 밖의 언어는 사전 문구로 바꾼다.
+   v2 SDK는 사용자 취소도 code가 FAILURE_TYPE_PG라 code만으로는 못 가르고, pgCode(예: PAY_PROCESS_CANCELED)나
+   message에 "취소"/CANCEL이 들어 있는지로 취소와 실패를 나눈다(2026-10-28 정기 감사). */
+function paymentFailText(res, vbank) {
+  const msg = res && res.message ? String(res.message) : "";
+  if (getLang() === "ko" && msg) return msg;
+  const canceled = !res || /CANCEL/i.test(String(res.pgCode || "") + " " + msg) || msg.includes("취소");
+  if (canceled) return t(vbank ? "계좌 발급이 취소되었습니다" : "결제가 취소되었습니다");
+  return t(vbank ? "계좌 발급에 실패했습니다" : "결제에 실패했습니다");
+}
+
+/* ---------- 주문조회·내 주문 공용 표시 (2026-10-02) ----------
+   서버(lib/customerOrders.js)가 쿠폰·적립금 할인, 환불액, 결제수단, 구매확정 상태까지 내려준다. */
+function localDate(iso) {
+  return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+}
+
+/* 주문 금액 표의 합계 줄들 — 상품 합계 → 쿠폰 → 적립금 → 배송비 → 총 결제금액 → 환불된 금액.
+   예전엔 쿠폰·적립금 줄이 없어 "합계 + 배송비 ≠ 총 결제금액"으로 보였다. */
+function orderAmountRowsHTML(o) {
+  const row = (label, value, strong) =>
+    `<tr><td colspan="3" style="text-align:right;${strong ? "font-weight:650" : "color:var(--muted)"}">${esc(label)}</td><td${strong ? ' style="font-weight:650"' : ""}>${value}</td></tr>`;
+  return [
+    row(t("상품 합계"), money(o.subtotal)),
+    o.discount ? row(t("쿠폰 할인") + (o.couponCode ? ` (${o.couponCode})` : ""), "−" + money(o.discount)) : "",
+    o.pointsUsed ? row(t("적립금 사용"), "−" + money(o.pointsUsed)) : "",
+    row(t("배송비"), o.shipping === 0 ? esc(t("무료")) : money(o.shipping)),
+    row(t("총 결제금액"), money(o.total), true),
+    o.refundedAmount ? row(t("환불된 금액"), "−" + money(o.refundedAmount)) : "",
+  ].join("");
+}
+
+/* 입금대기 주문의 입금 안내 — 주문완료 화면을 닫았거나 안내 메일을 못 받아도 여기서 계좌를 다시 볼 수 있게. */
+function orderPaymentGuideHTML(o) {
+  if (o.status !== "입금대기") return "";
+  if (o.paymentMethod === "virtual_account" && o.virtualAccount) {
+    const va = o.virtualAccount;
+    return `<div class="notice" style="margin-top:16px">
+      <b>${t("가상계좌 입금 안내")}</b><br>
+      ${esc(t(va.bank || ""))} ${esc(va.accountNumber || "")}<br>
+      ${t("입금액")} <b class="tnum">${money(o.total)}</b>${va.dueAt ? ` · ${t("입금기한")} <b>${esc(new Date(va.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"))}</b>` : ""}
+    </div>`;
+  }
+  if (o.paymentMethod === "bank_transfer") {
+    const so = SITE.order;
+    return `<div class="notice" style="margin-top:16px">
+      <b>${t("입금 안내")}</b><br>
+      ${esc(so.bankName)} ${esc(so.accountNo)} · ${t("예금주")} ${esc(so.holder)}<br>
+      ${t("입금액")} <b class="tnum">${money(o.total)}</b><br>
+      <span class="small">${t("24시간 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
+    </div>`;
+  }
+  return "";
+}
+
+/* 구매확정 — 이미 확정됐으면 날짜, 확정 가능하면 버튼(적립 예정 포인트·자동 확정일 안내). */
+function orderConfirmHTML(o) {
+  if (o.confirmedAt) return `<p class="small" style="margin-top:10px">✓ ${esc(t("구매확정 완료"))} · ${esc(localDate(o.confirmedAt))}</p>`;
+  if (!o.canConfirm) return "";
+  const lines = [
+    o.pointsEarned ? t("구매확정하면 적립금 {amount}이 바로 지급됩니다.", { amount: money(o.pointsEarned) }) : t("상품을 잘 받으셨다면 구매확정을 눌러 주세요."),
+    o.autoConfirmAt ? t("누르지 않아도 {date}에 자동으로 구매확정됩니다.", { date: localDate(o.autoConfirmAt) }) : "",
+  ].filter(Boolean);
+  return `<div style="margin-top:12px">
+    <button class="btn btn--sm btn--line" type="button" data-confirm-order="${esc(o.no)}">${esc(t("구매확정"))}</button>
+    <p class="small" style="margin-top:6px;color:var(--muted)">${esc(lines.join(" "))}</p>
+  </div>`;
+}
+
+/* getTel: 비회원 조회 화면이면 입력한 연락처를 돌려주는 함수(회원은 로그인으로 본인 확인). */
+function bindOrderConfirmButtons(root, getTel, onDone) {
+  root.querySelectorAll("[data-confirm-order]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      if (!confirm(t("구매를 확정할까요? 확정하면 적립금이 지급되고, 이후 반품·교환은 고객센터로 문의해 주셔야 합니다."))) return;
+      btn.disabled = true;
+      const headers = { "Content-Type": "application/json" };
+      if (typeof getAccessToken === "function") {
+        const token = await getAccessToken().catch(() => null);
+        if (token) headers.Authorization = "Bearer " + token;
+      }
+      try {
+        const res = await fetch("/api/orders/confirm", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ orderNo: btn.dataset.confirmOrder, tel: getTel ? getTel() : undefined }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast(apiErrorText(body, t("구매확정에 실패했습니다.")));
+          btn.disabled = false;
+          return;
+        }
+        toast(body.pointsCredited ? t("구매확정했습니다. 적립금 {amount}이 지급됐어요.", { amount: money(body.pointsCredited) }) : t("구매확정했습니다."));
+        if (onDone) onDone(body);
+      } catch (e) {
+        toast(t("구매확정에 실패했습니다."));
+        btn.disabled = false;
+      }
+    })
+  );
+}
+
+/* 장바구니에 참(charm-*) 말고 실물 상품이 하나라도 있는지 — 참 단독 주문은 받지 않는다(server/lib/pricing.js hasPhysicalProduct와 같은 기준). */
+function cartHasPhysicalProduct(items) {
+  return (items || []).some((it) => it && typeof it.productId === "string" && it.productId && !it.productId.startsWith("charm-"));
 }
 
 function productCard(p, delay = 0, extraBodyHTML = "") {
@@ -621,7 +797,7 @@ function productCard(p, delay = 0, extraBodyHTML = "") {
   ${media}
   <div class="card__body">
     <div class="card__name">${esc(name)}</div>
-    <div class="card__sub">${esc(t(p.short))}</div>
+    <div class="card__sub">${esc(productText(p, "short"))}</div>
     <div class="card__price tnum">${money(p.price)}</div>
     <div class="swatches">${dots}</div>
     ${extraBodyHTML}
@@ -684,6 +860,9 @@ function charmSVG(charmKey, finishKey, opts = {}) {
    부팅
    ========================================================= */
 document.addEventListener("DOMContentLoaded", () => {
+  /* 브라우저 탭 제목(<title>)은 data-i18n으로 바꿀 수 없어 영어·일본어에서도 한국어로 남았다 — 페이지마다 쓰는
+     제목 전체를 사전 키로 두고 번역한다. 사전에 없거나 페이지가 이미 직접 바꾼 제목(product.html 등)은 그대로 둔다(2026-10-28 정기 감사). */
+  if (getLang() !== "ko") document.title = t(document.title);
   initReveal();
   initBeams();
 });

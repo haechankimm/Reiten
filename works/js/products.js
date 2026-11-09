@@ -55,7 +55,7 @@
   }
 
   function colorSwatchRow(c) {
-    const label = esc(t(c.label)) + (c.labelDe ? ` · ${esc(c.labelDe)}` : "");
+    const label = esc(t(c.label)) + [c.labelDe, c.labelEn, c.labelJa].filter(Boolean).map((v) => ` · ${esc(v)}`).join("");
     return `
       <div class="color-manage-row" style="display:flex;align-items:center;gap:8px;padding:5px 0">
         <span style="width:18px;height:18px;flex:none;border-radius:50%;border:1px solid var(--line);background:${esc(c.hex)}"></span>
@@ -68,6 +68,8 @@
   function colorManagerFormHTML(existing) {
     const label = existing ? esc(existing.label) : "";
     const labelDe = existing && existing.labelDe ? esc(existing.labelDe) : "";
+    const labelEn = existing && existing.labelEn ? esc(existing.labelEn) : "";
+    const labelJa = existing && existing.labelJa ? esc(existing.labelJa) : "";
     const hex = existing ? existing.hex : "#8a8a8a";
     return `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px;margin-top:6px;border:1px dashed var(--line);border-radius:8px">
@@ -78,6 +80,15 @@
         <div class="field" style="margin:0;width:150px">
           <label>${esc(t("독일어 이름 (선택)"))}</label>
           <input type="text" id="cm-label-de" value="${labelDe}" maxlength="40">
+        </div>
+        <!-- 고객 화면(영어·일본어)에 보일 색상 이름 — 비워 두면 한국어 이름 그대로(2026-10-29, 마이그레이션 044) -->
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("영어 이름 (선택)"))}</label>
+          <input type="text" id="cm-label-en" value="${labelEn}" maxlength="40">
+        </div>
+        <div class="field" style="margin:0;width:150px">
+          <label>${esc(t("일본어 이름 (선택)"))}</label>
+          <input type="text" id="cm-label-ja" value="${labelJa}" maxlength="40">
         </div>
         <div class="field" style="margin:0">
           <label>${esc(t("색상 값"))}</label>
@@ -127,6 +138,8 @@
   async function saveColor(mode) {
     const label = el("cm-label").value.trim();
     const labelDe = el("cm-label-de").value.trim();
+    const labelEn = el("cm-label-en").value.trim();
+    const labelJa = el("cm-label-ja").value.trim();
     const hex = el("cm-hex-text").value.trim();
     if (!label) return toast(t("색상 이름을 입력해 주세요."));
     if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return toast(t("색상 값은 #RRGGBB 형식으로 입력해 주세요."));
@@ -134,7 +147,7 @@
     const isNew = mode === "new";
     const result = await adminFetch(isNew ? "/api/admin/colors" : `/api/admin/colors/${mode}`, {
       method: isNew ? "POST" : "PATCH",
-      body: JSON.stringify({ label, labelDe: labelDe || null, hex }),
+      body: JSON.stringify({ label, labelDe: labelDe || null, labelEn: labelEn || null, labelJa: labelJa || null, hex }),
     });
     if (!result) return; // adminFetch가 이미 실패 사유를 토스트로 띄움
 
@@ -142,7 +155,9 @@
     if (isNew) pfSelectedColors = [...pfSelectedColors, result.key];
     colorManagerMode = null;
     renderPfColors();
-    toast(t(isNew ? "색상을 추가했습니다." : "색상을 수정했습니다."));
+    toast(result.translationsSkipped
+      ? t("저장했지만 DB 마이그레이션 044 전이라 영어·일본어 이름은 빠졌습니다")
+      : t(isNew ? "색상을 추가했습니다." : "색상을 수정했습니다."));
   }
 
   async function deleteColor(key) {
@@ -430,7 +445,7 @@
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("업로드에 실패했습니다"));
+        toast(serverMsg(body, t("업로드에 실패했습니다")));
         return;
       }
       const { url } = await res.json();
@@ -440,6 +455,31 @@
     } catch (e) {
       toast(t("업로드에 실패했습니다"));
     }
+  }
+
+  /* 영어·일본어 상품 문구 입력칸(044) — 상품 저장 때 같이 보낸다. */
+  function fillTranslationFields(tr) {
+    for (const lang of ["en", "ja"]) {
+      const v = (tr && tr[lang]) || {};
+      if (!el(`pf-${lang}-name`)) continue;
+      el(`pf-${lang}-name`).value = v.name || "";
+      el(`pf-${lang}-short`).value = v.short || "";
+      el(`pf-${lang}-desc`).value = v.desc || "";
+      el(`pf-${lang}-details`).value = (v.details || []).join("\n");
+    }
+  }
+  function readTranslationFields() {
+    const out = {};
+    for (const lang of ["en", "ja"]) {
+      if (!el(`pf-${lang}-name`)) continue;
+      out[lang] = {
+        name: el(`pf-${lang}-name`).value.trim(),
+        short: el(`pf-${lang}-short`).value.trim(),
+        desc: el(`pf-${lang}-desc`).value.trim(),
+        details: el(`pf-${lang}-details`).value.split("\n").map((x) => x.trim()).filter(Boolean),
+      };
+    }
+    return out;
   }
 
   function resetProductForm() {
@@ -459,6 +499,7 @@
     el("pf-short").value = "";
     el("pf-desc").value = "";
     el("pf-details").value = "";
+    fillTranslationFields({});
     el("pf-modelinfo").value = "";
     el("pf-sizetable").value = "hoodie";
     el("pf-charmready").checked = false;
@@ -489,6 +530,7 @@
     el("pf-short").value = p.short || "";
     el("pf-desc").value = p.desc || "";
     el("pf-details").value = (p.details || []).join("\n");
+    fillTranslationFields(p.translations || {});
     el("pf-modelinfo").value = p.modelInfo || "";
     el("pf-sizetable").value = p.sizeTable || "hoodie";
     el("pf-charmready").checked = !!p.charmReady;
@@ -524,6 +566,7 @@
       short: el("pf-short").value.trim(),
       desc: el("pf-desc").value.trim(),
       details: el("pf-details").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      translations: readTranslationFields(),
       colors: pfSelectedColors,
       sizes: PF_SIZE_OPTIONS,
       soldOut: [], // 품절은 재고 탭 수량으로만 판단(예전 수동 품절 체크는 저장할 때 비운다)
@@ -544,7 +587,9 @@
       if (!result) return;
       toast(result.mediaSkipped
         ? t("저장했지만 DB 마이그레이션 041 전이라 상세 콘텐츠·모델 정보는 빠졌습니다(상품 사진 앞 6장만 저장)")
-        : t("상품을 저장했습니다"));
+        : result.translationsSkipped
+          ? t("저장했지만 DB 마이그레이션 044 전이라 영어·일본어 문구는 빠졌습니다")
+          : t("상품을 저장했습니다"));
       /* 관리자 미리보기와 실제 사이트가 다르게 보이는 걸(사진 비율 사고 같은) 저장한 그 자리에서
          바로 확인할 수 있게, 실제 상품 페이지 링크를 새 탭으로 열 수 있게 켜둔다.
          resetProductForm()이 폼을 새 상품 등록 상태로 되돌리므로, 이 링크는 그 뒤에 켜야 한다. */
@@ -552,6 +597,8 @@
       el("pf-view-live").href = `/product.html?id=${encodeURIComponent(result.id)}`;
       el("pf-view-live").hidden = false;
       paintAdminProducts();
+      // 사이즈·컬러를 바꾼 상품이 재고 탭엔 옛 칸으로 남아 있었다(2026-10-28 정기 감사) — 재고 화면도 같이 새로 그린다.
+      if (canView("inventory") && typeof paintAdminInventory === "function") paintAdminInventory();
     } finally {
       btn.disabled = false;
     }
@@ -573,7 +620,7 @@
     return `
       <div class="grid-card" data-id="${esc(p.id)}">
         <div class="grid-card-thumb">
-          <label class="grid-card-select" onclick="event.stopPropagation()">
+          <label class="grid-card-select">
             <input type="checkbox" class="product-select" data-id="${esc(p.id)}" ${selectedProductIds.has(p.id) ? "checked" : ""}>
           </label>
           ${img ? `<img src="${esc(img)}" alt="">` : ""}
@@ -610,6 +657,11 @@
     colorSelect.innerHTML = Object.values(COLORS).map((c) => `<option value="${esc(c.key)}">${esc(t(c.label))}</option>`).join("");
     if ([...colorSelect.options].some((o) => o.value === prevColorValue)) colorSelect.value = prevColorValue;
 
+    /* 인라인 onclick은 CSP(helmet 기본값 script-src-attr 'none')에 막혀 실행되지 않았다(2026-10-28 정기 감사) —
+       체크박스 칸 클릭이 카드로 번지지 않게 하는 처리를 여기서 리스너로 붙인다. */
+    el("products-list").querySelectorAll(".grid-card-select").forEach((label) =>
+      label.addEventListener("click", (e) => e.stopPropagation())
+    );
     el("products-list").querySelectorAll(".product-select").forEach((cb) =>
       cb.addEventListener("change", () => {
         if (cb.checked) selectedProductIds.add(cb.dataset.id);
@@ -629,8 +681,11 @@
       btn.addEventListener("click", async () => {
         const id = btn.closest("[data-id]").dataset.id;
         if (!confirm(t("정말 삭제하시겠습니까? 되돌릴 수 없습니다.") + "\n" + id)) return;
-        await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!(await adminFetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }))) return;
         if (pfEditingId === id) resetProductForm();
+        // 선택해 둔 상품을 하나씩 지우면 일괄 처리 바에 지워진 상품이 계속 "N개 선택됨"으로 남았다(2026-10-28 정기 감사).
+        selectedProductIds.delete(id);
+        updateProductsBulkBar();
         toast(t("상품을 삭제했습니다"));
         paintAdminProducts();
       })

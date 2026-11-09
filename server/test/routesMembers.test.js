@@ -247,3 +247,24 @@ test("GET /api/admin/members/export — CSV로 회원 목록을 내려받는다"
   assert.match(res.headers["content-type"], /text\/csv/);
   assert.match(res.text, new RegExp(CUSTOMER.email));
 });
+
+test("GET /api/admin/members/:id/overview — 계정 상태·주문 통계·적립금 잔액·문의·반품을 한 번에", async () => {
+  seedDefault({
+    orders: [
+      { order_no: "O1", user_id: CUSTOMER.id, status: "완료", total: 50000, refunded_amount: 10000, items: [{ name: "후디", qty: 1 }], created_at: "2026-09-01T00:00:00Z" },
+      { order_no: "O2", user_id: CUSTOMER.id, status: "취소", total: 30000, items: [], created_at: "2026-09-02T00:00:00Z" },
+    ],
+    loyalty_points_ledger: [{ user_id: CUSTOMER.id, delta: 500, reason: "earn_purchase", order_no: "O1" }, { user_id: CUSTOMER.id, delta: -200, reason: "redeem_order", order_no: "O3" }],
+    qna: [{ id: "q1", user_id: CUSTOMER.id, product_id: "general", question: "사이즈?", status: "답변대기", secret: false }],
+    return_requests: [{ id: "r1", user_id: CUSTOMER.id, order_no: "O1", request_type: "return", status: "접수", reason: "단순변심" }],
+  });
+  const res = await request(buildApp()).get(`/api/admin/members/${CUSTOMER.id}/overview`).set("Authorization", `Bearer ${TOKEN}`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.profile.email, CUSTOMER.email);
+  assert.strictEqual(res.body.stats.orderCount, 2);
+  assert.strictEqual(res.body.stats.paidCount, 1);
+  assert.strictEqual(res.body.stats.paidTotal, 40000, "환불액을 뺀 실결제");
+  assert.strictEqual(res.body.stats.pointsBalance, 300);
+  assert.strictEqual(res.body.qna.length, 1);
+  assert.strictEqual(res.body.returns.length, 1);
+});

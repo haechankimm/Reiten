@@ -5,7 +5,7 @@
    CRUD라 다른 라우트들과 같은 이유로 분리했다. */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
-const { requireAdmin } = require("../lib/auth");
+const { requireAdmin, MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
 const { isMissingSchemaError } = require("../lib/pgErrors");
 
@@ -45,6 +45,12 @@ router.post("/api/admin/handoff-notes", requireAdmin, async (req, res) => {
 });
 
 router.delete("/api/admin/handoff-notes/:id", requireAdmin, async (req, res) => {
+  // 공지와 같은 원칙 — 쓴 사람이나 메인 관리자만 지운다(예전엔 협업 권한만 있으면 남의 노트도 삭제 가능, 2026-10-28 정기 감사)
+  const { data: note } = await supabaseAdmin.from("admin_handoff_notes").select("admin_email").eq("id", req.params.id).maybeSingle();
+  const me = String(req.user.email || "").toLowerCase();
+  if (!note || (String(note.admin_email || "").toLowerCase() !== me && me !== MASTER_ADMIN_EMAIL)) {
+    return res.status(403).json({ error: "본인이 쓴 노트만 삭제할 수 있습니다." });
+  }
   const { error } = await supabaseAdmin.from("admin_handoff_notes").delete().eq("id", req.params.id);
   if (error) {
     console.error("[handoff-notes] 삭제 실패:", error.message);

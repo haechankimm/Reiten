@@ -10,6 +10,21 @@
      카드/가상계좌/무통장 중 뭔지 목록만 봐서는 알 수 없다던 감사 지적(2026-09) — 목록에는
      결제수단만 짧게, 상세 패널에는 쿠폰·적립금·가상계좌 입금 정보까지 전부 보여준다. */
   const ORDER_PAYMENT_METHOD_LABEL = { card: "카드결제", bank_transfer: "무통장입금", virtual_account: "가상계좌" };
+  /* 서버가 거절하는 상태는 아예 고르지 못하게 한다(2026-10-28 정기 감사) — 결제된 주문·카드·가상계좌의 "입금대기",
+     환불 이력이 있는 출고 주문의 "취소". 현재 상태는 항상 남긴다. */
+  function allowedStatusesFor(o) {
+    const paid = o.status !== "입금대기" && o.status !== "취소";
+    return ORDER_STATUSES.filter((s) => {
+      if (s === o.status) return true;
+      if (s === "입금대기" && (paid || o.paymentMethod === "card" || o.paymentMethod === "virtual_account")) return false;
+      if (s === "취소" && (o.status === "배송중" || o.status === "완료") && Number(o.refundedAmount) > 0) return false;
+      // 앞 단계로 되돌리기는 서버가 막는다(배송 처리 실수로 완료 → 배송중만 허용)
+      const rank = { 입금대기: 0, 입금확인: 1, 배송중: 2, 완료: 3 };
+      if (o.status !== "취소" && s !== "취소" && rank[s] < rank[o.status] && !(o.status === "완료" && s === "배송중")) return false;
+      return true;
+    });
+  }
+
   function orderPaymentMethodLabel(o) {
     return t(ORDER_PAYMENT_METHOD_LABEL[o.paymentMethod] || "확인 안 됨");
   }
@@ -53,11 +68,22 @@
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
           <div class="small" style="color:var(--text-muted);margin-top:2px">${esc(orderPaymentMethodLabel(o))}</div>
-          <div style="margin-top:3px;display:flex;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
+          <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
         </span>
       </button>`;
   }
 
+  /* 출고·배송완료·구매확정 시각(043 배송추적·구매확정 기능) — 값이 있는 것만 한 줄로 보여준다. */
+  function orderLifecycleHTML(o) {
+    const parts = [
+      o.shippedAt ? `${t("출고")} ${fmtDate(o.shippedAt)}` : "",
+      o.deliveredAt ? `${t("배송완료")} ${fmtDate(o.deliveredAt)}` : "",
+      o.confirmedAt ? `${t("구매확정")} ${fmtDate(o.confirmedAt)}` : "",
+    ].filter(Boolean);
+    return parts.length ? `<p class="small" style="margin-top:8px;color:var(--text-muted)">${esc(parts.join(" · "))}</p>` : "";
+  }
+
+  /* 상품 줄: 옵션이 없는 상품은 빈 괄호 "()"가 찍혔다(2026-10-28 정기 감사) — 옵션이 있을 때만 괄호를 붙인다. */
   function orderDetailHTML(o) {
     return `
       <div class="detail-head">
@@ -76,12 +102,20 @@
       </div>
       ${orderVirtualAccountHTML(o)}
       <div class="detail-items">
-        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)} (${esc(it.options)}) × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
+        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)}${it.options ? ` (${esc(it.options)})` : ""} × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
+        ${o.refundedAmount ? `<div class="detail-total" style="color:var(--danger)"><span>${esc(t("환불된 금액"))}</span><span class="tnum">−${money(o.refundedAmount)}</span></div>` : ""}
       </div>
+      ${orderLifecycleHTML(o)}
+      <div id="od-refunds"></div>
+      ${o.status === "입금확인" && hasAreaEdit("refunds") ? `
+      <div class="detail-field" style="margin-top:10px">
+        <button type="button" class="btn btn--sm btn--ghost" id="od-partial-cancel">${esc(t("부분 취소(일부 상품만)"))}</button>
+        <p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("출고 전 주문에서 일부 상품만 빼고 그만큼 환불합니다. 전부 취소하려면 상태를 '취소'로 바꾸세요."))}</p>
+      </div>` : ""}
       <div class="detail-field" style="margin-top:16px">
         <label>${esc(t("상태"))}</label>
-        <select class="mini-select" id="od-status">${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
+        <select class="mini-select" id="od-status">${allowedStatusesFor(o).map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${esc(t(s))}</option>`).join("")}</select>
       </div>
       <div class="detail-field" style="margin-top:8px">
         <label>${esc(t("담당자"))}</label>
@@ -99,7 +133,7 @@
       <div class="detail-ship">
         <select id="od-courier">
           <option value="" ${!o.courier ? "selected" : ""}>${esc(t("택배사 선택"))}</option>
-          ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(c.label)}</option>`).join("")}
+          ${COURIERS.map((c) => `<option value="${c.key}" ${c.key === o.courier ? "selected" : ""}>${esc(t(c.label))}</option>`).join("")}
         </select>
         <input type="text" id="od-tracking" placeholder="${esc(t("운송장번호"))}" value="${esc(o.trackingNo || "")}">
         <button type="button" class="primary-btn" id="od-save">${esc(t("저장"))}</button>
@@ -148,6 +182,20 @@
         el("od-cancel-reason-field").hidden = el("od-status").value !== "취소";
       });
 
+      // 환불·부분취소 이력은 환불이 있었던 주문만 불러온다(목록 응답의 refundedAmount로 판단).
+      if (o.refundedAmount) {
+        adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}/refunds`).then((info) => {
+          const box = el("od-refunds");
+          if (info && box) box.innerHTML = refundHistoryHTML(info);
+        });
+      }
+      el("od-partial-cancel")?.addEventListener("click", () =>
+        openRefundDialog({
+          orderNo: o.no, kind: "partial_cancel",
+          onDone: () => paintAdminOrders(false, { keepSelection: true }),
+        })
+      );
+
       el("od-history-toggle").addEventListener("click", async () => {
         const panel = el("od-history-panel");
         const btn = el("od-history-toggle");
@@ -173,11 +221,19 @@
         const internalNote = el("od-internal-note").value.trim();
         const isNewCancel = status === "취소" && o.status !== "취소";
         const isUncancel = o.status === "취소" && status !== "취소";
+        // 응답 전에 한 번 더 누르면 같은 저장(취소·환불 포함)이 두 번 나갔다(2026-10-28 정기 감사) — 요청 중엔 잠근다.
+        const saveBtn = el("od-save");
+        saveBtn.disabled = true;
         const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}`, {
           method: "PATCH",
           body: JSON.stringify({ status, courier, trackingNo, cancelReason, assignedTo, internalNote, expected: { status: o.status, trackingNo: o.trackingNo || "" } }),
         });
-        if (!result) return;
+        saveBtn.disabled = false;
+        if (!result) {
+          // 다른 관리자가 먼저 바꿨으면(409 STALE) 옛 값을 들고 있어 다시 눌러도 계속 실패했다 — 최신 내용을 다시 불러온다(2026-10-28 정기 감사).
+          if (lastAdminFetchError && lastAdminFetchError.code === "STALE") paintAdminOrders(false, { keepSelection: true });
+          return;
+        }
         o.status = status;
         o.courier = courier;
         o.trackingNo = trackingNo;
@@ -204,7 +260,8 @@
            계산하지만, 대시보드 탭 자체는 로그인 시점에 한 번만 그려서 방금 취소한 주문의
            매출이 그대로 남아있는 것처럼 보인다는 피드백 — 주문을 저장할 때마다 대시보드도
            같이 새로고침한다. */
-        paintAdminDashboard();
+        // 대시보드 권한이 없는 직원은 대시보드를 다시 그리면 403 토스트가 "저장했습니다"를 덮어 실패처럼 보였다(2026-10-28).
+        if (canView("dashboard")) paintAdminDashboard();
       });
     }
   }
@@ -219,13 +276,14 @@
     return params;
   }
 
-  async function paintAdminOrders(loadMore = false) {
+  async function paintAdminOrders(loadMore = false, { keepSelection = false } = {}) {
     ordersState.page = loadMore ? ordersState.page + 1 : 1;
     const result = await adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`);
     if (!result) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
-    if (!loadMore) selectedOrderNo = null;
+    // 부분 취소 직후처럼 작업 뒤 새로고침할 땐 보던 주문을 그대로 연다(예전엔 목록 첫 주문으로 바뀜, 2026-10-28)
+    if (!loadMore && !(keepSelection && ordersState.items.some((o) => o.no === selectedOrderNo))) selectedOrderNo = null;
     renderOrdersSplit();
   }
 
@@ -275,7 +333,7 @@
     }
     if (!res.ok) {
       let message = "";
-      try { message = (await res.json()).error || ""; } catch (e) {}
+      try { message = serverMsg(await res.json(), ""); } catch (e) {}
       toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
       return;
     }
@@ -283,7 +341,13 @@
     const dlUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = dlUrl;
-    a.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.${format}`;
+    /* 서버가 정해 준 파일 이름(Content-Disposition)을 우선 쓰고, 없으면 한국 날짜로 만든다 — 예전엔 UTC 날짜라 자정~오전 9시엔
+       하루 전 날짜가 붙었고, 정산 리포트는 "2026-09-2026-10-28"처럼 날짜가 두 번 붙었다(2026-10-28 정기 감사). */
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+    const serverName = m ? decodeURIComponent(m[1] || m[2]) : "";
+    const kstToday = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+    a.download = serverName || `${filenamePrefix}-${kstToday}.${format}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -354,7 +418,7 @@
     const failed = result.results.filter((r) => !r.ok);
     el("ord-bulk-result").textContent = t("{ok}건 성공, {fail}건 실패", { ok: okCount, fail: failed.length });
     if (failed.length) {
-      toast(failed.map((r) => `${r.orderNo || "?"}: ${r.error}`).join("\n"));
+      toast(failed.map((r) => `${r.orderNo || "?"}: ${t(r.error || "")}`).join("\n"));
     } else {
       toast(t("일괄 처리를 완료했습니다"));
       el("ord-bulk-input").value = "";

@@ -147,7 +147,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <div style="margin-top:14px">
             <p class="small" style="line-height:1.7" data-i18n="탈퇴하면 계정과 적립금이 즉시 삭제되며 되돌릴 수 없습니다. 주문 내역은 전자상거래법에 따라 정해진 기간 동안 보관되며, 비회원 주문 조회(주문번호+연락처)로 계속 확인할 수 있습니다. 진행 중인 주문이 있으면 탈퇴할 수 없습니다.">탈퇴하면 계정과 적립금이 즉시 삭제되며 되돌릴 수 없습니다. 주문 내역은 전자상거래법에 따라 정해진 기간 동안 보관되며, 비회원 주문 조회(주문번호+연락처)로 계속 확인할 수 있습니다. 진행 중인 주문이 있으면 탈퇴할 수 없습니다.</p>
             <div class="field" style="margin-top:14px">
-              <label for="wd-confirm" data-i18n="확인을 위해 '탈퇴'를 입력해 주세요">확인을 위해 '탈퇴'를 입력해 주세요</label>
+              <label for="wd-confirm" id="wd-confirm-label">확인을 위해 '탈퇴'를 입력해 주세요</label>
               <input id="wd-confirm" autocomplete="off">
             </div>
             <button class="btn btn--ghost" type="button" id="wd-submit" data-i18n="회원 탈퇴하기">회원 탈퇴하기</button>
@@ -209,6 +209,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/app.js"></script>
 <script src="assets/js/auth-client.js"></script>
 <script>
+  // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
+  if (typeof loadProducts === "function") loadProducts().catch(() => {});
   applyI18n();
   renderHeader("");
 
@@ -255,12 +257,18 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (!courier || !o.trackingNo) return "";
     const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(o.trackingNo));
     return `<p class="small" style="margin-top:8px">
-      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(courier.label)} ${esc(o.trackingNo)}</a>
+      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(t(courier.label))} ${esc(o.trackingNo)}</a>
     </p>`;
   }
 
   function orderCard(o) {
-    const itemsLine = o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ");
+    const itemsLine = o.items.map((it) => `${esc(orderItemName(it))} × ${it.qty}`).join(", ");
+    // 쿠폰·적립금 할인과 환불액을 같이 보여줘야 "상품 합계와 결제 금액이 왜 다른지"가 보인다(2026-10-02).
+    const adjustments = [
+      o.discount ? `${t("쿠폰 할인")} −${money(o.discount)}` : "",
+      o.pointsUsed ? `${t("적립금 사용")} −${money(o.pointsUsed)}` : "",
+      o.refundedAmount ? `${t("환불된 금액")} −${money(o.refundedAmount)}` : "",
+    ].filter(Boolean).join(" · ");
     return `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
@@ -272,7 +280,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <span class="small">${esc(t(o.status || "입금대기"))}</span>
           <b class="tnum">${money(o.total)}</b>
         </div>
+        ${adjustments ? `<p class="small tnum" style="margin-top:4px;color:var(--muted);text-align:right">${esc(adjustments)}</p>` : ""}
         ${trackingLine(o)}
+        ${orderPaymentGuideHTML(o)}
+        ${orderConfirmHTML(o)}
       </div>`;
   }
 
@@ -284,6 +295,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       if (!res.ok) return;
       const orders = await res.json();
       el("my-orders").innerHTML = orders.map(orderCard).join("");
+      bindOrderConfirmButtons(el("my-orders"), null, () => { paintMyOrders(); paintPointsBalance(); });
       el("my-orders-empty").hidden = orders.length > 0;
     } catch (e) {}
   }
@@ -318,7 +330,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
       } else {
         let message = "";
-        try { message = (await res.json()).error || ""; } catch (e) {}
+        try { message = apiErrorText(await res.json(), ""); } catch (e) {}
         toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
       }
       return null;
@@ -540,9 +552,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       location.reload();
     });
 
+    /* 영어·일본어 손님에게 한국어 "탈퇴"를 치라고 하면 입력할 방법이 마땅치 않다 — 언어별 확인 단어(DELETE·削除)를
+       보여주고 받되, 한국어 "탈퇴"도 그대로 받는다. 서버(routes/account.js)는 "탈퇴"만 확인하므로 확인을 마친 뒤
+       서버에는 항상 "탈퇴"를 보낸다(2026-10-28 정기 감사). */
+    const wdWord = { en: "DELETE", ja: "削除" }[getLang()] || "탈퇴";
+    if (el("wd-confirm-label")) el("wd-confirm-label").textContent = t("확인을 위해 '{word}'를 입력해 주세요", { word: wdWord });
     el("wd-submit")?.addEventListener("click", async () => {
-      if (el("wd-confirm").value.trim() !== "탈퇴") {
-        toast(t("확인 문구로 '탈퇴'를 정확히 입력해 주세요."));
+      const typed = el("wd-confirm").value.trim();
+      if (typed !== "탈퇴" && typed.toUpperCase() !== wdWord.toUpperCase()) {
+        toast(t("확인 문구로 '{word}'를 정확히 입력해 주세요.", { word: wdWord }));
         return;
       }
       if (!confirm(t("정말 탈퇴할까요? 계정과 적립금이 삭제되며 되돌릴 수 없습니다."))) return;

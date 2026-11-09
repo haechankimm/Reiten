@@ -32,8 +32,12 @@ async function sendReviewRequests(now = Date.now()) {
     const { data: existing } = await supabaseAdmin.from("reviews").select("id").eq("order_no", o.order_no).limit(1);
     if (existing && existing.length) continue;
 
-    await sendCustomerReviewRequest({ customer: o.customer, orderNo: o.order_no, items: o.items });
-    sent++;
+    try {
+      await sendCustomerReviewRequest({ customer: o.customer, orderNo: o.order_no, items: o.items });
+      sent++;
+    } catch (err) {
+      console.error("[review-request] 메일 발송 실패:", o.order_no, err.message);
+    }
   }
   return { sent };
 }

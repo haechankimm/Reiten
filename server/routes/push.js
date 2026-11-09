@@ -14,9 +14,24 @@ router.get("/api/admin/push/public-key", requireAdmin, (req, res) => {
   res.json({ publicKey: configured ? process.env.VAPID_PUBLIC_KEY : null });
 });
 
+/* 실제 브라우저 푸시 서비스 주소만 받는다 — 아무 주소나 저장되면 서버가 새 주문·긴급 오류 때마다 그 주소로 요청을
+   보내게 돼(내부망 주소 포함) 직원 계정으로 서버를 엉뚱한 곳에 접속시킬 수 있었다(2026-10-28 정기 감사). */
+const PUSH_HOST_PATTERNS = [
+  /^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/,
+  /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/, /^web\.push\.apple\.com$/,
+];
+function isPushEndpoint(endpoint) {
+  try {
+    const u = new URL(String(endpoint));
+    return u.protocol === "https:" && PUSH_HOST_PATTERNS.some((re) => re.test(u.hostname));
+  } catch (e) {
+    return false;
+  }
+}
+
 router.post("/api/admin/push/subscribe", requireAdmin, async (req, res) => {
   const sub = req.body && req.body.subscription;
-  if (!sub || !sub.endpoint || !sub.keys) {
+  if (!sub || !sub.endpoint || !sub.keys || typeof sub.keys !== "object" || !isPushEndpoint(sub.endpoint)) {
     return res.status(400).json({ error: "구독 정보가 올바르지 않습니다." });
   }
 

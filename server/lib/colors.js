@@ -4,11 +4,12 @@ const { supabaseAdmin } = require("./supabase");
 const { COLORS: STATIC_COLORS } = require("../../소스 코드/assets/js/data.js");
 
 function toColorDto(row) {
-  return { key: row.key, label: row.label, labelDe: row.label_de || null, hex: row.hex };
+  // labelEn·labelJa는 마이그레이션 044 전이면 칸이 없어 null(2026-10-29)
+  return { key: row.key, label: row.label, labelDe: row.label_de || null, labelEn: row.label_en || null, labelJa: row.label_ja || null, hex: row.hex };
 }
 
 function staticColorList() {
-  return Object.values(STATIC_COLORS).map((c) => ({ key: c.key, label: c.label, labelDe: null, hex: c.hex }));
+  return Object.values(STATIC_COLORS).map((c) => ({ key: c.key, label: c.label, labelDe: null, labelEn: null, labelJa: null, hex: c.hex }));
 }
 
 /* product_colors 테이블(마이그레이션 010)이 있으면 관리자가 자유롭게 추가한 색상까지 포함해

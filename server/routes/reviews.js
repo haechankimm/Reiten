@@ -15,6 +15,8 @@ const { normalizeTel } = require("../lib/phone");
 const { uploadReviewPhoto } = require("../lib/cloudinary");
 const { isMissingColumnError } = require("../lib/pgErrors");
 
+const { rewardPhotoReview } = require("../lib/reviewRewards");
+
 const router = express.Router();
 
 const reviewUpload = multer({
@@ -110,6 +112,13 @@ router.post("/api/reviews", writeLimiter, (req, res) => {
       return res.status(400).json({ error: "인스타그램 아이디 형식을 확인해 주세요." });
     }
 
+    /* 같은 주문·상품 리뷰가 이미 있으면 사진을 올리기 전에 막는다 — 예전엔 사진을 먼저 올리고 저장 단계에서 409가 나
+       Cloudinary에 주인 없는 사진이 남았다(2026-10-28 정기 감사). 최종 방어는 여전히 DB 유니크 인덱스. */
+    {
+      const { data: dup, error: dupErr } = await supabaseAdmin.from("reviews").select("id").eq("order_no", orderNoStr).eq("product_id", productId).limit(1);
+      if (!dupErr && dup && dup.length) return res.status(409).json({ error: "이미 이 주문으로 작성한 리뷰가 있습니다." });
+    }
+
     let photoUrl = null;
     if (req.file) {
       try {
@@ -157,6 +166,10 @@ router.post("/api/reviews", writeLimiter, (req, res) => {
 });
 
 router.post("/api/reviews/:id/helpful", writeLimiter, async (req, res) => {
+  // 잘못된 id는 500 대신 404, 숨김(미승인) 리뷰에는 공감을 받지 않는다(2026-10-28 정기 감사)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(404).json({ error: "리뷰를 찾을 수 없습니다." });
+  const { data: target } = await supabaseAdmin.from("reviews").select("id, approved").eq("id", req.params.id).maybeSingle();
+  if (!target || target.approved === false) return res.status(404).json({ error: "리뷰를 찾을 수 없습니다." });
   const { data, error } = await supabaseAdmin.rpc("increment_helpful", { p_id: req.params.id });
   if (error) {
     console.error("[reviews] 공감 처리 실패:", error.message);
@@ -186,7 +199,8 @@ router.get("/api/admin/reviews", requireAdmin, async (req, res) => {
     .from("reviews")
     .select("*", { count: "exact" })
     .order("approved", { ascending: true })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true }); // 같은 시각 리뷰도 페이지 사이에서 순서가 바뀌지 않게
   query = applyReviewFilters(query, req.query);
   const { data, error, count } = await query.range(from, to);
 
@@ -210,8 +224,17 @@ router.patch("/api/admin/reviews/bulk-approve", requireAdmin, async (req, res) =
     console.error("[admin/reviews] 일괄 승인 처리 실패:", error.message);
     return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
   }
-  logAdminAction(req, "review.bulk_approve", "review", `${ids.length}건`, { ids, approved });
-  res.json({ ok: true, count: ids.length });
+  // 승인한 사진 리뷰 중 회원 주문으로 쓴 리뷰에 적립금(lib/reviewRewards.js)
+  let rewarded = 0;
+  if (approved) {
+    const { data: rows } = await supabaseAdmin.from("reviews").select("*").in("id", ids);
+    for (const r of rows || []) {
+      const out = await rewardPhotoReview(supabaseAdmin, r);
+      if (out.awarded) rewarded++;
+    }
+  }
+  logAdminAction(req, "review.bulk_approve", "review", `${ids.length}건`, { ids, approved, rewarded });
+  res.json({ ok: true, count: ids.length, rewarded });
 });
 
 router.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
@@ -221,8 +244,13 @@ router.patch("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   }
   const { error } = await supabaseAdmin.from("reviews").update({ approved }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "승인 처리에 실패했습니다." });
-  logAdminAction(req, "review.update", "review", req.params.id, { approved });
-  res.json({ ok: true });
+  let reward = null;
+  if (approved) {
+    const { data: review } = await supabaseAdmin.from("reviews").select("*").eq("id", req.params.id).maybeSingle();
+    reward = await rewardPhotoReview(supabaseAdmin, review);
+  }
+  logAdminAction(req, "review.update", "review", req.params.id, { approved, rewarded: reward ? reward.awarded : 0 });
+  res.json({ ok: true, rewarded: reward ? reward.awarded : 0 });
 });
 
 router.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {

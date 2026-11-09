@@ -17,6 +17,7 @@ function orderNo(seq, date = new Date()) {
 /* 클라이언트가 보낸 unit/sum은 신뢰하지 않는다.
    productId + charm + extras 조합만으로 상품/참/추가아이템 가격을 다시 계산한다. */
 function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
+  if (!raw || typeof raw !== "object") return null; // null·문자열 줄이 섞이면 500이 났다(2026-10-28)
   /* `Number(raw.qty) || 1`처럼 falsy 체크로 기본값을 주면 qty:0(명시적으로 보낸 잘못된 값)이
      0은 falsy라서 조용히 1개로 둔갑해버린다(2026-09-01 코드 감사에서 발견) — 그래서 0 이하·
      숫자가 아닌 값은 아예 거부(null)하고, 상한(99)만 clamp한다. */
@@ -30,22 +31,38 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
   const extrasTotal = extraKeys.length * extraPrice;
 
   let unit;
+  let serverName = null;
   if (typeof raw.productId === "string" && raw.productId.startsWith("charm-")) {
     if (!charmKey) return null;
     unit = charmPrice + extrasTotal;
   } else {
     const product = products.find((p) => p.id === raw.productId);
     if (!product) return null;
+    /* 사이즈가 있는 상품인데 사이즈가 없거나 목록에 없는 값이면 거부 — 사이즈가 빠진 줄은 재고 차감 대상에서
+       빠져서 품절이어도 주문이 들어가고, 무슨 사이즈를 보낼지도 알 수 없었다(2026-10-28 정기 감사). */
+    const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+    if (sizes.length && !(typeof raw.size === "string" && sizes.includes(raw.size))) return null;
     unit = product.price + (charmKey ? charmPrice : 0) + extrasTotal;
+    // 상품명은 화면 언어(영어·일본어)나 조작된 값이 아니라 서버의 한글 상품명으로 저장한다(관리자 메일·출고 문서용).
+    serverName = product.nameKo || product.name || null;
   }
 
   return {
-    name: String(raw.name || "").slice(0, 200),
-    options: Array.isArray(raw.opts) ? raw.opts.map((o) => `${o.label} ${o.value}`).join(" / ") : "",
+    name: String(serverName || raw.name || "").slice(0, 200),
+    options: Array.isArray(raw.opts) ? raw.opts.filter((o) => o && typeof o === "object").map((o) => `${String(o.label ?? "")} ${String(o.value ?? "")}`.slice(0, 120)).join(" / ").slice(0, 500) : "",
     qty,
     unit,
     sum: unit * qty,
   };
+}
+
+/* 참(charm)은 지퍼 슬라이더에 다는 무료 부속이라 실물 상품(후디·집업 등) 없이 참만 담긴 주문은 받지 않는다 —
+   참 가격이 0원이라 참만 담으면 상품 합계 0원 + 배송비 0원(shippingFor가 0원 주문엔 배송비를 안 붙임)인
+   공짜 주문이 됐는데, 화면에서 "참만 담기" 버튼만 숨겨 두고 서버는 그대로 받고 있었다(2026-10-02 점검). */
+function hasPhysicalProduct(rawItems) {
+  return (Array.isArray(rawItems) ? rawItems : []).some(
+    (raw) => raw && typeof raw.productId === "string" && raw.productId && !raw.productId.startsWith("charm-")
+  );
 }
 
 function shippingFor(subtotal, shippingCfg) {
@@ -71,4 +88,4 @@ function couponDiscount(coupon, { subtotal, items, rawItems }) {
   return Math.max(0, Math.min(raw, base));
 }
 
-module.exports = { orderNo, priceItem, shippingFor, couponDiscount };
+module.exports = { orderNo, priceItem, shippingFor, couponDiscount, hasPhysicalProduct };

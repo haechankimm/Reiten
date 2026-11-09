@@ -52,7 +52,7 @@
     // 강제로 다 나열하면 오히려 안 쓰는 게 아니라 "아직 안 만든 기능"까지 섞여 헷갈린다).
     const featureRows = result.items
       .filter((it) => it.key.startsWith("feature:"))
-      .map((it) => ({ label: USAGE_FEATURE_LABEL[it.key] || it.key, count: it.count, lastUsedAt: it.lastUsedAt }))
+      .map((it) => ({ label: t(USAGE_FEATURE_LABEL[it.key] || it.key), count: it.count, lastUsedAt: it.lastUsedAt }))
       .sort((a, b) => b.count - a.count);
     const featureMax = Math.max(1, ...featureRows.map((r) => r.count));
 

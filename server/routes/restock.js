@@ -39,6 +39,17 @@ router.post("/api/restock-subscriptions", writeLimiter, async (req, res) => {
     return res.status(400).json({ error: "존재하지 않는 상품·컬러·사이즈 조합입니다." });
   }
 
+  /* 남의 이메일로 신청을 잔뜩 걸어 메일을 보내게 하는 장난 방지(2026-10-28 정기 감사) — 이메일 하나당 아직 안 보낸
+     신청은 최대 10개. 알림은 재입고 때 한 번만 가고, 메일에 "신청하지 않았다면 무시" 안내가 있다. */
+  const { count: activeCount } = await supabaseAdmin
+    .from("restock_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("email", email)
+    .is("notified_at", null);
+  if ((activeCount || 0) >= 10) {
+    return res.status(429).json({ error: "이 이메일로 신청한 재입고 알림이 너무 많습니다. 알림을 받은 뒤 다시 신청해 주세요." });
+  }
+
   // 이미 같은 조합으로 미발송 신청이 있으면 중복 등록 대신 그대로 성공 처리한다(사용자 입장에선 같은 결과).
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("restock_subscriptions")
@@ -62,6 +73,7 @@ router.post("/api/restock-subscriptions", writeLimiter, async (req, res) => {
   const { error: insertError } = await supabaseAdmin
     .from("restock_subscriptions")
     .insert({ product_id: productId, color, size, email });
+  if (insertError && insertError.code === "23505") return res.json({ ok: true }); // 동시에 두 번 눌러 이미 저장됨
   if (insertError) {
     console.error("[restock] 신청 저장 실패:", insertError.message);
     return res.status(500).json({ error: "신청 저장에 실패했습니다." });

@@ -73,7 +73,9 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     // 상품 수가 적어(9종 안팎) 서버 검색 없이 이름·설명·카테고리를 그대로 훑는 클라이언트 필터로 충분하다.
     function matchesSearch(p, needle) {
       if (!needle) return true;
-      const haystack = [p.nameKo, p.name, p.short, p.desc, t(p.category)]
+      // 관리자가 넣은 영어·일본어 상품명·요약(translations)으로도 찾을 수 있게 한다 — 화면에 보이는 이름으로 검색해도 안 나왔다(2026-10-28 정기 감사)
+      const tr = productTranslation(p) || {};
+      const haystack = [p.nameKo, p.name, p.short, p.desc, t(p.category), tr.name, tr.short]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();

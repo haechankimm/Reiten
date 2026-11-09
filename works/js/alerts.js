@@ -7,6 +7,7 @@
   async function paintAlertPanel() {
     if (!isMasterAdmin) return;
     el("alert-panel").hidden = false;
+    if (el("ops-panel")) el("ops-panel").hidden = false;
     const s = await adminFetch("/api/admin/alerts/status");
     if (!s) return;
     el("alert-status").innerHTML = [
@@ -23,8 +24,8 @@
     const r = await adminFetch("/api/admin/alerts/test", { method: "POST", body: "{}" });
     btn.disabled = false;
     if (!r) { el("alert-result").textContent = ""; return; }
-    const tg = r.telegram.ok ? t("텔레그램: 보냄") : t("텔레그램: 실패 — {e}", { e: r.telegram.error || "" });
-    const push = r.push && r.push.ok ? t("폰 푸시: {n}대에 보냄", { n: r.push.sent }) : t("폰 푸시: 실패 — {e}", { e: (r.push && r.push.error) || "" });
+    const tg = r.telegram.ok ? t("텔레그램: 보냄") : t("텔레그램: 실패 — {e}", { e: t(r.telegram.error || "") });
+    const push = r.push && r.push.ok ? t("폰 푸시: {n}대에 보냄", { n: r.push.sent }) : t("폰 푸시: 실패 — {e}", { e: t((r.push && r.push.error) || "") });
     el("alert-result").textContent = `${tg}\n${push}`;
     paintAlertPanel();
   });
@@ -48,3 +49,18 @@
       el("push-toggle").hidden = true;
     }
   })();
+
+
+  /* ---------- 운영 점검 · 전체 백업 (마스터 전용, 서버 lib/opsCheck.js · lib/backup.js) ---------- */
+  el("ops-check-run")?.addEventListener("click", async () => {
+    const box = el("ops-check-result");
+    box.textContent = t("점검 중…");
+    const r = await adminFetch("/api/admin/alerts/ops-check");
+    if (!r) { box.textContent = ""; return; }
+    const icon = { error: "⛔", warn: "⚠️", ok: "✅" };
+    // 숫자가 끼는 항목은 서버가 주는 번역 키·변수(c.i18n)로 번역한다 — serverMsg와 같은 규칙(2026-10-28 정기 감사)
+    box.innerHTML = r.checks.map((c) => `<div>${icon[c.level] || ""} ${esc(c.i18n ? serverMsg(c, c.label) : t(c.label))}</div>`).join("");
+  });
+  el("ops-backup-full")?.addEventListener("click", () =>
+    downloadExportFile("/api/admin/alerts/backup", "reiten-backup", "json.gz")
+  );

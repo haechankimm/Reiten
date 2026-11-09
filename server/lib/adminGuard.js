@@ -25,7 +25,11 @@ const AREAS = {
   outbox: { label: "발송 실패 아웃박스", tabs: ["outbox"], paths: ["outbox"] },
   settings: { label: "정보·백업", tabs: ["settings"], paths: ["settings", "backup"] },
   auditlog: { label: "활동 로그", tabs: ["auditlog"], paths: ["audit-log"] },
-  dashboard: { label: "대시보드·방문자·사용 통계", tabs: ["dashboard", "usagestats"], paths: ["dashboard", "analytics", "usage-log/stats"] },
+  dashboard: { label: "대시보드·방문자·사용 통계·정산 리포트", tabs: ["dashboard", "usagestats"], paths: ["dashboard", "analytics", "usage-log/stats", "reports"] },
+  /* 돈이 실제로 나가는 처리만 따로 뗀 권한(2026-10-02) — 반품 환불·부분 취소(/api/admin/refunds), 입금된
+     주문의 취소, 고객 주문취소 신청 승인. 주문·반품 탭을 "보기+수정"으로 줘도 이 권한이 없으면 환불은 못 한다.
+     새 직원 기본값(DEFAULT_STAFF_PERMISSIONS)에는 일부러 넣지 않았다 — 마스터가 필요한 사람에게만 켠다. */
+  refunds: { label: "환불·주문취소(돈이 나가는 처리)", tabs: [], paths: ["refunds"] },
 };
 
 /* 권한 검사 없이(PIN·로그인만) 모든 관리자가 쓰는 경로: 알림 개수, 사용 기록, 푸시 구독, 담당자 목록 조회. */
@@ -40,7 +44,8 @@ const LEVELS = ["none", "view", "edit"];
 const LEVEL_RANK = { none: 0, view: 1, edit: 2 };
 
 function firstSegments(sub) {
-  return String(sub || "").replace(/^\/+/, "").split("/").filter(Boolean);
+  // Express 라우팅은 대소문자를 구분하지 않아서 "/usage-log/STATS"처럼 대문자로 바꿔 영역 검사만 피하는 길이 있었다(2026-10-28).
+  return String(sub || "").toLowerCase().replace(/^\/+/, "").split("/").filter(Boolean);
 }
 
 function matchesPrefix(sub, prefix) {
@@ -65,6 +70,19 @@ function areaForPath(sub) {
     if (matchesPrefix(sub, p) && len > bestLen) { best = "open"; bestLen = len; }
   }
   return best;
+}
+
+/* 다른 탭이 화면을 그리려고 꼭 읽어야 하는 것만 좁게 허용한다(2026-10-28 정기 감사 — 기본 권한 직원이 재고 탭을 열면
+   상품 목록을 못 읽어 화면이 비었고, 주문 변경 이력·반품 탭의 환불 내역·아웃박스 "해결됨"이 403이었다). */
+function borrowedAccess(area, sub, req, perms) {
+  const has = (key, level) => (LEVEL_RANK[perms[key]] || 0) >= LEVEL_RANK[level];
+  const isRead = req.method === "GET" || req.method === "HEAD";
+  const segs = firstSegments(sub);
+  if (area === "products" && isRead && segs[0] === "products") return has("inventory", "view") || has("coupons", "view");
+  if (area === "auditlog" && isRead && req.query && req.query.targetType === "order") return has("orders", "view");
+  if (area === "orders" && isRead && segs[0] === "orders" && segs[2] === "refunds") return has("returns", "view");
+  if (area === "payments" && req.method === "POST" && segs[0] === "system-errors" && segs[2] === "resolve") return has("outbox", "edit");
+  return false;
 }
 
 function requiredLevel(method) {
@@ -166,6 +184,42 @@ function pinVersionOf(row) {
   return row && row.updated_at ? new Date(row.updated_at).getTime() : 0;
 }
 
+/* 경로 매핑과 별개로 "이 동작에는 이 영역 권한이 필요하다"를 라우트 안에서 직접 확인할 때 쓴다 — 예: 주문 상태
+   변경(orders 영역) 중에서도 "입금된 주문을 취소해 환불이 나가는 경우"만 refunds 권한을 추가로 요구. */
+async function hasAreaPermission(req, area, level = "edit") {
+  if (((req.user && req.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) return true;
+  // 권한 조회가 DB 오류로 실패하면 "권한 없음"으로 본다 — 예전엔 null(= 전체 허용)로 떨어져 환불 권한까지 열렸다(2026-10-28).
+  let stored;
+  try {
+    stored = await getStoredPermissions(req.user.id);
+  } catch (e) {
+    return false;
+  }
+  const perms = resolvePermissions(stored, false);
+  return (LEVEL_RANK[perms[area]] || 0) >= LEVEL_RANK[level];
+}
+
+/* PIN 6회 오입력 잠금(routes/staff.js) — 직원은 마스터가 초기화할 때까지, 마스터는 30분.
+   잠겨 있는 동안은 이미 받아둔 PIN 토큰이 있어도 모든 관리자 API를 막는다("계정 잠김"). */
+function isPinLocked(row) {
+  return !!(row && row.locked_until && new Date(row.locked_until).getTime() > Date.now());
+}
+
+function pinLockedResponse(row, isMaster) {
+  if (!isMaster) {
+    return { status: 423, body: { error: "PIN을 6회 잘못 입력해 계정이 잠겼습니다. 메인 관리자에게 잠금 해제(PIN 초기화)를 요청해 주세요.", code: "PIN_LOCKED" } };
+  }
+  const minutes = Math.max(1, Math.ceil((new Date(row.locked_until).getTime() - Date.now()) / 60000));
+  return {
+    status: 423,
+    body: {
+      error: `PIN을 6회 잘못 입력해 잠겼습니다. ${minutes}분 뒤에 다시 시도해 주세요.`,
+      i18n: { key: "PIN을 6회 잘못 입력해 잠겼습니다. {minutes}분 뒤에 다시 시도해 주세요.", vars: { minutes } },
+      code: "PIN_LOCKED",
+    },
+  };
+}
+
 async function adminGuard(req, res, next) {
   try {
     const sub = req.path;
@@ -190,6 +244,10 @@ async function adminGuard(req, res, next) {
     const pinRow = await getPinRow(req.user.id);
     if (!pinRow || !pinRow.unavailable) {
       if (!pinRow) return res.status(403).json({ error: "PIN을 먼저 설정해 주세요.", code: "PIN_SETUP_REQUIRED" });
+      if (isPinLocked(pinRow)) {
+        const locked = pinLockedResponse(pinRow, isMaster);
+        return res.status(locked.status).json(locked.body);
+      }
       if (!verifyPinToken(req.headers["x-admin-pin"], req.user.id, pinVersionOf(pinRow))) {
         return res.status(403).json({ error: "PIN 인증이 필요합니다.", code: "PIN_REQUIRED" });
       }
@@ -202,10 +260,15 @@ async function adminGuard(req, res, next) {
     if (area === null) return res.status(403).json({ error: "이 기능은 마스터 관리자만 사용할 수 있습니다.", code: "FORBIDDEN_AREA" });
 
     const perms = resolvePermissions(await getStoredPermissions(req.user.id), false);
-    if (LEVEL_RANK[perms[area]] < LEVEL_RANK[requiredLevel(req.method)]) {
+    if (LEVEL_RANK[perms[area]] < LEVEL_RANK[requiredLevel(req.method)] && !borrowedAccess(area, sub, req, perms)) {
       const label = AREAS[area].label;
       const need = requiredLevel(req.method) === "view" ? "조회" : "수정";
-      return res.status(403).json({ error: `'${label}' ${need} 권한이 없습니다. 마스터 관리자에게 문의하세요.`, code: "FORBIDDEN_AREA", area });
+      return res.status(403).json({
+        error: `'${label}' ${need} 권한이 없습니다. 마스터 관리자에게 문의하세요.`,
+        i18n: { key: "'{label}' {need} 권한이 없습니다. 마스터 관리자에게 문의하세요.", vars: { label, need } },
+        code: "FORBIDDEN_AREA",
+        area,
+      });
     }
     next();
   } catch (err) {
@@ -219,4 +282,5 @@ module.exports = {
   areaForPath, requiredLevel, resolvePermissions, normalizePermissions,
   signPinToken, verifyPinToken, hashPin, isValidPin, pinVersionOf,
   getPinRow, getStoredPermissions, invalidateAdminCache, adminGuard,
+  isPinLocked, pinLockedResponse, hasAreaPermission,
 };

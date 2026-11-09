@@ -10,6 +10,7 @@ const SYSTEM_ERROR_LABEL = {
   card_cancel_failed: "카드결제 취소 실패(이중실패)",
   refund_failed: "환불 실패",
   virtual_account_close_failed: "가상계좌 폐쇄 실패",
+  paid_after_cancel: "취소된 주문에 입금됨(환불·복구 필요)",
   order_finalize_failed: "카드결제 후 주문 확정 실패",
   bank_order_finalize_failed: "무통장입금 주문 저장 실패(재고 확인 필요)",
   notification_failed: "알림 발송 실패",
@@ -21,6 +22,8 @@ const SYSTEM_ERROR_LABEL = {
   thanks_coupon_failed: "감사쿠폰 처리 실패",
   order_uncancel_inventory_conflict: "취소 되돌리기 시 재고 재차감 실패",
   order_uncancelled_card_payment_not_restored: "취소 되돌리기 시 카드 환불 복원 불가(수동 확인 필요)",
+  admin_pin_locked: "관리자 PIN 잠김(6회 오입력)",
+  backup_failed: "주간 자동 백업 실패",
 };
 
 /* ---------- 관리자 감사 로그 ----------

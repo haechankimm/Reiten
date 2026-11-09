@@ -2,6 +2,9 @@
 <html lang="ko" data-theme="light">
 <head>
 <meta charset="utf-8">
+<!-- 서버는 없는 주소(예: /a/b/c)에서도 이 파일을 그대로 보내준다 — renderHeader()가 넣는 로고·메뉴 링크(index.html 등)와
+     이미지가 상대 경로라 /a/b/index.html처럼 엉뚱한 곳을 가리켰다. 기준 주소를 사이트 루트로 고정한다(2026-10-28 정기 감사) -->
+<base href="/">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
 <script>
@@ -29,11 +32,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   <section class="sec sec--tight">
     <div class="wrap" style="text-align:center;padding:60px 0">
       <p class="eyebrow">404</p>
-      <h1 class="h-xl" style="margin-top:12px">길을 잃었어요</h1>
-      <p class="lede" style="margin:14px auto 0;max-width:46ch">찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="길을 잃었어요">길을 잃었어요</h1>
+      <p class="lede" style="margin:14px auto 0;max-width:46ch" data-i18n="찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.">찾으시는 페이지가 없거나 주소가 바뀌었습니다. 아래 버튼으로 돌아가 주세요.</p>
       <div style="margin-top:26px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <a class="btn" href="/">홈으로 가기</a>
-        <a class="btn" href="/shop.html">상품 보러 가기</a>
+        <a class="btn" href="/" data-i18n="홈으로 가기">홈으로 가기</a>
+        <a class="btn" href="/shop.html" data-i18n="상품 보러 가기">상품 보러 가기</a>
       </div>
     </div>
   </section>
@@ -43,7 +46,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="/assets/js/i18n.js"></script>
 <script src="/assets/js/app.js"></script>
 <script>
+  /* 예전엔 applyI18n()을 부르지 않아 영어·일본어 사용자에게도 한국어로만 보였다(2026-10-28 정기 감사).
+     오류 페이지라 스크립트 하나가 실패해도 본문은 보이도록 각각 감싼다. */
+  try { applyI18n(); document.title = t("페이지를 찾을 수 없습니다") + " — REITEN"; } catch (e) {}
   try { renderHeader(""); } catch (e) {}
+  // <base href="/"> 때문에 "본문으로 건너뛰기"(#main)가 홈(/#main)으로 이동해 버리므로 지금 주소 기준으로 고친다(2026-10-28 정기 감사)
+  try { const skip = document.querySelector(".skip-link"); if (skip) skip.setAttribute("href", location.pathname + location.search + "#main"); } catch (e) {}
 </script>
 </body>
 </html>

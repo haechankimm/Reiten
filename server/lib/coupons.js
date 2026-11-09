@@ -30,16 +30,19 @@ async function resolveCoupon(db, rawCode, { rawItems, items, subtotal }) {
     throw Object.assign(new Error("기간이 만료된 쿠폰입니다."), { status: 400 });
   }
   if (subtotal < coupon.min_subtotal) {
-    throw Object.assign(
-      new Error(`이 쿠폰은 ${coupon.min_subtotal.toLocaleString("ko-KR")}원 이상 주문부터 사용할 수 있습니다.`),
-      { status: 400 }
-    );
+    const amount = coupon.min_subtotal.toLocaleString("ko-KR");
+    // i18n: 금액이 들어가는 문구라 고객 화면이 번역할 수 있게 키·변수를 같이 넘긴다(assets/js/app.js apiErrorText)
+    throw Object.assign(new Error(`이 쿠폰은 ${amount}원 이상 주문부터 사용할 수 있습니다.`), {
+      status: 400,
+      i18n: { key: "이 쿠폰은 {amount}원 이상 주문부터 사용할 수 있습니다.", vars: { amount } },
+    });
   }
   if (coupon.usage_limit != null) {
     /* 동시에 마지막 1장을 두 주문이 같이 쓰면 usage_limit을 살짝 넘길 수 있는 이론적 여지가 있다
        (재고 차감처럼 원자적 락을 걸지 않음) — 소규모 쿠폰 운영 규모에서는 감수할 만한 수준이라
        단순 카운트 조회로 처리한다. */
-    const { count } = await db.from("orders").select("id", { count: "exact", head: true }).eq("coupon_code", coupon.code);
+    // 취소된 주문은 사용 횟수에서 뺀다 — 미입금 자동취소로 돌려준 1회용 쿠폰을 다시 못 쓰던 것(2026-10-28 정기 감사)
+    const { count } = await db.from("orders").select("id", { count: "exact", head: true }).eq("coupon_code", coupon.code).neq("status", "취소");
     if ((count || 0) >= coupon.usage_limit) {
       throw Object.assign(new Error("쿠폰 사용 횟수가 모두 소진되었습니다."), { status: 400 });
     }

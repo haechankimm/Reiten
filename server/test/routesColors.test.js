@@ -85,3 +85,50 @@ test("DELETE /api/admin/colors/:key — 사용하는 상품이 없으면 정상 
   const listed = await request(buildApp()).get("/api/colors");
   assert.strictEqual(listed.body.length, 0);
 });
+
+test("영어·일본어 색상 이름(2026-10-29) — 저장되고 공개 목록에 labelEn·labelJa로 내려간다", async () => {
+  const app = buildApp();
+  const created = await request(app)
+    .post("/api/admin/colors")
+    .set("Authorization", `Bearer ${TOKEN}`)
+    .send({ label: "모래", labelEn: "Sand", labelJa: "サンド", hex: "#d8c8a8" });
+  assert.strictEqual(created.status, 200);
+  assert.strictEqual(created.body.labelEn, "Sand");
+  assert.strictEqual(created.body.translationsSkipped, false);
+
+  const patched = await request(app)
+    .patch(`/api/admin/colors/${created.body.key}`)
+    .set("Authorization", `Bearer ${TOKEN}`)
+    .send({ labelJa: "" });
+  assert.strictEqual(patched.status, 200);
+  assert.strictEqual(patched.body.labelJa, null, "빈 값은 지운다");
+
+  const pub = await request(app).get("/api/colors");
+  const sand = pub.body.find((c) => c.key === created.body.key);
+  assert.strictEqual(sand.labelEn, "Sand");
+  assert.strictEqual(sand.labelJa, null);
+});
+
+test("마이그레이션 044 전이면 영어·일본어 이름만 빼고 색상은 저장된다", async () => {
+  const realFrom = supabaseAdmin.from;
+  supabaseAdmin.from = function (table) {
+    const b = realFrom.call(this, table);
+    if (table !== "product_colors") return b;
+    const realInsert = b.insert.bind(b);
+    b.insert = (row) => ("label_en" in row
+      ? { select() { return this; }, single: async () => ({ data: null, error: { code: "PGRST204", message: "Could not find the 'label_en' column" } }) }
+      : realInsert(row));
+    return b;
+  };
+  try {
+    const res = await request(buildApp())
+      .post("/api/admin/colors")
+      .set("Authorization", `Bearer ${TOKEN}`)
+      .send({ label: "모래", labelEn: "Sand", hex: "#d8c8a8" });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.translationsSkipped, true);
+    assert.strictEqual(res.body.label, "모래");
+  } finally {
+    supabaseAdmin.from = realFrom;
+  }
+});

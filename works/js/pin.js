@@ -38,6 +38,13 @@
   }
   function canView(tab) { return permLevelForTab(tab) !== "none"; }
   function canEdit(tab) { return permLevelForTab(tab) === "edit"; }
+  /* 탭과 1:1로 대응하지 않는 영역(예: "refunds" 환불·주문취소) 권한 확인 — 화면에서 버튼을 숨기는 편의일 뿐,
+     실제 차단은 서버(adminGuard·hasAreaPermission)가 한다. 정보가 아직 없으면(로딩 전) 보여둔다. */
+  function hasAreaEdit(area) {
+    if (!adminMe) return true;
+    if (adminMe.isMaster) return true;
+    return (adminMe.permissions && adminMe.permissions[area]) === "edit";
+  }
 
   /* 범용 입력 대화상자. fields: [{id,label,type,numeric,maxlength}], onSubmit(values) → 에러 문자열이면 표시하고
      유지, 성공하면 falsy 반환. dismissible=false면 취소 불가(필수 PIN 입력). 닫히면 resolve(true/false). */
@@ -64,7 +71,10 @@
       document.body.appendChild(overlay);
       const form = overlay.querySelector("form");
       const errEl = overlay.querySelector("#dlg-err");
-      const close = (result) => { overlay.remove(); resolve(result); };
+      /* Esc로 닫기(2026-10-28 정기 감사) — 취소 가능한 창만. 입력 중인 PIN·비밀번호를 잃지 않게 바깥 클릭으로는 닫지 않는다. */
+      const onKey = (e) => { if (e.key === "Escape" && dismissible) close(false); };
+      const close = (result) => { overlay.remove(); document.removeEventListener("keydown", onKey); resolve(result); };
+      document.addEventListener("keydown", onKey);
       overlay.querySelector("input")?.focus();
       overlay.querySelector("#dlg-cancel")?.addEventListener("click", () => close(false));
       form.addEventListener("submit", async (e) => {
@@ -115,7 +125,7 @@
         const bad = checkNewPin(pin1, pin2);
         if (bad) return bad;
         const r = await pinRequest("/api/admin/pin/setup", { pin: pin1 });
-        if (!r.ok) return r.data.error || t("PIN 설정에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 설정에 실패했습니다."));
         setPinToken(r.data.token);
         return "";
       },
@@ -131,7 +141,7 @@
       submitLabel: t("확인"),
       onSubmit: async ({ pin }) => {
         const r = await pinRequest("/api/admin/pin/verify", { pin });
-        if (!r.ok) return r.data.error || t("PIN 확인에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 확인에 실패했습니다."));
         setPinToken(r.data.token);
         return "";
       },
@@ -151,7 +161,7 @@
         const bad = checkNewPin(pin1, pin2);
         if (bad) return bad;
         const r = await pinRequest("/api/admin/pin/change", { currentPin: cur, newPin: pin1 });
-        if (!r.ok) return r.data.error || t("PIN 변경에 실패했습니다.");
+        if (!r.ok) return serverMsg(r.data, t("PIN 변경에 실패했습니다."));
         setPinToken(r.data.token);
         toast(t("PIN을 변경했습니다"));
         return "";
@@ -188,20 +198,24 @@
      hide: 숨길 요소, hidePanel: 그 요소가 들어 있는 패널째 숨김, disable: 보이되 잠금(값 확인용). */
   const READONLY_RULES = [
     { tab: "orders", panel: "admin-orders", hide: ["#ord-bulk-toggle", "#ord-bulk-input", "#ord-bulk-submit", "#od-save"], disable: ["#od-status", "#od-courier", "#od-tracking", "#od-assignee", "#od-internal-note", "#od-cancel-reason"] },
-    { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
+    { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock-lines", ".admin-return-reship", ".admin-return-refund"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
     { tab: "inventory", panel: "admin-inventory", hide: ["#inv-save-btn", ".inv-bulk-qty-apply", ".inv-bulk-qty-input"], disable: [".admin-inv-qty"] },
     { tab: "qna", panel: "admin-qna", hide: [".admin-qna-submit", ".admin-qna-save-meta", ".admin-qna-template-pick"], disable: [".admin-qna-answer", ".admin-qna-note", ".admin-qna-assignee"] },
     { tab: "paymentlog", panel: null, hide: [".notif-error-resolve"] },
     { tab: "reviews", panel: "admin-reviews", hide: ["#reviews-bulk-approve", "#reviews-bulk-hide", "#reviews-select-all", ".review-select", ".admin-review-delete", ".admin-review-toggle"] },
     { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
     { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
+    { tab: "dashboard", panel: null, hide: ["#settle-send", "#briefing-test"] },
     { tab: "lookbook", panel: "admin-lookbook", hidePanel: ["#lookbook-form"], hide: [".look-tile-add"], disable: [".look-tile"] },
-    { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-resend", ".member-verify"] },
+    { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-demote", ".member-resend", ".member-verify"] },
     { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },
     { tab: "calendar", panel: "admin-home", hide: ["#handoff-submit", ".handoff-delete"], disable: ["#handoff-input"] },
     { tab: "notices", panel: "admin-notices", hidePanel: ["#notice-form"], hide: [".notice-delete", ".notice-edit"] },
     { tab: "outbox", panel: "admin-outbox", hide: [".outbox-resolve"] },
-    { tab: "settings", panel: "admin-settings", hidePanel: ["#settings-form", "#qna-template-form"], hide: [".admin-setting-edit", ".qt-delete"] },
+    /* CS 템플릿(#qna-template-form·.qt-delete)은 서버에서 "qna" 영역 권한을 따르므로(adminGuard의 qna-templates)
+       정보 탭 규칙으로 숨기지 않는다 — 정보 탭이 보기 전용이면 문의 수정 권한이 있어도 템플릿 패널째 사라졌다
+       (2026-10-28 정기 감사). 대신 settings.js의 paintQnaTemplates가 hasAreaEdit("qna")로 직접 보이고 숨긴다. */
+    { tab: "settings", panel: "admin-settings", hidePanel: ["#settings-form"], hide: [".admin-setting-edit"] },
   ];
 
   function applyReadOnly() {

@@ -45,6 +45,11 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <!-- ============ 좌: 상품 + 주문서 ============ -->
           <div>
             <div id="items"></div>
+            <div class="notice" id="charm-only-notice" style="margin-top:16px" hidden>
+              <b data-i18n="참만으로는 주문할 수 없어요">참만으로는 주문할 수 없어요</b><br>
+              <span data-i18n="참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.">참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.</span>
+              <a class="link-u" href="shop.html" data-i18n="상품 보러 가기">상품 보러 가기</a>
+            </div>
 
             <h2 class="h-md" style="margin-top:56px" data-i18n="주문서">주문서</h2>
             <p class="small" style="margin-top:8px;margin-bottom:22px" data-i18n="아래 정보를 남기시면 주문번호가 발급됩니다. 입금이 확인되면 순차 출고됩니다.">
@@ -216,12 +221,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
      안 바뀐다. productId/color/size/charm/extras 같은 원본 키만 저장해두고, 화면에 그릴 때마다
      현재 언어로 다시 번역한다. 상품이 그 사이 삭제됐거나(관리자) 참(charm) 단독 담기처럼
      구조화된 정보가 없는 옛 데이터는 담을 때 저장해둔 문자열로 대체 표시한다. */
+  /* 관리자가 색상·참·마감·추가 아이템을 삭제하거나 키를 바꾸면 장바구니에 남은 옛 키로는
+     정의를 못 찾는다 — 예전엔 .label을 바로 읽다가 TypeError로 장바구니 전체가 빈 화면이 됐다.
+     정의가 없으면 저장된 키를 그대로 보여준다(2026-10-28 정기 감사). */
+  function labelOf(def, fallbackKey) {
+    return def && def.label ? t(def.label) : String(fallbackKey == null ? "" : fallbackKey);
+  }
+
   function itemDisplay(it) {
     if (typeof it.productId === "string" && it.productId.startsWith("charm-") && it.charm) {
       const c = getCharm(it.charm.key);
       return {
         name: c ? t("지퍼 참 — {charm}", { charm: t(c.label) }) : it.name,
-        opts: c ? [{ label: t("마감"), value: t(getFinish(it.charm.finish).label) }] : it.opts,
+        opts: c ? [{ label: t("마감"), value: labelOf(getFinish(it.charm.finish), it.charm.finish) }] : it.opts,
       };
     }
 
@@ -229,19 +241,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     if (!product || !it.color) return { name: it.name, opts: it.opts };
 
     const opts = [
-      { label: t("컬러"), value: t(COLORS[it.color].label) },
+      { label: t("컬러"), value: labelOf(COLORS[it.color], it.color) },
       { label: t("사이즈"), value: it.size },
     ];
     if (it.charm !== undefined) {
       opts.push({
         label: t("지퍼 참"),
-        value: it.charm ? `${t(getCharm(it.charm.key).label)} · ${t(getFinish(it.charm.finish).label)}` : t("선택 안 함"),
+        value: it.charm ? `${labelOf(getCharm(it.charm.key), it.charm.key)} · ${labelOf(getFinish(it.charm.finish), it.charm.finish)}` : t("선택 안 함"),
       });
     }
     if (it.extras && it.extras.length) {
       opts.push({
         label: t("추가 아이템"),
-        value: it.extras.map((k) => t(EXTRAS.find((x) => x.key === k).label)).join(", "),
+        value: it.extras.map((k) => labelOf(EXTRAS.find((x) => x.key === k), k)).join(", "),
       });
     }
     return { name: productName(product), opts };
@@ -289,11 +301,22 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         if (b.dataset.act === "del") Cart.remove(key);
         else Cart.setQty(key, it.qty + (b.dataset.act === "inc" ? 1 : -1));
         // 담긴 상품이 바뀌면 할인액도 달라질 수 있어 다시 적용하게 한다.
+        // 예전엔 쿠폰이 말없이 빠져서 손님이 할인된 줄 알고 결제할 수 있었다 — 알려주고 입력칸도 비운다(2026-10-28 정기 감사)
+        if (appliedCoupon) {
+          toast(t("장바구니가 바뀌어 쿠폰을 다시 적용해 주세요"));
+          el("f-coupon").value = "";
+        }
         appliedCoupon = null;
         el("coupon-msg").textContent = "";
         paint();
       })
     );
+
+    // 참만 담긴 장바구니는 주문할 수 없다(서버도 CHARM_ONLY로 거절) — 안내를 띄우고 제출 버튼을 막는다.
+    const charmOnly = !cartHasPhysicalProduct(items);
+    el("charm-only-notice").hidden = !charmOnly;
+    // 주문 처리 중(data-busy)엔 그대로 잠가 둔다 — 예전엔 처리 중에 paint()가 돌면 버튼이 다시 켜져 두 번 제출될 수 있었다(2026-10-29)
+    el("submit").disabled = charmOnly || el("submit").dataset.busy === "1";
 
     const ship = Cart.shipping();
     const discount = appliedCoupon ? appliedCoupon.discount : 0;
@@ -325,6 +348,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     el("pay-note").textContent = o.formEndpoint || hasServer
       ? t("제출하면 주문서가 바로 전송됩니다.")
       : t("제출하면 주문번호와 함께 복사용 주문서가 만들어집니다. 이메일 또는 카카오톡으로 보내주세요.");
+    // 쿠폰·적립금 적용으로 합계가 0원이 되거나 다시 생기면 결제 안내·버튼 문구도 같이 바뀌어야 한다(2026-10-28 정기 감사)
+    if (el("submit").dataset.busy !== "1") syncPayMethodUI();
   }
 
   /* ---------- 검증 & 제출 ---------- */
@@ -332,6 +357,12 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     input.setAttribute("aria-invalid", String(on));
     const err = input.closest(".field").querySelector(".err");
     if (err) err.classList.toggle("on", on);
+  }
+
+  /* 재고 부족 응답의 name은 관리용 한글 상품명이라 영어·일본어 화면에선 지금 언어 상품명으로 바꾼다(2026-10-28 정기 감사) */
+  function stockItemName(body) {
+    const p = body && body.productId ? getProduct(body.productId) : null;
+    return p ? productName(p) : (body && body.name) || "";
   }
 
   function payMethod() {
@@ -348,7 +379,8 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       ["f-zip", v => /^[0-9]{5}$/.test(v.trim())],
       ["f-addr", v => v.trim().length >= 5],
     ];
-    if (payMethod() === "bank") checks.push(["f-payer", v => v.trim().length >= 2]);
+    // 0원 주문은 입금할 돈이 없어 입금자명 칸을 숨긴다 — 숨긴 칸을 검사하면 제출이 막힌다(2026-10-28 정기 감사)
+    if (payMethod() === "bank" && displayTotal() > 0) checks.push(["f-payer", v => v.trim().length >= 2]);
     checks.forEach(([id, fn]) => {
       const input = el(id);
       const bad = !fn(input.value);
@@ -411,7 +443,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       if (!res.ok) {
         appliedCoupon = null;
         msg.style.color = "var(--danger, #c00)";
-        msg.textContent = body.error || t("쿠폰을 적용할 수 없습니다.");
+        msg.textContent = apiErrorText(body, t("쿠폰을 적용할 수 없습니다."));
       } else {
         appliedCoupon = { code: body.code, discount: body.discount };
         msg.style.color = "";
@@ -493,13 +525,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
   function syncPayMethodUI() {
     const method = payMethod();
-    const isCard = cardPaymentEnabled && method === "card";
-    const isVbank = virtualAccountEnabled && method === "vbank";
-    el("payer-field").hidden = isCard || isVbank;
-    el("bank-notice").hidden = isCard || isVbank;
+    /* 쿠폰·적립금으로 결제할 금액이 0원이면 제출은 결제수단과 상관없이 결제창 없이 접수된다 —
+       예전엔 카드·가상계좌 칩이 눌린 채면 카드 안내가 그대로 보이고, 숨겨진 입금자명("")이 그대로
+       전송돼 서버가 "입금자명 필수"로 거절했다. 0원일 때는 결제 안내를 모두 숨기고 버튼 문구로 알린다(2026-10-28 정기 감사). */
+    const zeroTotal = displayTotal() <= 0;
+    const isCard = !zeroTotal && cardPaymentEnabled && method === "card";
+    const isVbank = !zeroTotal && virtualAccountEnabled && method === "vbank";
+    el("payer-field").hidden = zeroTotal || isCard || isVbank;
+    el("bank-notice").hidden = zeroTotal || isCard || isVbank;
     el("card-notice").hidden = !isCard;
     el("vbank-notice").hidden = !isVbank;
-    el("submit").textContent = t(isCard ? "결제하기" : isVbank ? "계좌 발급받기" : "주문서 제출");
+    el("submit").textContent = zeroTotal
+      ? t("결제할 금액 없이 주문하기")
+      : isCard ? t("결제하기") : isVbank ? t("계좌 발급받기") : t("주문서 제출");
   }
   /* 라디오 버튼 대신 상품 사이즈 선택과 같은 큰 칩 버튼으로 바꿨다 — 라디오는 너무 작고
      눈에 안 띄어서, 결제수단을 안 고르고(기본값인 무통장입금 그대로) 제출해버리는 경우가
@@ -517,10 +555,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     const items = Cart.read();
     if (!items.length) { toast(t("장바구니가 비어 있습니다")); return; }
+    if (!cartHasPhysicalProduct(items)) { toast(t("참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.")); return; }
 
     const method = payMethod();
-    const isCard = cardPaymentEnabled && method === "card";
-    const isVbank = virtualAccountEnabled && method === "vbank";
+    // 쿠폰·적립금으로 결제할 금액이 0원이면 결제창 없이 바로 접수한다(서버가 바로 "입금확인" 처리, 2026-10-28)
+    const zeroTotal = displayTotal() <= 0;
+    const isCard = !zeroTotal && cardPaymentEnabled && method === "card";
+    const isVbank = !zeroTotal && virtualAccountEnabled && method === "vbank";
     const customer = {
       name: el("f-name").value.trim(),
       tel: el("f-tel").value.trim(),
@@ -529,14 +570,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       addr: el("f-addr").value.trim(),
       addr2: el("f-addr2").value.trim(),
       memo: el("f-memo-select").value === "__custom__" ? el("f-memo").value.trim() : el("f-memo-select").value,
-      payer: (isCard || isVbank) ? el("f-name").value.trim() : el("f-payer").value.trim(),
+      // 0원 주문은 입금자명 칸이 숨겨져 비어 있다 — 서버는 payer가 필수라 주문자 이름으로 채운다(2026-10-28 정기 감사)
+      payer: (zeroTotal || isCard || isVbank) ? el("f-name").value.trim() : el("f-payer").value.trim(),
     };
 
     const btn = el("submit");
     btn.disabled = true;
+    // 처리 중 표시 — 이 사이에 paint()가 다시 돌아도(설정·적립금 비동기 로드) 버튼을 다시 켜지 않게 한다(2026-10-29)
+    btn.dataset.busy = "1";
     btn.textContent = t("처리 중…");
 
     if (isCard || isVbank) {
+      let paidAlready = false;
+      let prepPaymentId = null;
       try {
         const headers = { "Content-Type": "application/json" };
         const token = await getAccessToken();
@@ -549,13 +595,19 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         });
         if (!prepRes.ok) {
           const body = await prepRes.json().catch(() => ({}));
-          toast(body.error || t("결제 준비에 실패했습니다"));
+          toast(apiErrorText(body, t("결제 준비에 실패했습니다")));
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
         const prep = await prepRes.json();
+        prepPaymentId = prep.paymentId;
 
+        /* 휴대폰 브라우저에서는 결제창이 페이지 이동 방식으로 열려 이 아래 코드가 실행되지 않는다 — 결제가
+           끝나면 포트원이 redirectUrl(주문완료 페이지)로 ?paymentId=...를 붙여 돌려보내고, 그 페이지가
+           주문 확인·장바구니 비우기를 대신 처리한다(order-complete.html 참고). PC는 결과가 그대로 여기로 온다. */
+        const redirectUrl = new URL("order-complete.html", location.href).href;
         const payResult = await PortOne.requestPayment(isVbank ? {
           storeId: prep.storeId,
           channelKey: prep.channelKey,
@@ -565,6 +617,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           currency: "CURRENCY_KRW",
           payMethod: "VIRTUAL_ACCOUNT",
           customer: prep.customer,
+          redirectUrl,
           virtualAccount: {
             bank: virtualAccountBank,
             expiry: { validHours: virtualAccountValidHours },
@@ -579,15 +632,22 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           currency: "CURRENCY_KRW",
           payMethod: "CARD",
           customer: prep.customer,
+          redirectUrl,
         });
 
         if (!payResult || payResult.code !== undefined) {
-          toast((payResult && payResult.message) || t(isVbank ? "계좌 발급이 취소되었습니다" : "결제가 취소되었습니다"));
+          // 포트원(PG) 문구는 한국어 원문이라 영어·일본어 화면에서는 사전 문구로 바꾼다(app.js paymentFailText, 2026-10-28 정기 감사)
+          toast(paymentFailText(payResult, isVbank));
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
 
+        /* 여기부터는 결제(또는 계좌 발급)가 이미 끝난 상태다. 확인 요청이 일시적으로 실패했다고 결제 버튼을
+           다시 켜면 손님이 또 눌러 두 번 결제될 수 있었다(2026-10-28 정기 감사) — 재고 부족(자동 취소됨)이
+           아니면 주문완료 화면으로 넘겨 그 화면이 같은 결제를 다시 확인하게 한다(휴대폰 복귀와 같은 처리). */
+        paidAlready = true;
         const confirmRes = await fetch("/api/order", {
           method: "POST",
           headers,
@@ -595,12 +655,17 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         });
         if (!confirmRes.ok) {
           const body = await confirmRes.json().catch(() => ({}));
+          if (body.error !== "OUT_OF_STOCK") {
+            location.href = "order-complete.html?paymentId=" + encodeURIComponent(prep.paymentId);
+            return;
+          }
           toast(
             body.error === "OUT_OF_STOCK"
-              ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: body.name, size: body.size })
-              : (body.error || t("결제 확인에 실패했습니다"))
+              ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: stockItemName(body), size: body.size })
+              : apiErrorText(body, t("결제 확인에 실패했습니다"))
           );
           btn.disabled = false;
+          delete btn.dataset.busy;
           syncPayMethodUI();
           return;
         }
@@ -610,8 +675,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         Cart.clear();
         location.href = "order-complete.html";
       } catch (err) {
+        if (paidAlready && prepPaymentId) {
+          location.href = "order-complete.html?paymentId=" + encodeURIComponent(prepPaymentId);
+          return;
+        }
         toast(t(isVbank ? "계좌 발급 중 오류가 발생했습니다" : "결제 중 오류가 발생했습니다"));
         btn.disabled = false;
+        delete btn.dataset.busy;
         syncPayMethodUI();
       }
       return;
@@ -638,7 +708,13 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
     /* Node 백엔드(server/)가 같은 사이트를 서빙 중이면 /api/order가 응답한다.
        거기서 서버측 가격 재검증(+ 재고 차감)을 거친 주문을 그대로 신뢰하고 사용한다. */
+    /* 서버가 "응답한" 실패(쿠폰 소진·적립금 부족·재고 소진·차단·요청 과다·서버 오류 등)는 절대 주문 완료
+       화면으로 넘기지 않는다 — 예전엔 409 재고 소진만 따로 잡고 나머지는 전부 아래 "수동 접수" 폴백으로
+       흘러가서, 실제로는 주문이 없는데 "주문이 접수되었습니다" + 입금 계좌 안내가 뜨고 장바구니까지
+       비워졌다(고객이 없는 주문에 입금할 수 있었음 — 2026-10-02 점검). 수동 접수 폴백은 이제
+       server/ 자체가 없는 순수 정적 배포(응답이 JSON이 아니고 /api/config도 없던 경우)에서만 쓴다. */
     let verifiedByServer = false;
+    let serverAnswered = hasServer;
     try {
       const headers = { "Content-Type": "application/json" };
       const token = await getAccessToken();
@@ -649,22 +725,34 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
         headers,
         body: JSON.stringify({ customer, items, couponCode: appliedCoupon ? appliedCoupon.code : undefined, pointsToUse: appliedPoints || undefined, device: detectDeviceType() }),
       });
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      if (isJson) serverAnswered = true;
 
-      if (res.status === 409) {
-        const body = await res.json().catch(() => ({}));
-        if (body.error === "OUT_OF_STOCK") {
-          toast(t("{name} {size} 사이즈 재고가 소진되었습니다", { name: body.name, size: body.size }));
-          btn.disabled = false;
-          btn.textContent = t("주문서 제출");
-          return;
-        }
-      }
-
-      if (res.ok) {
+      if (res.ok && isJson) {
         order = await res.json();
         verifiedByServer = true;
+      } else if (serverAnswered) {
+        const body = await res.json().catch(() => ({}));
+        toast(
+          body.error === "OUT_OF_STOCK"
+            ? t("{name} {size} 사이즈 재고가 소진되었습니다", { name: stockItemName(body), size: body.size })
+            : apiErrorText(body, t("주문을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요."))
+        );
+        btn.disabled = false;
+        delete btn.dataset.busy;
+        syncPayMethodUI();
+        return;
       }
-    } catch (err) {}
+    } catch (err) {
+      if (serverAnswered) {
+        // 서버가 있는 사이트인데 응답을 못 받음(네트워크 끊김·시간 초과) — 주문이 이미 들어갔을 수도 있어 확인을 안내한다.
+        toast(t("연결이 불안정해 주문 결과를 확인하지 못했습니다. 주문 조회 또는 메일함에서 접수 여부를 확인한 뒤 다시 시도해 주세요."));
+        btn.disabled = false;
+        delete btn.dataset.busy;
+        syncPayMethodUI();
+        return;
+      }
+    }
 
     if (!verifiedByServer) {
       if (SITE.order.formEndpoint) {
@@ -691,7 +779,32 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
   /* itemDisplay()가 COLORS[it.color]를 직접 참조하므로(관리자가 새로 추가한 색상일 수 있음),
      화면을 그리기 전에 최신 팔레트를 먼저 받아온다. 실패해도 loadColors()는 조용히 넘어가고
      data.js의 정적 목록이 남으므로 여기서 별도 처리는 필요 없다. */
-  loadColors().then(paint);
+  /* 상품 목록도 같이 받아온다 — 예전엔 팔레트만 받아와서 관리자 패널(DB)에만 있는 상품은
+     getProduct()가 못 찾아 담을 당시 저장한 이름·가격(it.unit)이 그대로 보였고, 그 사이 가격이
+     바뀌었으면 화면 합계와 서버가 다시 계산한 결제 금액이 달랐다. 상품을 찾으면 서버
+     priceItem(lib/pricing.js)과 같은 규칙(상품가 + 참 가격 + 추가 아이템 수 × EXTRA_PRICE)으로
+     개당 가격을 다시 계산해 저장하고, 못 찾으면 저장된 값을 그대로 둔다(2026-10-28 정기 감사). */
+  function currentUnit(it) {
+    const extrasTotal = (Array.isArray(it.extras) ? it.extras.length : 0) * EXTRA_PRICE;
+    const hasCharm = !!(it.charm && it.charm.key && it.charm.key !== "none");
+    if (typeof it.productId === "string" && it.productId.startsWith("charm-")) {
+      return hasCharm ? CHARM_PRICE + extrasTotal : null;
+    }
+    const product = getProduct(it.productId);
+    if (!product || typeof product.price !== "number") return null;
+    return product.price + (hasCharm ? CHARM_PRICE : 0) + extrasTotal;
+  }
+  function refreshUnits() {
+    const items = Cart.read();
+    let changed = false;
+    items.forEach((it) => {
+      const unit = currentUnit(it);
+      if (unit != null && unit !== it.unit) { it.unit = unit; changed = true; }
+    });
+    if (changed) Cart.write(items);
+  }
+
+  Promise.all([loadColors(), loadProducts()]).then(() => { refreshUnits(); paint(); });
   renderFooter();
 </script>
 </body>

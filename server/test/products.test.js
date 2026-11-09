@@ -76,3 +76,10 @@ test("productPatchFromBody — 수정 시 body에 없는 필드는 patch에 포�
   const { patch } = productPatchFromBody({ price: 60000 }, { forCreate: false });
   assert.deepEqual(Object.keys(patch), ["price"]);
 });
+
+test("sanitizeTranslations — en/ja만, 빈 값은 버리고 길이 제한(2026-10-28)", () => {
+  const { sanitizeTranslations } = require("../lib/products");
+  const out = sanitizeTranslations({ en: { name: " Hoodie ", short: "", details: ["a", "", 3] }, ja: {}, fr: { name: "x" } });
+  assert.deepEqual(out, { en: { name: "Hoodie", details: ["a"] } });
+  assert.deepEqual(sanitizeTranslations(null), {});
+});

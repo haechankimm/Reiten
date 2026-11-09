@@ -21,12 +21,21 @@ const { uploadProductVideo } = require("../lib/cloudinary");
 const MEDIA_COLUMNS = ["media", "model_info"];
 async function saveWithMediaFallback(run, patch) {
   let result = await run(patch);
+  // 044(상품 영어·일본어 문구) 전이면 번역 칸만 빼고 다시 저장한다(2026-10-28)
+  let translationsSkipped = false;
+  if (isMissingColumnError(result.error) && "translations" in patch) {
+    const { translations, ...rest } = patch;
+    translationsSkipped = Object.keys(translations || {}).length > 0;
+    patch = rest;
+    result = await run(patch);
+  }
   if (isMissingColumnError(result.error) && MEDIA_COLUMNS.some((c) => c in patch)) {
     const rest = { ...patch };
     MEDIA_COLUMNS.forEach((c) => delete rest[c]);
     result = await run(rest);
     result.mediaSkipped = true;
   }
+  result.translationsSkipped = translationsSkipped;
   return result;
 }
 
@@ -54,7 +63,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
   const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
 
-  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").insert({ id, ...p }).select().single(),
     patch
   );
@@ -65,7 +74,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "상품 생성에 실패했습니다." });
   }
   logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
 });
 
 /* ---------- 상품 일괄 처리 ----------
@@ -91,6 +100,17 @@ router.patch("/api/admin/products/bulk-active", requireAdmin, async (req, res) =
   res.json({ ok: true, count: ids.length });
 });
 
+/* 상품별로 다른 값을 한 줄씩 UPDATE — upsert는 쓰면 안 된다: Postgres가 충돌 판정 전에 "새 행"의 NOT NULL을 먼저
+   검사해서, name·name_ko·type·category 없이 {id, colors}만 보낸 upsert는 상품이 이미 있어도 항상 실패했다
+   (일괄 컬러 추가·퍼센트/고정액 일괄 가격 수정이 늘 500 — 2026-10-28 정기 감사, 실제 Postgres로 재현). */
+async function updateEach(updates) {
+  for (const { id, ...fields } of updates) {
+    const { error } = await supabaseAdmin.from("products").update(fields).eq("id", id);
+    if (error) return error;
+  }
+  return null;
+}
+
 router.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) => {
   const ids = parseBulkIds(req.body);
   const color = String((req.body && req.body.color) || "").trim();
@@ -104,12 +124,12 @@ router.patch("/api/admin/products/bulk-color", requireAdmin, async (req, res) =>
     return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
   }
 
-  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 upsert.
+  // 컬러를 상품마다 추가(이미 있으면 건너뜀)해야 해서 한 번의 UPDATE로 끝낼 수 없다 — 상품별로 UPDATE(updateEach).
   const updates = rows
     .filter((r) => !(r.colors || []).includes(color))
     .map((r) => ({ id: r.id, colors: [...(r.colors || []), color] }));
   if (updates.length) {
-    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    const updateError = await updateEach(updates);
     if (updateError) {
       console.error("[admin/products] 일괄 컬러 추가 실패:", updateError.message);
       return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
@@ -155,7 +175,7 @@ router.patch("/api/admin/products/bulk-price", requireAdmin, async (req, res) =>
     return { id: r.id, price: Math.max(1, next), updated_at: new Date().toISOString() };
   });
   if (updates.length) {
-    const { error: updateError } = await supabaseAdmin.from("products").upsert(updates, { onConflict: "id" });
+    const updateError = await updateEach(updates);
     if (updateError) {
       console.error("[admin/products] 일괄 가격 수정 실패:", updateError.message);
       return res.status(500).json({ error: "일괄 가격 수정에 실패했습니다." });
@@ -185,7 +205,7 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
   patch.updated_at = new Date().toISOString();
 
-  const { data, error, mediaSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").update(p).eq("id", req.params.id).select().maybeSingle(),
     patch
   );
@@ -196,7 +216,7 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
   logAdminAction(req, "product.update", "product", req.params.id, { ...patch, media: patch.media ? `${patch.media.length}개` : undefined });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped });
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
 });
 
 router.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {

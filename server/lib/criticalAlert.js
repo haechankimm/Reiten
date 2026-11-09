@@ -10,8 +10,10 @@ const lastSentAt = new Map();
 
 function shouldAlert(type, detail, now = Date.now()) {
   if (detail && (detail.channel === "push" || detail.channel === "telegram")) return false;
-  if (lastSentAt.has(type) && now - lastSentAt.get(type) < THROTTLE_MS) return false;
-  lastSentAt.set(type, now);
+  // 같은 종류라도 주문·결제가 다르면 따로 알린다 — 30분 안에 다른 주문의 환불 실패가 나도 알림이 안 오던 것(2026-10-28)
+  const key = `${type}:${(detail && (detail.orderNo || detail.paymentId)) || ""}`;
+  if (lastSentAt.has(key) && now - lastSentAt.get(key) < THROTTLE_MS) return false;
+  lastSentAt.set(key, now);
   return true;
 }
 

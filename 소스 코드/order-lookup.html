@@ -63,6 +63,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
           <thead><tr><th data-i18n="상품">상품</th><th data-i18n="옵션">옵션</th><th data-i18n="수량">수량</th><th data-i18n="금액">금액</th></tr></thead>
           <tbody id="lk-items"></tbody>
         </table>
+        <div id="lk-extra"></div>
 
         <div id="lk-cancel-block" hidden style="margin-top:28px">
           <button class="btn btn--ghost" type="button" id="lk-cancel-open" data-i18n="주문취소 신청">주문취소 신청</button>
@@ -103,6 +104,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
 <script>
+  // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
+  if (typeof loadProducts === "function") loadProducts().catch(() => {});
+  // 옵션의 컬러 이름도 관리자가 추가한 색상까지 지금 언어로 보여주려고 팔레트를 받아온다(orderItemOptions, 2026-10-28 정기 감사)
+  if (typeof loadColors === "function") loadColors().catch(() => {});
   applyI18n();
   renderHeader("");
 
@@ -114,7 +119,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
     const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(trackingNo));
     return `
       <b>${esc(t("배송 조회"))}</b><br>
-      ${esc(courier.label)} · <span class="tnum">${esc(trackingNo)}</span><br>
+      ${esc(t(courier.label))} · <span class="tnum">${esc(trackingNo)}</span><br>
       <a class="btn btn--sm" style="margin-top:10px" href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회하기"))}</a>`;
   }
 
@@ -145,13 +150,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       });
 
       if (!res.ok) {
-        el("lk-notfound").hidden = false;
+        // 404(주문번호·연락처 불일치)만 "찾을 수 없음" 안내 — 요청 과다(429) 등 다른 실패는 그 이유를 그대로 보여준다.
+        if (res.status === 404) el("lk-notfound").hidden = false;
+        else toast(apiErrorText(await res.json().catch(() => ({})), t("조회에 실패했습니다. 잠시 후 다시 시도해 주세요.")));
         return;
       }
 
       const o = await res.json();
       el("lk-title").textContent = t("주문번호") + " " + o.no;
-      el("lk-status").textContent = t("주문 상태") + " · " + (o.status || "입금대기") + " · " + new Date(o.at).toLocaleDateString(
+      el("lk-status").textContent = t("주문 상태") + " · " + t(o.status || "입금대기") + " · " + new Date(o.at).toLocaleDateString(
         getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US"
       );
 
@@ -161,14 +168,15 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 
       el("lk-items").innerHTML = o.items.map((i) => `
         <tr>
-          <td>${esc(i.name)}</td>
-          <td style="text-align:left;color:var(--muted)">${esc(i.options)}</td>
+          <td>${esc(orderItemName(i))}</td>
+          <td style="text-align:left;color:var(--muted)">${esc(orderItemOptions(i))}</td>
           <td>${i.qty}</td>
           <td>${money(i.sum)}</td>
-        </tr>`).join("") + `
-        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("상품 합계"))}</td><td>${money(o.subtotal)}</td></tr>
-        <tr><td colspan="3" style="text-align:right;color:var(--muted)">${esc(t("배송비"))}</td><td>${o.shipping === 0 ? esc(t("무료")) : money(o.shipping)}</td></tr>
-        <tr><td colspan="3" style="text-align:right;font-weight:650">${esc(t("총 결제금액"))}</td><td style="font-weight:650">${money(o.total)}</td></tr>`;
+        </tr>`).join("") + orderAmountRowsHTML(o);
+
+      // 입금대기면 입금 계좌, 배송된 주문이면 구매확정 버튼(lookup 응답은 lib/customerOrders.js)
+      el("lk-extra").innerHTML = orderPaymentGuideHTML(o) + orderConfirmHTML(o);
+      bindOrderConfirmButtons(el("lk-extra"), () => tel.value.trim(), () => el("lookup-form").requestSubmit());
 
       el("lk-result").hidden = false;
 
@@ -177,6 +185,10 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       el("lk-cancel-block").hidden = !["입금대기", "입금확인"].includes(o.status);
       el("lk-cancel-form").hidden = true;
       el("lk-cancel-done").hidden = true;
+      // 한 번 "주문취소 신청"을 열거나 접수한 뒤 다시 조회하면 버튼이 숨겨진 채(또는 제출 버튼이 막힌 채)로 남아
+      // 다시 신청할 수 없었다 — 조회할 때마다 처음 상태로 되돌린다(2026-10-28 정기 감사)
+      el("lk-cancel-open").hidden = false;
+      el("lk-cancel-submit").disabled = false;
     } catch (err) {
       toast(t("조회에 실패했습니다. server/가 실행 중인지 확인해 주세요."));
     } finally {
@@ -226,7 +238,7 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error || t("접수에 실패했습니다."));
+        toast(apiErrorText(body, t("접수에 실패했습니다.")));
         btn.disabled = false;
         return;
       }
