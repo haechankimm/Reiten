@@ -1,3 +1,13 @@
+/* 화면 오류 보고(assets/js/errorReport.js, 2026-11-09) — 모든 고객 페이지가 이 파일을 불러오므로 여기서 한 번 붙인다 */
+(function () {
+  try {
+    var s = document.createElement("script");
+    s.src = "/assets/js/errorReport.js";
+    s.async = true;
+    document.head.appendChild(s);
+  } catch (e) {}
+})();
+
 /* =========================================================
    REITEN — 공통 스크립트
    ========================================================= */
