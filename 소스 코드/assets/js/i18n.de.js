@@ -1232,3 +1232,8 @@
   ["DB 마이그레이션 050", "DB-Migration 050"],
   ["공급처 입고 재고 반영 실패", "Bestandsbuchung für Wareneingang fehlgeschlagen"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* ---------- 2026-11-11: 운영 점검 — 마이그레이션 한 줄 요약 ---------- */
+[
+  ["DB 마이그레이션 최신({no})까지 적용됨", "DB-Migrationen bis zur neuesten ({no}) angewendet"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

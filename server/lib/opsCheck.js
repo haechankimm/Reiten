@@ -26,40 +26,44 @@ function configChecks(env = process.env) {
   return out;
 }
 
+/* ---------- DB 마이그레이션 확인 (2026-11-11 정리) ----------
+   예전엔 번호마다 "✅ DB 마이그레이션 043" 줄이 하나씩 쌓였다. 이제 표 하나로 관리하고 동시에 확인해서,
+   전부 적용됐으면 "DB 마이그레이션 최신(NNN)까지 적용됨" 한 줄만, 빠진 게 있으면 빠진 번호만 경고로 보여준다.
+   새 마이그레이션을 추가하면 이 표 맨 아래에 한 줄(번호·확인 방법·미실행 때 꺼지는 기능)만 넣으면 된다.
+   probe(db)는 "없으면 오류가 나는" 가벼운 조회 — 오류(또는 null)를 돌려준다. 042 이하는 오래전에 실행 확인돼 표에서 뺐다. */
+const MIGRATION_CHECKS = [
+  { no: "043", probe: async (db) => (await db.from("orders").select("confirmed_at").limit(1)).error || (await db.from("order_refunds").select("id").limit(1)).error,
+    missing: "DB 마이그레이션 043이 아직 실행되지 않았습니다(부분 환불 이력·구매확정·사진 리뷰 적립이 꺼져 있음)" },
+  // 044는 색상 영어·일본어 이름 칸(product_colors.label_en·label_ja)도 함께 만든다
+  { no: "044", probe: async (db) => (await db.from("products").select("translations").limit(1)).error || (await db.from("product_colors").select("label_en, label_ja").limit(1)).error,
+    missing: "DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)" },
+  { no: "045", probe: async (db) => (await db.from("app_locks").select("key").limit(1)).error,
+    missing: "DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)" },
+  // 046은 색인만 만들어 조회로 확인할 수 없다(결과는 같고 속도만 다름) — 표에서 뺐다
+  // 047: 표와 함수 둘 다. 없는 키를 되돌리는 호출이라 아무것도 바뀌지 않는다
+  { no: "047", probe: async (db) => (await db.from("rate_limits").select("key").limit(1)).error || (await db.rpc("rate_limit_undo", { p_key: "__opscheck__" })).error,
+    missing: "DB 마이그레이션 047이 아직 실행되지 않았습니다(서버를 2대 이상으로 늘릴 때만 필요)" },
+  { no: "048", probe: async (db) => (await db.from("supplier_shipments").select("id").limit(1)).error,
+    missing: "DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)" },
+  { no: "049", probe: async (db) => (await db.from("supplier_shipments").select("tracking_checked_at").limit(1)).error || (await db.from("api_usage_monthly").select("key").limit(1)).error,
+    missing: "DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)" },
+  { no: "050", probe: async (db) => (await db.from("supplier_invoices").select("id").limit(1)).error || (await db.from("qna").select("ai_draft").limit(1)).error || (await db.from("supplier_shipments").select("receipt_items").limit(1)).error,
+    missing: "DB 마이그레이션 050이 아직 실행되지 않았습니다(입고 재고 반영·매입 장부·문의 답변 초안이 꺼져 있음)" },
+];
+
+async function migrationChecks(db = supabaseAdmin) {
+  const results = await Promise.all(MIGRATION_CHECKS.map(async (m) => ({ m, err: await m.probe(db).catch((e) => e || true) })));
+  const missing = results.filter((r) => r.err);
+  if (!missing.length) {
+    const latest = MIGRATION_CHECKS[MIGRATION_CHECKS.length - 1].no;
+    return [{ level: "ok", key: "migrations", label: `DB 마이그레이션 최신(${latest})까지 적용됨`, i18n: { key: "DB 마이그레이션 최신({no})까지 적용됨", vars: { no: latest } } }];
+  }
+  return missing.map(({ m }) => ({ level: "warn", key: `migration_${m.no}`, label: m.missing }));
+}
+
 async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const out = [];
-  const { error: confirmErr } = await db.from("orders").select("confirmed_at").limit(1);
-  const { error: refundErr } = await db.from("order_refunds").select("id").limit(1);
-  if (confirmErr || refundErr) out.push({ level: "warn", key: "migration_043", label: "DB 마이그레이션 043이 아직 실행되지 않았습니다(부분 환불 이력·구매확정·사진 리뷰 적립이 꺼져 있음)" });
-  else out.push({ level: "ok", key: "migration_043", label: "DB 마이그레이션 043" });
-  const { error: trErr0 } = await db.from("products").select("translations").limit(1);
-  // 044는 색상 영어·일본어 이름 칸(product_colors.label_en·label_ja)도 함께 만든다(2026-10-29)
-  const trErr = trErr0 || (await db.from("product_colors").select("label_en, label_ja").limit(1)).error;
-  if (trErr) out.push({ level: "warn", key: "migration_044", label: "DB 마이그레이션 044가 아직 실행되지 않았습니다(상품·색상 영어·일본어 문구 저장 불가)" });
-  else out.push({ level: "ok", key: "migration_044", label: "DB 마이그레이션 044" });
-  // 045 — 서버 여러 대 사이 처리 잠금(lib/dbLock.js). 서버 1대일 때는 없어도 안전하지만 늘리기 전에 필요(2026-11-09)
-  const { error: lockErr } = await db.from("app_locks").select("key").limit(1);
-  if (lockErr) out.push({ level: "warn", key: "migration_045", label: "DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)" });
-  else out.push({ level: "ok", key: "migration_045", label: "DB 마이그레이션 045" });
-  // 047 — 서버 여러 대 공유 요청 제한(lib/rateLimitStore.js). 표와 함수 둘 다 있어야 실행된 것(2026-11-10). 없는 키를 되돌리는 호출이라 아무것도 바뀌지 않는다.
-  const { error: rlTableErr } = await db.from("rate_limits").select("key").limit(1);
-  const rlErr = rlTableErr || (await db.rpc("rate_limit_undo", { p_key: "__opscheck__" })).error;
-  if (rlErr) out.push({ level: "warn", key: "migration_047", label: "DB 마이그레이션 047이 아직 실행되지 않았습니다(서버를 2대 이상으로 늘릴 때만 필요)" });
-  else out.push({ level: "ok", key: "migration_047", label: "DB 마이그레이션 047" });
-  // 048 — 공급처 출고 송장(routes/supplierShipments.js). 없어도 다른 기능엔 영향 없음(2026-11-10)
-  const { error: shipErr } = await db.from("supplier_shipments").select("id").limit(1);
-  if (shipErr) out.push({ level: "warn", key: "migration_048", label: "DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)" });
-  else out.push({ level: "ok", key: "migration_048", label: "DB 마이그레이션 048" });
-  // 049 — 공급처 송장 배송조회 결과 칸 + 스마트택배 월간 사용량 표(2026-11-10)
-  const { error: trkErr0 } = await db.from("supplier_shipments").select("tracking_checked_at").limit(1);
-  const trkErr = trkErr0 || (await db.from("api_usage_monthly").select("key").limit(1)).error;
-  if (trkErr) out.push({ level: "warn", key: "migration_049", label: "DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)" });
-  else out.push({ level: "ok", key: "migration_049", label: "DB 마이그레이션 049" });
-  // 050 — 입고 품목·매입 장부·문의 답변 초안(피클 업무 확장, 2026-11-10)
-  const { error: e050a } = await db.from("supplier_invoices").select("id").limit(1);
-  const e050 = e050a || (await db.from("qna").select("ai_draft").limit(1)).error || (await db.from("supplier_shipments").select("receipt_items").limit(1)).error;
-  if (e050) out.push({ level: "warn", key: "migration_050", label: "DB 마이그레이션 050이 아직 실행되지 않았습니다(입고 재고 반영·매입 장부·문의 답변 초안이 꺼져 있음)" });
-  else out.push({ level: "ok", key: "migration_050", label: "DB 마이그레이션 050" });
+  out.push(...(await migrationChecks(db)));
   // 스마트택배 월간 한도·키 오류(무료 키는 한 달마다 새로 발급해야 함)
   if (envSet("SWEETTRACKER_API_KEY")) {
     const u = await trackingBudget.usage(db, now).catch(() => null);
@@ -94,4 +98,4 @@ async function runOpsCheck({ db = supabaseAdmin, env = process.env, now = new Da
   };
 }
 
-module.exports = { configChecks, dbChecks, runOpsCheck, envSet };
+module.exports = { configChecks, dbChecks, runOpsCheck, envSet, migrationChecks, MIGRATION_CHECKS };
