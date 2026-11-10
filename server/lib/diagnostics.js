@@ -84,4 +84,54 @@ async function buildDiagnosticReport({ db = supabaseAdmin, env = process.env, no
   return lines.join("\n");
 }
 
-module.exports = { buildDiagnosticReport, maskText };
+/* 에이전트(피클)용 구조화 진단(2026-11-09, routes/botDiagnostics.js) — 같은 원칙(읽기 전용·마스킹)으로 JSON을 만든다.
+   오류는 종류별로 묶어 횟수·첫 발생·마지막 발생·최근 내용 1건만 준다(원문 전체를 넘기지 않음). */
+async function collectDiagnostics({ db = supabaseAdmin, env = process.env, now = new Date() } = {}) {
+  const ops = await safe(() => runOpsCheck({ db, env, now }), null);
+  const since = new Date(now.getTime() - 7 * 24 * 3600 * 1000).toISOString();
+  const { data: errs } = await safe(
+    () => db.from("system_error_log").select("type, detail, resolved, created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
+    { data: null }
+  );
+  const groups = new Map();
+  for (const e of errs || []) {
+    const g = groups.get(e.type) || { type: e.type, count: 0, unresolved: 0, firstAt: e.created_at, lastAt: e.created_at, latestDetail: detailText(e.detail) };
+    g.count++;
+    if (!e.resolved) g.unresolved++;
+    if (e.created_at < g.firstAt) g.firstAt = e.created_at;
+    groups.set(e.type, g);
+  }
+  const { data: pays } = await safe(
+    () => db.from("payment_log").select("status, method, reason, created_at").neq("status", "paid").gte("created_at", since).order("created_at", { ascending: false }).limit(50),
+    { data: null }
+  );
+  const pendingCut = new Date(now.getTime() - STUCK_PENDING_HOURS * 3600 * 1000).toISOString();
+  const paidCut = new Date(now.getTime() - STUCK_PAID_DAYS * 24 * 3600 * 1000).toISOString();
+  const countOrders = async (build) => {
+    const { count: n, error } = await safe(() => build(db.from("orders").select("order_no", { count: "exact", head: true })), { error: true });
+    return error ? null : n || 0;
+  };
+  const { count: openReturns, error: rErr } = await safe(
+    () => db.from("return_requests").select("id", { count: "exact", head: true }).not("status", "in", "(완료,반려)"),
+    { count: null, error: true }
+  );
+  const { count: newOrders24h, error: nErr } = await safe(
+    () => db.from("orders").select("order_no", { count: "exact", head: true }).gte("created_at", new Date(now.getTime() - 24 * 3600 * 1000).toISOString()),
+    { count: null, error: true }
+  );
+  return {
+    generatedAt: now.toISOString(),
+    deploy: { commit: String(env.RENDER_GIT_COMMIT || "") || null, uptimeMinutes: Math.round(process.uptime() / 60), node: process.version },
+    ops: ops ? { errors: ops.errors, warnings: ops.warnings, checks: ops.checks.map((c) => ({ level: c.level, key: c.key, label: maskText(c.label) })) } : null,
+    systemErrors7d: [...groups.values()].sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1)),
+    paymentIssues7d: (pays || []).map((p) => ({ at: p.created_at, status: p.status, method: p.method || null, reason: maskText(p.reason || "").slice(0, 300) })),
+    orders: {
+      new24h: nErr ? null : newOrders24h || 0,
+      pendingOver48h: await countOrders((q) => q.eq("status", "입금대기").lt("created_at", pendingCut)),
+      paidNotShippedOver3d: await countOrders((q) => q.eq("status", "입금확인").lt("created_at", paidCut)),
+      openReturnRequests: rErr ? null : openReturns || 0,
+    },
+  };
+}
+
+module.exports = { buildDiagnosticReport, collectDiagnostics, maskText };
