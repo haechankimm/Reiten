@@ -97,7 +97,12 @@ function dropUndefined(obj) {
 
 /* 기존 행 + 새 값 → 갱신할 열만. 상태는 뒤로 가지 않고(관리자가 정한 입고 완료·취소도 유지), metadata는 합친다. */
 function buildUpdate(existing, fields, nowIso) {
-  const patch = dropUndefined({ ...fields, status: undefined, metadata: undefined, shipped_at: existing.shipped_at ? undefined : fields.shipped_at });
+  // 출고일·배송완료일은 처음 들어온 값을 지킨다(같은 메일이 다시 와도 날짜가 바뀌지 않게)
+  const patch = dropUndefined({
+    ...fields, status: undefined, metadata: undefined,
+    shipped_at: existing.shipped_at ? undefined : fields.shipped_at,
+    delivered_at: existing.delivered_at ? undefined : fields.delivered_at,
+  });
   const cur = existing.status;
   if (fields.status && cur !== "CANCELED" && (STATUS_RANK[fields.status] || 0) > (STATUS_RANK[cur] || 0)) patch.status = fields.status;
   if (fields.metadata) patch.metadata = { ...(existing.metadata || {}), ...fields.metadata };
@@ -118,6 +123,13 @@ function buildInsert(fields, nowIso) {
 function without049(fields) {
   const { supplier_label, ...rest } = fields;
   return rest;
+}
+
+/* 실제 DB의 id는 uuid라, 형식이 다른 값으로 조회하면 "없음"(404)이 아니라 Postgres 형식 오류(500)가 났다(2026-11-10 점검) — 미리 거른다. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function notFoundUnlessUuid(req, res, next) {
+  if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
+  next();
 }
 
 async function findExisting(supplierName, trackingNumber) {
@@ -175,6 +187,13 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
   }
 });
 
+/* 공급처별 건수용 — 단계 기록(tracking_events) 같은 큰 칸은 빼고 가져온다. 049 전이면 표시 이름 칸 없이. */
+async function supplierSummaryRows() {
+  const q = (cols) => supabaseAdmin.from(TABLE).select(cols).order("created_at", { ascending: false }).limit(2000);
+  const r = await q("supplier_name, supplier_label, status");
+  return r.error && isMissingColumnError(r.error) ? q("supplier_name, status") : r;
+}
+
 /* Works 목록 — 상태(진행 중/입고 완료/전체…)·공급처로 거르고, 공급처 목록(건수)·배송조회 사용 가능 여부·이번 달 조회 사용량을 함께 준다. */
 router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
   const filter = String(req.query.status || "open");
@@ -185,7 +204,7 @@ router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
   if (supplier) q = q.eq("supplier_name", supplier);
   const [{ data, error }, sup] = await Promise.all([
     q,
-    supabaseAdmin.from(TABLE).select("*").order("created_at", { ascending: false }).limit(2000),
+    supplierSummaryRows(),
   ]);
   if (error) {
     if (isMissingSchemaError(error)) return res.json({ items: [], suppliers: [], migrationMissing: true });
@@ -212,7 +231,7 @@ router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
 });
 
 /* Works "배송조회" 버튼 — 지금 스마트택배로 1건 조회해 저장하고 단계 기록을 돌려준다(월간 한도 1건 사용). */
-router.post("/api/admin/supplier-shipments/:id/track", requireAdmin, async (req, res) => {
+router.post("/api/admin/supplier-shipments/:id/track", requireAdmin, notFoundUnlessUuid, async (req, res) => {
   const { data: row, error } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
   if (error) {
     if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
@@ -224,7 +243,7 @@ router.post("/api/admin/supplier-shipments/:id/track", requireAdmin, async (req,
   res.json({ ok: true, shipment: toApi(r.row), lookupError: r.lookupError });
 });
 
-router.patch("/api/admin/supplier-shipments/:id", requireAdmin, async (req, res) => {
+router.patch("/api/admin/supplier-shipments/:id", requireAdmin, notFoundUnlessUuid, async (req, res) => {
   const status = String((req.body || {}).status || "").toUpperCase();
   if (!ADMIN_STATUSES.includes(status)) return res.status(400).json({ error: "상태 값이 올바르지 않습니다." });
   const nowIso = new Date().toISOString();

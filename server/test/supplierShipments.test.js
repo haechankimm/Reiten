@@ -84,6 +84,10 @@ test("같은 공급처+송장번호는 한 줄로 갱신 — 상태는 앞으로
   assert.ok(r2.body.shipment.deliveredAt);
   assert.deepStrictEqual(r2.body.shipment.metadata, { gmailId: "abc", fee: 3000 });
   assert.strictEqual(r2.body.shipment.shippedAt, first.shippedAt);
+  // 배송완료일도 처음 값 유지
+  const delivered = r2.body.shipment.deliveredAt;
+  const r2b = await post({ ...SAMPLE, deliveredAt: "2030-01-01T00:00:00Z" });
+  assert.strictEqual(r2b.body.shipment.deliveredAt, delivered);
   // 같은 "출고" 메일이 다시 와도 배송완료가 되돌아가지 않는다
   const r3 = await post({ ...SAMPLE, status: "SHIPPED" });
   assert.strictEqual(r3.body.shipment.status, "DELIVERED");
@@ -149,11 +153,13 @@ test("Works 목록·입고 처리 — 관리자만, 기본은 진행 중만 보�
   list = await request(app()).get("/api/admin/supplier-shipments?status=RECEIVED").set(auth);
   assert.strictEqual(list.body.items.length, 1);
   assert.strictEqual((await request(app()).patch("/api/admin/supplier-shipments/none").set(auth).send({ status: "RECEIVED" })).status, 404);
+  assert.strictEqual((await request(app()).patch("/api/admin/supplier-shipments/00000000-0000-4000-8000-000000000000").set(auth).send({ status: "RECEIVED" })).status, 404);
 });
 
 /* ---------- 스마트택배 배송조회(049) ---------- */
 const NOW = new Date("2026-11-12T03:00:00.000Z");
-const shippedRow = (over = {}) => ({ id: "s1", supplier_name: "printcanvas", carrier_code: "kr.cjlogistics", tracking_number: "601373483215", status: "SHIPPED", shipped_at: "2026-11-10T00:00:00.000Z", tracking_checked_at: null, ...over });
+const S1 = "11111111-1111-4111-8111-111111111111";
+const shippedRow = (over = {}) => ({ id: S1, supplier_name: "printcanvas", carrier_code: "kr.cjlogistics", tracking_number: "601373483215", status: "SHIPPED", shipped_at: "2026-11-10T00:00:00.000Z", tracking_checked_at: null, ...over });
 const fetchDelivered = async () => ({ ok: true, json: async () => ({ complete: true, level: 6, trackingDetails: [{ timeString: "2026-11-11 10:00", where: "성수", kind: "집화처리" }, { timeString: "2026-11-12 11:00", where: "강남", kind: "배달완료" }] }) });
 
 function withKey(fn) {
@@ -212,7 +218,7 @@ test("표에 스마트택배 코드가 없는 택배사는 택배사 목록 API�
 test("Works 배송조회 버튼 — 키 없으면 400, 있으면 조회해 단계 기록을 돌려준다", async () => {
   supabaseAdmin.__reset({ profiles: [{ id: ADMIN.id, role: "admin" }], supplier_shipments: [shippedRow()] });
   const auth = { Authorization: `Bearer ${TOKEN}` };
-  assert.strictEqual((await request(app()).post("/api/admin/supplier-shipments/s1/track").set(auth)).status, 400);
+  assert.strictEqual((await request(app()).post(`/api/admin/supplier-shipments/${S1}/track`).set(auth)).status, 400);
   const list = await request(app()).get("/api/admin/supplier-shipments").set(auth);
   assert.strictEqual(list.body.trackingEnabled, false);
   assert.deepStrictEqual(list.body.suppliers.map((p) => p.name), ["printcanvas"]);
