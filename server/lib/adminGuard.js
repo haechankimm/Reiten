@@ -13,7 +13,7 @@ const { MASTER_ADMIN_EMAIL } = require("./auth");
 const AREAS = {
   orders: { label: "주문·배송", tabs: ["orders"], paths: ["orders"] },
   returns: { label: "반품·교환", tabs: ["returns"], paths: ["returns"] },
-  inventory: { label: "재고", tabs: ["inventory"], paths: ["inventory"] },
+  inventory: { label: "재고·공급처 입고", tabs: ["inventory"], paths: ["inventory", "supplier-shipments"] },
   qna: { label: "문의(Q&A)·CS 템플릿", tabs: ["qna"], paths: ["qna", "qna-templates"] },
   payments: { label: "결제 내역·시스템 오류", tabs: ["paymentlog"], paths: ["payment-log", "system-errors"] },
   products: { label: "상품·색상", tabs: ["products"], paths: ["products", "colors"] },

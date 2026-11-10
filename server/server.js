@@ -48,6 +48,7 @@ const inventoryRoutes = require("./routes/inventory");
 const couponsRoutes = require("./routes/coupons");
 const clientErrorsRoutes = require("./routes/clientErrors");
 const botDiagnosticsRoutes = require("./routes/botDiagnostics");
+const supplierShipmentsRoutes = require("./routes/supplierShipments");
 const { assertNoRouteShadowing } = require("./lib/routeShadowing");
 const { htmlWithVersions, immutableAssets } = require("./lib/assetVersion");
 
@@ -203,6 +204,8 @@ app.use(checkoutRoutes);
 app.use(clientErrorsRoutes);
 /* AI 비서 에이전트 전용 읽기 전용 진단(X-REITEN-BOT-KEY, 2026-11-09) */
 app.use(botDiagnosticsRoutes);
+/* 공급처 출고 송장 — 에이전트 기록(POST /api/bot/…) + Works 재고 탭 목록(2026-11-10, 마이그레이션 048) */
+app.use(supplierShipmentsRoutes);
 
 /* GET /health는 routes/health.js에서 가져온다 — UptimeRobot이 DB 연결까지 확인할 수 있는
    전용 엔드포인트(2026-09-01 추가, 위 0번 섹션 참고). */

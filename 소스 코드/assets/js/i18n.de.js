@@ -1168,3 +1168,16 @@
   ["SENTRY_DSN이 설정되지 않았습니다(Render 환경변수)", "SENTRY_DSN ist nicht gesetzt (Render-Umgebungsvariable)"],
   ["Sentry로 보내지 못했습니다. DSN 값을 다시 확인해 주세요.", "Senden an Sentry fehlgeschlagen. Bitte den DSN-Wert prüfen."],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* ---------- 2026-11-10: 공급처 입고·배송(재고 탭, 마이그레이션 048) ---------- */
+[
+  ["공급처 입고·배송", "Lieferanten-Sendungen"],
+  ["진행 중", "Unterwegs"],
+  ["입고 완료", "Eingegangen"],
+  ["입고 완료로 표시했습니다", "Als eingegangen markiert"],
+  ["표시할 공급처 배송이 없습니다", "Keine Lieferanten-Sendungen vorhanden"],
+  ["DB 마이그레이션 048을 실행하면 공급처 출고 송장이 여기에 자동으로 쌓입니다.", "Nach Ausführung der DB-Migration 048 erscheinen Lieferanten-Sendungsnummern hier automatisch."],
+  ["재고·공급처 입고", "Lagerbestand · Lieferanten-Eingang"],
+  ["DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)", "DB-Migration 048 wurde noch nicht ausgeführt (automatische Erfassung von Lieferanten-Sendungen ist aus)"],
+  ["DB 마이그레이션 048", "DB-Migration 048"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
