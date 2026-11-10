@@ -228,3 +228,86 @@ test("답변 초안 — 저장되고 Works에 보이지만 고객 답변은 아�
   assert.strictEqual((await request(app()).post(`/api/bot/qna/${Q1}/draft`).set(BOT).send({ draft: "x" })).status, 409);
   assert.strictEqual((await request(app()).post(`/api/bot/qna/${Q1}/draft`).set(BOT).send({ draft: "" })).status, 400);
 });
+
+/* ---------- 2026-11-11: 사람이 직접 등록·수정·취소(로그 남김) ---------- */
+test("공급처 송장 직접 등록 — 같은 송장은 409, 로그에 남는다", async () => {
+  const body = { supplierName: "greennayeom", supplierLabel: "그린나염", carrierName: "경동택배", trackingNumber: "KD-555-666", itemsSummary: "나염 원단 3롤" };
+  const a = await request(app()).post("/api/admin/supplier-shipments").set(AUTH).send(body);
+  assert.strictEqual(a.status, 200);
+  assert.strictEqual(a.body.shipment.carrierCode, "kr.kdexp");
+  assert.strictEqual((await request(app()).post("/api/admin/supplier-shipments").set(AUTH).send(body)).status, 409);
+  await new Promise((r) => setImmediate(r));
+  assert.ok((await rows("admin_audit_log")).some((l) => l.action === "supplier_shipment.create"));
+});
+
+test("공급처 송장 수정 — AI가 적은 값을 고치고 상태도 되돌릴 수 있다, 바뀌기 전 값은 로그에", async () => {
+  supabaseAdmin.__reset({ profiles: [{ id: ADMIN.id, role: "admin" }], supplier_shipments: [ship({ status: "DELIVERED", delivered_at: hoursAgo(1) })], admin_audit_log: [] });
+  const r = await request(app()).patch(`/api/admin/supplier-shipments/${S1}`).set(AUTH).send({ trackingNumber: "601373483299", itemsSummary: "후드 XL 12벌", status: "IN_TRANSIT" });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.shipment.trackingNumber, "601373483299");
+  assert.strictEqual(r.body.shipment.status, "IN_TRANSIT");
+  await new Promise((res) => setImmediate(res));
+  const log = (await rows("admin_audit_log")).find((l) => l.action === "supplier_shipment.update");
+  assert.strictEqual(log.detail.before.tracking_number, "601373483215");
+  assert.strictEqual(log.detail.before.status, "DELIVERED");
+  const same = await request(app()).patch(`/api/admin/supplier-shipments/${S1}`).set(AUTH).send({ itemsSummary: "후드 XL 12벌" });
+  assert.strictEqual(same.body.unchanged, true);
+});
+
+test("입고 취소 — 더했던 재고를 빼고 배송완료로, 재고에 반영된 입고는 상태만 바꿀 수 없다", async () => {
+  const items = [{ productId: "hoodie", color: "black", size: "XL", qty: 10 }];
+  await request(app()).post(`/api/admin/supplier-shipments/${S1}/receive`).set(AUTH).send({ items });
+  assert.strictEqual((await rows("inventory")).find((r) => r.size === "XL").qty, 10);
+  const blocked = await request(app()).patch(`/api/admin/supplier-shipments/${S1}`).set(AUTH).send({ status: "DELIVERED" });
+  assert.strictEqual(blocked.status, 409);
+  const undo = await request(app()).post(`/api/admin/supplier-shipments/${S1}/receive/undo`).set(AUTH);
+  assert.strictEqual(undo.status, 200);
+  assert.strictEqual(undo.body.shipment.status, "DELIVERED");
+  assert.strictEqual((await rows("inventory")).find((r) => r.size === "XL").qty, 0);
+  await new Promise((r) => setImmediate(r));
+  assert.ok((await rows("inventory_log")).some((l) => l.reason === "supplier_receipt_undo" && l.delta === -10));
+  assert.strictEqual((await request(app()).post(`/api/admin/supplier-shipments/${S1}/receive/undo`).set(AUTH)).status, 409);
+});
+
+test("입고 취소 — 이미 팔려서 재고가 모자라면 되돌리지 않는다", async () => {
+  await request(app()).post(`/api/admin/supplier-shipments/${S1}/receive`).set(AUTH).send({ items: [{ productId: "hoodie", color: "black", size: "XL", qty: 10 }] });
+  (await supabaseAdmin.from("inventory").update({ qty: 3 }).eq("product_id", "hoodie").eq("size", "XL"));
+  const r = await request(app()).post(`/api/admin/supplier-shipments/${S1}/receive/undo`).set(AUTH);
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await rows("supplier_shipments")).find((x) => x.id === S1).status, "RECEIVED");
+});
+
+test("매입 직접 입력(바로 확인) · 확인된 줄도 사람은 수정, 이전 값 로그", async () => {
+  const a = await request(app()).post("/api/admin/supplier-invoices").set(AUTH).send({ supplierName: "원단도매", issuedOn: "2026-11-05", totalAmount: 44000, docType: "receipt" });
+  assert.strictEqual(a.status, 200);
+  assert.strictEqual(a.body.invoice.status, "CONFIRMED");
+  const e = await request(app()).patch(`/api/admin/supplier-invoices/${a.body.invoice.id}`).set(AUTH).send({ totalAmount: 45000, itemsSummary: "원단 2롤" });
+  assert.strictEqual(e.body.invoice.totalAmount, 45000);
+  await new Promise((r) => setImmediate(r));
+  const log = (await rows("admin_audit_log")).find((l) => l.action === "supplier_invoice.update");
+  assert.strictEqual(log.detail.before.total_amount, 44000);
+  assert.strictEqual((await request(app()).post("/api/admin/supplier-invoices").set(AUTH).send({ supplierName: "x" })).status, 400);
+});
+
+test("AI 답변 초안 지우기 — 관리자가 지울 수 있고, 답변을 등록하면 초안도 정리된다", async () => {
+  await request(app()).post(`/api/bot/qna/${Q1}/draft`).set(BOT).send({ draft: "초안" });
+  const clear = await request(app()).patch(`/api/admin/qna/${Q1}`).set(AUTH).send({ aiDraft: "" });
+  assert.strictEqual(clear.status, 200);
+  assert.strictEqual((await rows("qna"))[0].ai_draft, "");
+  // 지운 문의엔 AI가 다시 초안을 쓰지 못하고, 대기 목록에도 안 나온다
+  assert.strictEqual((await request(app()).post(`/api/bot/qna/${Q1}/draft`).set(BOT).send({ draft: "초안2" })).status, 409);
+  assert.strictEqual((await request(app()).get("/api/bot/qna/pending").set(BOT)).body.items.length, 0);
+  await request(app()).patch(`/api/admin/qna/${Q1}`).set(AUTH).send({ answer: "정식 답변" });
+  assert.strictEqual((await rows("qna"))[0].ai_draft, null);
+});
+
+test("사람이 고친 송장·매입 값은 AI가 같은 메일을 다시 보내도 덮어쓰지 않는다", async () => {
+  await request(app()).patch(`/api/admin/supplier-shipments/${S1}`).set(AUTH).send({ itemsSummary: "사람이 고친 품목" });
+  const r = await request(app()).post("/api/bot/supplier-shipments").set(BOT).send({ supplierName: "printcanvas", carrierCode: "kr.cjlogistics", trackingNumber: "601373483215", itemsSummary: "AI가 다시 읽은 품목", supplierOrderId: "NEW-1" });
+  assert.strictEqual(r.body.shipment.itemsSummary, "사람이 고친 품목");
+  assert.strictEqual(r.body.shipment.supplierOrderId, "NEW-1");
+  const inv = (await request(app()).post("/api/bot/supplier-invoices").set(BOT).send(INV)).body.invoice;
+  await request(app()).patch(`/api/admin/supplier-invoices/${inv.id}`).set(AUTH).send({ totalAmount: 111000 });
+  const again = await request(app()).post("/api/bot/supplier-invoices").set(BOT).send(INV);
+  assert.strictEqual(again.body.invoice.totalAmount, 111000);
+});

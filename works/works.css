@@ -589,3 +589,10 @@
     .cal-cell { min-height: 56px; }
     .cal-pill { font-size: 9px; }
   }
+
+/* 공급처 송장·매입 장부·입고 처리의 작은 입력 폼(2026-11-11) — 라벨은 입력칸 위에, 칸은 한 줄을 꽉 채운다 */
+.mini-form { margin-top: 8px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 12px; flex-basis: 100%; }
+.mini-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); min-width: 0; }
+.mini-form input, .mini-form select { width: 100%; box-sizing: border-box; }
+.mini-form .mini-form-wide { grid-column: 1 / -1; }
+.mini-form .mini-form-actions { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

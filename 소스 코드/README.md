@@ -523,6 +523,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `048_supplier_shipments.sql` | 공급처 출고 송장 `supplier_shipments`(RLS 포함, 공급처+송장번호 유니크, 상태 CHECK) — 피클 `POST /api/bot/supplier-shipments`·Works 재고 탭 "공급처 입고·배송" | ✅ 실행함(2026-11-10 사용자) |
 | `049_supplier_tracking.sql` | 공급처 송장 배송조회 결과 칸(`supplier_label`·`tracking_checked_at`·`tracking_status`·`tracking_events`·`tracking_error`) + 스마트택배 월간 사용량 `api_usage_monthly`(RLS) | ✅ 실행함(2026-11-10 사용자) |
 | `050_pickle_ops.sql` | 피클 업무 확장 — `supplier_shipments.receipt_items`·`received_at`·`tracking_source`, `inventory_log` 사유 `supplier_receipt` 추가(027 목록 + 1), 매입 장부 `supplier_invoices`(RLS), `qna.ai_draft`·`ai_draft_at` | ✅ 실행함(2026-11-11 사용자) |
+| `051_receipt_undo.sql` | 재고 이력 사유 `supplier_receipt_undo`(입고 취소) + 운영 점검용 `reiten_schema_version()`(=51) | ⚠️ 미실행(2026-11-11 신규) — 실행 전에도 입고 취소는 되지만 재고 이력 한 줄이 남지 않음 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -628,6 +629,21 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-11 (2) — "실시간 에이전트 AI" 명칭, 사람이 직접 등록·수정·취소(로그 남김), Works 점검.**
+- **명칭**: Works·사용설명서에 보이는 "피클"을 **"실시간 에이전트 AI"**로(다른 관리자가 알아보게). 활동 로그의 `bot:pickle`도 화면에선 "실시간 에이전트 AI"로(`settings.js` `emailName`).
+  서버 내부 값(`bot:pickle`, `tracking_source=pickle`)과 개발 문서는 그대로.
+- **사람 우선 원칙**(사용자 요청 "뭐든 인간이 취소·수정 가능, 로그는 남게"):
+  - 공급처 송장: `POST /api/admin/supplier-shipments`(직접 등록), `PATCH`(모든 칸·상태 수정, 바꾸기 전 값은 활동 로그 `before/after`),
+    `POST /:id/receive/undo`(입고 취소 — 그때 더한 재고 `metadata.inventoryApplied`만큼 빼고 배송완료로, 이미 팔려 재고가 모자라면 409, 재고 이력 `supplier_receipt_undo`).
+    재고에 반영된 입고는 상태만 바꿀 수 없음(409 → 입고 취소). 입고·취소 이력은 `metadata.receiptHistory`.
+  - 매입 장부: `POST /api/admin/supplier-invoices`(직접 입력, 바로 확인), `PATCH`(확인된 줄 포함 모든 칸, before/after 로그).
+  - 문의 초안: Works "초안 지우기"(`PATCH /api/admin/qna/:id {aiDraft:""}`) — 빈 문자열로 표시해 AI가 그 문의에 다시 쓰지 않음(409, 대기 목록 제외). 답변 등록 시 초안 정리.
+  - 사람이 고친 칸은 `metadata.humanEdited`에 남겨, AI가 같은 메일을 다시 보내도 그 칸은 덮어쓰지 않음(송장·매입).
+- **마이그레이션 051**: 재고 이력 사유 `supplier_receipt_undo` + `reiten_schema_version()` 함수(운영 점검이 제약 변경처럼 조회로 알 수 없는 것도 확인 — **새 마이그레이션은 이 숫자를 올리고 `MIGRATION_CHECKS`에 한 줄**).
+- **Works 점검**(Playwright로 실제 화면 확인): 로고 → "오늘" 탭, 공급처 "배송 단계 N ▾ / 단계 접기 ▴"(aria-expanded, 최신 단계가 위), 입력 폼 정렬(`.mini-form`),
+  입고 품목을 상품 이름으로, Q&A 카드에 상품 이름, 매입 장부를 대시보드 숫자와 독립 로딩, 인수인계 노트·CS 템플릿 삭제 확인창, 홈 타일 빈 값 0 처리.
+- 테스트 `test/pickleOps.test.js` 20건, 서버 테스트 312건.
 
 **2026-11-11 — 운영 점검 마이그레이션 한 줄 요약 + 메일 발신 주소 해결.**
 - `lib/opsCheck.js` `MIGRATION_CHECKS` 표: 043~050을 동시에 확인, 전부 적용이면 "DB 마이그레이션 최신(050)까지 적용됨" 한 줄, 빠진 번호만 경고(046은 색인뿐이라 확인 대상 아님).

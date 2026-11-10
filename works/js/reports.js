@@ -219,11 +219,12 @@
   }
 
   async function paintAdminDashboard() {
+    // 매입 장부는 대시보드 숫자와 따로 불러온다 — 한쪽이 실패해도 다른 쪽은 보이게(2026-11-11 점검)
+    if (typeof paintSupplierInvoices === "function") paintSupplierInvoices();
     const result = await adminFetch("/api/admin/dashboard");
     if (!result) return;
     renderDashboard(result);
     loadVisitorStats();
-    if (typeof paintSupplierInvoices === "function") paintSupplierInvoices(); // 매입 장부(js/supplierInvoices.js)
   }
 
   function downloadDashboardExport(format) {

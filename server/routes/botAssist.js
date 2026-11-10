@@ -60,7 +60,7 @@ router.get("/api/bot/briefing", botLimiter, requireBotKey, async (req, res) => {
       };
 
   const { data: qnaRows, error: qnaErr } = await supabaseAdmin.from("qna").select("id, ai_draft").eq("status", "답변대기").limit(500);
-  const qna = qnaErr ? null : { waiting: (qnaRows || []).length, withoutDraft: (qnaRows || []).filter((q) => !q.ai_draft).length };
+  const qna = qnaErr ? null : { waiting: (qnaRows || []).length, withoutDraft: (qnaRows || []).filter((q) => q.ai_draft == null).length };
 
   const trackingUsage = tracking.isConfigured() ? await budget.usage(supabaseAdmin, now).catch(() => null) : null;
 
@@ -100,7 +100,8 @@ router.get("/api/bot/qna/pending", botLimiter, requireBotKey, async (req, res) =
   }
   if (error) return res.status(500).json({ ok: false, error: "문의를 불러오지 못했습니다" });
   const includeDrafted = req.query.includeDrafted === "1";
-  const rows = (data || []).filter((q) => includeDrafted || !q.ai_draft).slice(0, limit);
+  // 관리자가 "초안 지우기"로 거절한 문의(ai_draft = "")는 다시 주지 않는다(2026-11-11)
+  const rows = (data || []).filter((q) => q.ai_draft !== "" && (includeDrafted || !q.ai_draft)).slice(0, limit);
 
   const productIds = [...new Set(rows.map((q) => q.product_id).filter((id) => id && id !== "general"))];
   const { data: products } = productIds.length ? await supabaseAdmin.from("products").select("id, name_ko").in("id", productIds) : { data: [] };
@@ -129,7 +130,9 @@ router.post("/api/bot/qna/:id/draft", botWriteLimiter, requireBotKey, async (req
   if (!UUID_RE.test(req.params.id)) return res.status(404).json({ ok: false, error: "해당 문의를 찾을 수 없습니다." });
   const draft = String((req.body || {}).draft || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim().slice(0, 2000);
   if (!draft) return res.status(400).json({ ok: false, error: "draft(답변 초안)가 필요합니다" });
-  // 이미 답변된 문의에는 초안을 쓰지 않는다
+  // 이미 답변된 문의, 관리자가 초안을 지운 문의(ai_draft = "")에는 쓰지 않는다
+  const { data: curQ } = await supabaseAdmin.from("qna").select("id, ai_draft").eq("id", req.params.id).maybeSingle();
+  if (curQ && curQ.ai_draft === "") return res.status(409).json({ ok: false, error: "관리자가 이 문의의 초안을 지웠습니다(다시 쓰지 않음)" });
   const { data, error } = await supabaseAdmin
     .from("qna")
     .update({ ai_draft: draft, ai_draft_at: new Date().toISOString() })

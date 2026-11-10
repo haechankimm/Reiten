@@ -122,9 +122,13 @@ router.post("/api/bot/supplier-invoices", botWriteLimiter, requireBotKey, async 
     let created = false;
     if (existing) {
       if (existing.status !== "RECORDED") return res.json({ ok: true, created: false, unchanged: true, invoice: toApi(existing) });
+      // 사람이 고친 칸은 AI가 덮어쓰지 않는다(2026-11-11)
+      const humanEdited = (existing.metadata && existing.metadata.humanEdited) || [];
+      const botPatch = dropUndefined({ ...f, metadata: { ...(existing.metadata || {}), ...f.metadata, humanEdited }, shipment_id: shipmentId, updated_at: nowIso });
+      for (const col of humanEdited) delete botPatch[col];
       const { data, error } = await supabaseAdmin
         .from(TABLE)
-        .update(dropUndefined({ ...f, metadata: { ...(existing.metadata || {}), ...f.metadata }, shipment_id: shipmentId, updated_at: nowIso }))
+        .update(botPatch)
         .eq("id", existing.id)
         .select()
         .single();
@@ -175,35 +179,72 @@ router.get("/api/admin/supplier-invoices", requireAdmin, async (req, res) => {
   res.json({ month: monthKey, items: (data || []).map(toApi), totals, bySupplier: [...bySupplier.values()].sort((a, b) => b.total - a.total) });
 });
 
-/* 확인·제외, 또는 금액·날짜 고치기(피클이 잘못 읽었을 때). */
+/* 사람이 직접 입력(2026-11-11) — AI가 놓친 매입, 현금 영수증 등. 사람이 넣은 것은 바로 "확인" 상태. */
+router.post("/api/admin/supplier-invoices", requireAdmin, async (req, res) => {
+  const n = normalizeInvoice(req.body);
+  if (n.error) return res.status(400).json({ error: n.error });
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .insert(dropUndefined({ ...n.fields, metadata: { ...n.fields.metadata, createdBy: req.user.email }, status: "CONFIRMED", source: "manual", updated_at: nowIso }))
+    .select()
+    .single();
+  if (error) {
+    if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
+    if (error.code === "23505") return res.status(409).json({ error: "같은 공급처·문서번호의 기록이 이미 있습니다." });
+    console.error("[supplier-invoices] 직접 입력 실패:", error.message);
+    return res.status(500).json({ error: "저장에 실패했습니다." });
+  }
+  logAdminAction(req, "supplier_invoice.create", "supplier_invoice", data.id, { supplier: data.supplier_name, total: data.total_amount });
+  res.json({ ok: true, invoice: toApi(data) });
+});
+
+/* 확인·제외·되돌리기, 그리고 모든 칸 고치기(AI가 잘못 읽었을 때). 확인된 줄도 사람은 고칠 수 있다. 바뀌기 전 값은 활동 로그에. */
 router.patch("/api/admin/supplier-invoices/:id", requireAdmin, async (req, res) => {
   if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: "해당 매입 기록을 찾을 수 없습니다." });
   const b = req.body || {};
+  const { data: cur, error: curErr } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (curErr) return res.status(isMissingSchemaError(curErr) ? 503 : 500).json({ error: isMissingSchemaError(curErr) ? MIGRATION_MISSING : "불러오지 못했습니다." });
+  if (!cur) return res.status(404).json({ error: "해당 매입 기록을 찾을 수 없습니다." });
+
   const patch = {};
   if (b.status !== undefined) {
     if (!STATUSES.includes(b.status)) return res.status(400).json({ error: "상태 값이 올바르지 않습니다." });
     patch.status = b.status;
   }
-  for (const [key, col] of [["totalAmount", "total_amount"], ["supplyAmount", "supply_amount"], ["vatAmount", "vat_amount"]]) {
-    if (b[key] === undefined) continue;
-    const v = parseAmount(b[key]);
-    if (v === null || (key === "totalAmount" && v === undefined)) return res.status(400).json({ error: "금액 형식이 올바르지 않습니다." });
-    patch[col] = v === undefined ? null : v;
+  const fieldKeys = ["supplierName", "supplierLabel", "docType", "docNumber", "issuedOn", "supplyAmount", "vatAmount", "totalAmount", "itemsSummary"];
+  if (fieldKeys.some((k) => b[k] !== undefined)) {
+    const merged = {
+      supplierName: cur.supplier_name, supplierLabel: cur.supplier_label, docType: cur.doc_type, docNumber: cur.doc_number, issuedOn: cur.issued_on,
+      supplyAmount: cur.supply_amount, vatAmount: cur.vat_amount, totalAmount: cur.total_amount, itemsSummary: cur.items_summary,
+    };
+    for (const k of fieldKeys) if (b[k] !== undefined) merged[k] = b[k] === "" ? null : b[k];
+    const n = normalizeInvoice(merged);
+    if (n.error) return res.status(400).json({ error: n.error });
+    const f = n.fields;
+    for (const [col, v] of Object.entries({ supplier_name: f.supplier_name, supplier_label: f.supplier_label ?? null, doc_type: f.doc_type, doc_number: f.doc_number ?? null, issued_on: f.issued_on, supply_amount: f.supply_amount ?? null, vat_amount: f.vat_amount ?? null, total_amount: f.total_amount, items_summary: f.items_summary ?? null })) {
+      if (String(v ?? "") !== String(cur[col] ?? "")) patch[col] = v;
+    }
+    const meta = { ...(cur.metadata || {}) };
+    const edited = Object.keys(patch).filter((k) => k !== "status");
+    if (edited.length) meta.humanEdited = [...new Set([...(meta.humanEdited || []), ...edited])];
+    if (n.amountMismatch) meta.amountMismatch = true;
+    else delete meta.amountMismatch;
+    if (JSON.stringify(meta) !== JSON.stringify(cur.metadata || {})) patch.metadata = meta;
   }
-  if (b.issuedOn !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.issuedOn))) return res.status(400).json({ error: "날짜는 YYYY-MM-DD 형식이어야 합니다." });
-    patch.issued_on = b.issuedOn;
-  }
-  if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
+  if (!Object.keys(patch).length) return res.json({ ok: true, unchanged: true, invoice: toApi(cur) });
   patch.updated_at = new Date().toISOString();
-  const { data, error } = await supabaseAdmin.from(TABLE).update(patch).eq("id", req.params.id).select().maybeSingle();
+  const { data, error } = await supabaseAdmin.from(TABLE).update(patch).eq("id", cur.id).select().maybeSingle();
   if (error) {
-    if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
+    if (error.code === "23505") return res.status(409).json({ error: "같은 공급처·문서번호의 기록이 이미 있습니다." });
     console.error("[supplier-invoices] 변경 실패:", error.message);
     return res.status(500).json({ error: "저장에 실패했습니다." });
   }
-  if (!data) return res.status(404).json({ error: "해당 매입 기록을 찾을 수 없습니다." });
-  logAdminAction(req, "supplier_invoice.update", "supplier_invoice", data.id, { status: data.status, total: data.total_amount });
+  const keys = Object.keys(patch).filter((k) => k !== "updated_at" && k !== "metadata");
+  logAdminAction(req, keys.length === 1 && keys[0] === "status" ? "supplier_invoice.status" : "supplier_invoice.update", "supplier_invoice", data.id, {
+    before: Object.fromEntries(keys.map((k) => [k, cur[k] ?? null])),
+    after: Object.fromEntries(keys.map((k) => [k, patch[k]])),
+  });
   res.json({ ok: true, invoice: toApi(data) });
 });
 
