@@ -6,7 +6,9 @@
      항목은 아래 PALETTE_ACTIONS에 한 줄씩 추가하면 된다. */
   const PALETTE_ACTIONS = [
     { label: "공급처 송장 직접 등록", keywords: "공급처 송장 입고 택배 등록", tab: "inventory", run: () => clickWhenReady("supplier-shipments-new") },
-    { label: "매입 직접 입력", keywords: "매입 장부 세금계산서 명세서 영수증", tab: "dashboard", run: () => clickWhenReady("supplier-invoices-new") },
+    { label: "지출 입력", keywords: "지출 매입 장부 경비 세금계산서 명세서 영수증 카드", tab: "expenses", run: () => clickWhenReady("exp-new") },
+    { label: "동업자 정산", keywords: "정산 동업자 나누기 송금", tab: "expenses", run: () => focusWhenReady("exp-settlement-panel") },
+    { label: "카드 내역 CSV 가져오기", keywords: "csv 카드 은행 가져오기 업로드", tab: "expenses", run: () => clickWhenReady("exp-import-toggle") },
     { label: "지금 점검하기(운영 점검)", keywords: "점검 마이그레이션 상태 오류 메일", tab: "settings", run: () => clickWhenReady("ops-check-run") },
     { label: "인수인계 노트 남기기", keywords: "인수인계 메모 노트", tab: "home", run: () => focusWhenReady("handoff-input") },
     { label: "월간 정산 엑셀 받기", keywords: "정산 엑셀 매출 리포트", tab: "dashboard", run: () => focusWhenReady("settle-month") },

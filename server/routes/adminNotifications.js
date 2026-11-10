@@ -43,7 +43,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns", severity: "warning" },
     { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors", severity: "critical" },
     { key: "supplierAwaitingReceipt", label: "공급처 도착·입고 처리 대기", count: (!supplierDelivered.error && supplierDelivered.count) || 0, tab: "inventory", severity: "info" },
-    { key: "invoicesPending", label: "확인 대기 매입", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "dashboard", severity: "info" },
+    { key: "invoicesPending", label: "확인 대기 지출", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "expenses", severity: "info" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
 });

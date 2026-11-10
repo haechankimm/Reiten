@@ -219,8 +219,6 @@
   }
 
   async function paintAdminDashboard() {
-    // 매입 장부는 대시보드 숫자와 따로 불러온다 — 한쪽이 실패해도 다른 쪽은 보이게(2026-11-11 점검)
-    if (typeof paintSupplierInvoices === "function") paintSupplierInvoices();
     const result = await adminFetch("/api/admin/dashboard");
     if (!result) return;
     renderDashboard(result);
@@ -298,12 +296,14 @@
     paymentlog: () => paintAdminPaymentLog(),
     notices: () => paintAdminNotices(),
     outbox: () => paintAdminOutbox(),
+    expenses: () => paintExpenses(),
   };
   const TAB_REFRESH_MS = 60000;
   const TAB_PANEL_IDS = {
     members: "admin-members", orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings",
     auditlog: "admin-auditlog", dashboard: "admin-dashboard", paymentlog: "admin-paymentlog", notices: "admin-notices", outbox: "admin-outbox",
+    expenses: "admin-expenses",
   };
   const tabLoadedAt = {};
   function tabHasUnsavedChanges(tab) {

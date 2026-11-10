@@ -41,6 +41,22 @@ function supplierSummary(rows, now = new Date()) {
   };
 }
 
+/* 지출 장부 브리핑용 — 이번 달 예산 80% 넘은 분류, 정산 대기(동업자 개인 돈으로 낸 확인된 공동 지출) */
+async function expenseBriefing(now) {
+  const ex = require("../lib/expenses");
+  const monthKey = kstMonthKey(now);
+  const b = ex.monthBounds(monthKey);
+  const [{ data: rows, error }, { data: budgets }, { data: partners }, { data: unsettledRows }] = await Promise.all([
+    supabaseAdmin.from("supplier_invoices").select("*").gte("issued_on", b.first).lt("issued_on", b.next).limit(5000),
+    supabaseAdmin.from("expense_budgets").select("*"),
+    supabaseAdmin.from("expense_partners").select("*"),
+    supabaseAdmin.from("supplier_invoices").select("*").is("settlement_id", null).eq("status", "CONFIRMED").neq("funded_by", "business").limit(5000),
+  ]);
+  if (error || !partners) return null;
+  const sum = ex.summarize(rows || [], { budgets: budgets || [] });
+  return { overBudget: sum.budgets.filter((x) => x.ratio >= 0.8), unsettled: ex.computeSettlement(unsettledRows || [], partners.map((p) => ({ ...p, share_percent: Number(p.share_percent) }))) };
+}
+
 router.get("/api/bot/briefing", botLimiter, requireBotKey, async (req, res) => {
   const now = new Date();
   const counts = await collectBriefingCounts().catch(() => ({}));
@@ -73,7 +89,13 @@ router.get("/api/bot/briefing", botLimiter, requireBotKey, async (req, res) => {
     if (suppliers.stalled.length) lines.push(`출고 ${STALLED_DAYS}일 넘게 도착 안 한 공급처 송장 ${suppliers.stalled.length}건`);
     if (suppliers.inTransit) lines.push(`공급처 배송 중 ${suppliers.inTransit}건`);
   }
-  if (invoices && invoices.pendingCount) lines.push(`매입 확인 대기 ${invoices.pendingCount}건 · ${invoices.pendingTotal.toLocaleString("ko-KR")}원(Works 대시보드 매입 장부)`);
+  if (invoices && invoices.pendingCount) lines.push(`지출 확인 대기 ${invoices.pendingCount}건 · ${invoices.pendingTotal.toLocaleString("ko-KR")}원(Works 지출·정산)`);
+  // 지출 장부(052): 예산 80% 넘은 분류, 아직 정산 안 된 동업자 개인 지출
+  const expense = await expenseBriefing(now).catch(() => null);
+  if (expense) {
+    for (const b of expense.overBudget) lines.push(`예산 ${Math.round(b.ratio * 100)}% 사용: ${b.label} ${b.spent.toLocaleString("ko-KR")}/${b.budget.toLocaleString("ko-KR")}원`);
+    if (expense.unsettled.count) lines.push(`동업자 정산 대기 ${expense.unsettled.count}건 · ${expense.unsettled.total.toLocaleString("ko-KR")}원` + expense.unsettled.transfers.map((t) => ` (${t.fromName}→${t.toName} ${t.amount.toLocaleString("ko-KR")}원)`).join(""));
+  }
   if (qna && qna.withoutDraft) lines.push(`답변 초안이 없는 문의 ${qna.withoutDraft}건`);
   if (trackingUsage && trackingUsage.remaining <= Math.ceil(trackingUsage.limit * 0.1)) lines.push(`배송조회 남은 한도 ${trackingUsage.remaining}/${trackingUsage.limit}건`);
 

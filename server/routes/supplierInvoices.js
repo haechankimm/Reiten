@@ -14,6 +14,24 @@ const { botWriteLimiter } = require("../lib/rateLimiters");
 const { requireBotKey, BOT_ACTOR_ID } = require("../lib/botAuth");
 const { monthRangeFromKey } = require("../lib/settlement");
 const { kstMonthKey } = require("../lib/kst");
+const { isMissingColumnError, extractMissingColumnName } = require("../lib/pgErrors");
+const { CATEGORIES, PAYMENT_METHODS, EVIDENCE_TYPES, vatDeductibility } = require("../lib/expenses");
+
+/* 지출 장부 칸(052) — 실행 전이면 이 칸만 빼고 다시 쓴다 */
+const EXPENSE_COLUMNS = ["category", "payment_method", "card_last4", "funded_by", "evidence_type", "memo", "shared", "settlement_id", "recurring_id", "recurring_month", "import_hash", "product_id"];
+async function writeWithExpenseColumns(run, payload) {
+  let current = { ...payload };
+  let result = await run(current);
+  for (let i = 0; i < EXPENSE_COLUMNS.length && result.error && isMissingColumnError(result.error); i++) {
+    const named = extractMissingColumnName(result.error);
+    const col = named && named in current ? named : EXPENSE_COLUMNS.find((c) => c in current);
+    if (!col) break;
+    const { [col]: _omit, ...rest } = current;
+    current = rest;
+    result = await run(current);
+  }
+  return result;
+}
 
 const router = express.Router();
 const TABLE = "supplier_invoices";
@@ -56,6 +74,21 @@ function normalizeInvoice(body) {
     if (typeof b.metadata !== "object" || Array.isArray(b.metadata) || JSON.stringify(b.metadata).length > 4000) return { error: "metadata는 4000자 이하의 객체여야 합니다" };
     metadata = b.metadata;
   }
+  // 지출 장부 칸(2026-11-11, 052) — 모두 선택. 빈 문자열은 "지우기"
+  const opt = (v) => (v === undefined ? undefined : v === null || v === "" ? null : v);
+  const category = opt(b.category);
+  if (category && !CATEGORIES[category]) return { error: `category는 ${Object.keys(CATEGORIES).join(", ")} 중 하나여야 합니다` };
+  const paymentMethod = opt(b.paymentMethod);
+  if (paymentMethod && !PAYMENT_METHODS[paymentMethod]) return { error: `paymentMethod는 ${Object.keys(PAYMENT_METHODS).join(", ")} 중 하나여야 합니다` };
+  const evidenceType = opt(b.evidenceType);
+  if (evidenceType && !EVIDENCE_TYPES[evidenceType]) return { error: `evidenceType은 ${Object.keys(EVIDENCE_TYPES).join(", ")} 중 하나여야 합니다` };
+  let cardLast4 = opt(b.cardLast4);
+  if (cardLast4) {
+    cardLast4 = String(cardLast4).replace(/\D/g, "").slice(-4);
+    if (cardLast4.length !== 4) return { error: "cardLast4는 카드 번호 뒤 4자리 숫자입니다(전체 번호는 저장하지 않음)" };
+  }
+  const fundedBy = opt(b.fundedBy);
+  if (fundedBy && !/^[a-z0-9_-]{1,40}$/i.test(fundedBy)) return { error: "fundedBy는 'business' 또는 동업자 id입니다" };
   // 공급가액+부가세가 합계와 다르면 저장은 하되 표시(사람이 확인할 때 보게)
   const amountMismatch = supply !== undefined && vat !== undefined && Math.abs(supply + vat - total) > 1;
   return {
@@ -70,6 +103,14 @@ function normalizeInvoice(body) {
       total_amount: total,
       items_summary: cleanText(b.itemsSummary, 1000),
       metadata: amountMismatch ? { ...metadata, amountMismatch: true } : metadata,
+      category: category === null ? "other" : category,
+      payment_method: paymentMethod,
+      card_last4: cardLast4,
+      funded_by: fundedBy === null ? "business" : fundedBy,
+      evidence_type: evidenceType,
+      memo: b.memo === undefined ? undefined : cleanText(b.memo, 1000) || null,
+      shared: b.shared === undefined ? undefined : b.shared !== false && b.shared !== "false",
+      product_id: b.productId === undefined ? undefined : cleanText(b.productId, 100) || null,
     },
     trackingNumber: String(b.trackingNumber || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase() || null,
     amountMismatch,
@@ -92,13 +133,25 @@ function toApi(r) {
     status: r.status,
     source: r.source || null,
     amountMismatch: !!(r.metadata && r.metadata.amountMismatch),
+    category: r.category || "purchase",
+    paymentMethod: r.payment_method || null,
+    cardLast4: r.card_last4 || null,
+    fundedBy: r.funded_by || "business",
+    evidenceType: r.evidence_type || null,
+    memo: r.memo || null,
+    shared: r.shared !== false,
+    settlementId: r.settlement_id || null,
+    recurringId: r.recurring_id || null,
+    productId: r.product_id || null,
+    vatDeductible: vatDeductibility(r),
     createdAt: r.created_at || null,
   };
 }
 
 const dropUndefined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
-router.post("/api/bot/supplier-invoices", botWriteLimiter, requireBotKey, async (req, res) => {
+/* /api/bot/expenses는 같은 기능의 새 이름(2026-11-11 지출 장부) — 매입 외 지출도 이 통로로 */
+router.post(["/api/bot/supplier-invoices", "/api/bot/expenses"], botWriteLimiter, requireBotKey, async (req, res) => {
   const n = normalizeInvoice(req.body);
   if (n.error) return res.status(400).json({ ok: false, error: n.error });
   const f = n.fields;
@@ -126,16 +179,11 @@ router.post("/api/bot/supplier-invoices", botWriteLimiter, requireBotKey, async 
       const humanEdited = (existing.metadata && existing.metadata.humanEdited) || [];
       const botPatch = dropUndefined({ ...f, metadata: { ...(existing.metadata || {}), ...f.metadata, humanEdited }, shipment_id: shipmentId, updated_at: nowIso });
       for (const col of humanEdited) delete botPatch[col];
-      const { data, error } = await supabaseAdmin
-        .from(TABLE)
-        .update(botPatch)
-        .eq("id", existing.id)
-        .select()
-        .single();
+      const { data, error } = await writeWithExpenseColumns((p) => supabaseAdmin.from(TABLE).update(p).eq("id", existing.id).select().single(), botPatch);
       if (error) throw error;
       row = data;
     } else {
-      const { data, error } = await supabaseAdmin.from(TABLE).insert(dropUndefined({ ...f, shipment_id: shipmentId, status: "RECORDED", source: "pickle", updated_at: nowIso })).select().single();
+      const { data, error } = await writeWithExpenseColumns((p) => supabaseAdmin.from(TABLE).insert(p).select().single(), dropUndefined({ ...f, shipment_id: shipmentId, status: "RECORDED", source: "pickle", updated_at: nowIso }));
       if (error) throw error;
       row = data;
       created = true;
@@ -184,11 +232,10 @@ router.post("/api/admin/supplier-invoices", requireAdmin, async (req, res) => {
   const n = normalizeInvoice(req.body);
   if (n.error) return res.status(400).json({ error: n.error });
   const nowIso = new Date().toISOString();
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .insert(dropUndefined({ ...n.fields, metadata: { ...n.fields.metadata, createdBy: req.user.email }, status: "CONFIRMED", source: "manual", updated_at: nowIso }))
-    .select()
-    .single();
+  const { data, error } = await writeWithExpenseColumns(
+    (p) => supabaseAdmin.from(TABLE).insert(p).select().single(),
+    dropUndefined({ ...n.fields, metadata: { ...n.fields.metadata, createdBy: req.user.email }, status: "CONFIRMED", source: "manual", updated_at: nowIso })
+  );
   if (error) {
     if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
     if (error.code === "23505") return res.status(409).json({ error: "같은 공급처·문서번호의 기록이 이미 있습니다." });
@@ -212,17 +259,31 @@ router.patch("/api/admin/supplier-invoices/:id", requireAdmin, async (req, res) 
     if (!STATUSES.includes(b.status)) return res.status(400).json({ error: "상태 값이 올바르지 않습니다." });
     patch.status = b.status;
   }
-  const fieldKeys = ["supplierName", "supplierLabel", "docType", "docNumber", "issuedOn", "supplyAmount", "vatAmount", "totalAmount", "itemsSummary"];
+  const fieldKeys = ["supplierName", "supplierLabel", "docType", "docNumber", "issuedOn", "supplyAmount", "vatAmount", "totalAmount", "itemsSummary",
+    "category", "paymentMethod", "cardLast4", "fundedBy", "evidenceType", "memo", "shared", "productId"];
+  // 동업자 정산에 들어간 지출은 금액·낸 사람·부담 방식·상태를 바꾸지 못한다(정산을 먼저 취소) — 정산 결과가 어긋나지 않게
+  if (cur.settlement_id) {
+    const locked = ["totalAmount", "fundedBy", "shared"].filter((k) => b[k] !== undefined && String(b[k]) !== String({ totalAmount: cur.total_amount, fundedBy: cur.funded_by, shared: cur.shared }[k]));
+    if (locked.length || (b.status !== undefined && b.status !== cur.status)) {
+      return res.status(409).json({ error: "동업자 정산에 포함된 지출입니다. 금액·낸 사람·상태를 바꾸려면 그 정산을 먼저 취소해 주세요." });
+    }
+  }
   if (fieldKeys.some((k) => b[k] !== undefined)) {
     const merged = {
       supplierName: cur.supplier_name, supplierLabel: cur.supplier_label, docType: cur.doc_type, docNumber: cur.doc_number, issuedOn: cur.issued_on,
       supplyAmount: cur.supply_amount, vatAmount: cur.vat_amount, totalAmount: cur.total_amount, itemsSummary: cur.items_summary,
+      category: cur.category, paymentMethod: cur.payment_method, cardLast4: cur.card_last4, fundedBy: cur.funded_by, evidenceType: cur.evidence_type,
+      memo: cur.memo, shared: cur.shared, productId: cur.product_id,
     };
     for (const k of fieldKeys) if (b[k] !== undefined) merged[k] = b[k] === "" ? null : b[k];
     const n = normalizeInvoice(merged);
     if (n.error) return res.status(400).json({ error: n.error });
     const f = n.fields;
-    for (const [col, v] of Object.entries({ supplier_name: f.supplier_name, supplier_label: f.supplier_label ?? null, doc_type: f.doc_type, doc_number: f.doc_number ?? null, issued_on: f.issued_on, supply_amount: f.supply_amount ?? null, vat_amount: f.vat_amount ?? null, total_amount: f.total_amount, items_summary: f.items_summary ?? null })) {
+    const expenseCols = cur.category === undefined ? {} : {
+      category: f.category ?? "other", payment_method: f.payment_method ?? null, card_last4: f.card_last4 ?? null, funded_by: f.funded_by ?? "business",
+      evidence_type: f.evidence_type ?? null, memo: f.memo ?? null, shared: f.shared !== false, product_id: f.product_id ?? null,
+    };
+    for (const [col, v] of Object.entries({ supplier_name: f.supplier_name, supplier_label: f.supplier_label ?? null, doc_type: f.doc_type, doc_number: f.doc_number ?? null, issued_on: f.issued_on, supply_amount: f.supply_amount ?? null, vat_amount: f.vat_amount ?? null, total_amount: f.total_amount, items_summary: f.items_summary ?? null, ...expenseCols })) {
       if (String(v ?? "") !== String(cur[col] ?? "")) patch[col] = v;
     }
     const meta = { ...(cur.metadata || {}) };
@@ -251,3 +312,5 @@ router.patch("/api/admin/supplier-invoices/:id", requireAdmin, async (req, res) 
 module.exports = router;
 module.exports.normalizeInvoice = normalizeInvoice;
 module.exports.parseAmount = parseAmount;
+module.exports.toApi = toApi;
+module.exports.writeWithExpenseColumns = writeWithExpenseColumns;

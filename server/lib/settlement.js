@@ -162,9 +162,9 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
         { label: "환불 건수(부분 환불 포함)", value: `${summary.refundCount}건` },
         { label: "환불 합계", value: won(summary.refundTotal) },
         { label: "순매출(매출-환불)", value: won(summary.netRevenue) },
-        { label: "매입 합계(확인된 것)", value: won(summary.purchaseTotal) },
-        { label: "매입 확인 대기", value: won(summary.purchasePending) },
-        { label: "순매출 - 매입", value: won(summary.grossProfit) },
+        { label: "지출 합계(확인된 것)", value: won(summary.purchaseTotal) },
+        { label: "지출 확인 대기", value: won(summary.purchasePending) },
+        { label: "순매출 - 지출", value: won(summary.grossProfit) },
       ],
     },
     {
@@ -206,7 +206,7 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
       rows: refundLines.map((r) => ({ ...r, at: fmtExportDate(r.at) })),
     },
     {
-      name: "매입 내역",
+      name: "지출 내역",
       columns: [
         { key: "issuedOn", label: "발행일" }, { key: "supplier", label: "공급처" }, { key: "docType", label: "문서" },
         { key: "docNumber", label: "문서번호" }, { key: "supply", label: "공급가액" }, { key: "vat", label: "부가세" },

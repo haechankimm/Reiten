@@ -77,6 +77,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M7 14.5h4"/></svg>
           <span data-i18n="결제 트랜잭션">결제 트랜잭션</span>
         </button>
+        <!-- 지출 장부·동업자 정산(2026-11-11, 052). js/expenses.js -->
+        <button type="button" class="nav-item" data-tab="expenses">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/><path d="M15.5 16.5l2 2 3-4"/></svg>
+          <span data-i18n="지출·정산">지출·정산</span>
+          <span class="nav-badge" id="nav-badge-expenses" hidden></span>
+        </button>
       </div>
     </div>
 
@@ -465,6 +471,67 @@
           <div id="admin-qna-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
         </div>
 
+        <div id="admin-expenses" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="지출·정산">지출·정산</div>
+              <div class="content-sub" data-i18n="사업 지출 기록·동업자 정산·예산·원가. 확인된 지출만 통계·정산·월간 정산 엑셀에 들어갑니다.">사업 지출 기록·동업자 정산·예산·원가. 확인된 지출만 통계·정산·월간 정산 엑셀에 들어갑니다.</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <input type="month" id="exp-month" style="max-width:170px">
+              <button type="button" class="btn btn--sm" id="exp-new" data-i18n="+ 지출 입력">+ 지출 입력</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="exp-import-toggle" data-i18n="CSV 가져오기">CSV 가져오기</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="exp-export-csv" data-i18n="장부 CSV">장부 CSV</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="exp-export-xlsx" data-i18n="장부 엑셀">장부 엑셀</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="exp-ai-copy" data-i18n="AI 피드백용 요약 복사">AI 피드백용 요약 복사</button>
+            </div>
+          </div>
+          <div id="exp-migration-note" class="notice" hidden data-i18n="DB 마이그레이션 052를 실행하면 지출 장부·동업자 정산을 쓸 수 있습니다.">DB 마이그레이션 052를 실행하면 지출 장부·동업자 정산을 쓸 수 있습니다.</div>
+          <div id="exp-newform" class="small"></div>
+          <div id="exp-import" class="panel" hidden></div>
+          <div id="exp-tiles" class="stat-row" style="margin-bottom:16px"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+            <div class="panel" style="flex:1 1 360px;min-width:0" id="exp-settlement-panel">
+              <b data-i18n="동업자 정산">동업자 정산</b>
+              <p class="small" style="color:var(--text-muted);margin:4px 0 10px" data-i18n="개인 돈으로 낸 공동 지출을 모아 비율대로 나눕니다. 정산 완료로 기록하면 그 지출은 다음 정산에서 빠지고, 취소하면 되돌아옵니다.">개인 돈으로 낸 공동 지출을 모아 비율대로 나눕니다. 정산 완료로 기록하면 그 지출은 다음 정산에서 빠지고, 취소하면 되돌아옵니다.</p>
+              <div id="exp-settlement"></div>
+              <details style="margin-top:10px"><summary class="small" data-i18n="정산 기록">정산 기록</summary><div id="exp-settlement-history" class="small" style="margin-top:6px"></div></details>
+            </div>
+            <div class="panel" style="flex:1 1 360px;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="분류별 지출·예산">분류별 지출·예산</b><button type="button" class="btn btn--sm btn--ghost" id="exp-budget-edit" data-i18n="예산 설정">예산 설정</button></div>
+              <div id="exp-categories" class="small" style="margin-top:10px"></div>
+              <div id="exp-trend" class="small" style="margin-top:12px"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+              <b data-i18n="지출 목록">지출 목록</b>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <select id="exp-f-status"><option value="" data-i18n="모든 상태">모든 상태</option><option value="RECORDED" data-i18n="확인 대기">확인 대기</option><option value="CONFIRMED" data-i18n="확인">확인</option><option value="REJECTED" data-i18n="제외">제외</option></select>
+                <select id="exp-f-category"><option value="" data-i18n="모든 분류">모든 분류</option></select>
+                <select id="exp-f-funded"><option value="" data-i18n="낸 사람 전체">낸 사람 전체</option></select>
+              </div>
+            </div>
+            <div id="exp-list" class="small" style="margin-top:8px"></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px">
+            <div class="panel" style="flex:1 1 360px;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="정기 지출">정기 지출</b><button type="button" class="btn btn--sm btn--ghost" id="exp-rec-new" data-i18n="+ 추가">+ 추가</button></div>
+              <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="서버비·구독료처럼 매달 나가는 돈. 결제일이 지나면 확인 대기로 자동 기록됩니다.">서버비·구독료처럼 매달 나가는 돈. 결제일이 지나면 확인 대기로 자동 기록됩니다.</p>
+              <div id="exp-recurring" class="small"></div>
+            </div>
+            <div class="panel" style="flex:2 1 460px;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="상품별 마진">상품별 마진</b><button type="button" class="btn btn--sm btn--ghost" id="exp-cost-save" data-i18n="원가 저장">원가 저장</button></div>
+              <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.">1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.</p>
+              <div id="exp-margin" class="small"></div>
+            </div>
+            <div class="panel" style="flex:1 1 360px;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="동업자 설정">동업자 설정</b><button type="button" class="btn btn--sm btn--ghost" id="exp-partners-save" data-i18n="저장">저장</button></div>
+              <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="이름·Works 로그인 이메일·부담 비율(합 100%). 이메일을 넣으면 지출 입력 때 낸 사람이 자동으로 내 이름이 됩니다.">이름·Works 로그인 이메일·부담 비율(합 100%). 이메일을 넣으면 지출 입력 때 낸 사람이 자동으로 내 이름이 됩니다.</p>
+              <div id="exp-partners" class="small"></div>
+            </div>
+          </div>
+        </div>
         <div id="admin-paymentlog" hidden>
           <div class="content-head">
             <div>
@@ -1064,20 +1131,6 @@
               <button type="button" class="btn btn--sm btn--ghost" id="settle-send" data-i18n="메일로 다시 보내기">메일로 다시 보내기</button>
             </div>
           </div>
-          <!-- 매입 장부(2026-11-10, 마이그레이션 050) — 실시간 에이전트 AI가 공급처 명세서·세금계산서 메일에서 기록, 사람이 확인. js/supplierInvoices.js -->
-          <div class="panel" id="supplier-invoices-panel">
-            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-              <b data-i18n="매입 장부">매입 장부</b>
-              <div style="display:flex;gap:6px;align-items:center">
-                <button type="button" class="btn btn--sm btn--ghost" id="supplier-invoices-new" data-i18n="+ 직접 입력">+ 직접 입력</button>
-                <input type="month" id="invoice-month" style="max-width:180px">
-              </div>
-            </div>
-            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="실시간 에이전트 AI가 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.">실시간 에이전트 AI가 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.</p>
-            <div id="supplier-invoices-totals" class="small" style="margin-bottom:8px"></div>
-            <div id="supplier-invoices-newform" class="small"></div>
-            <div id="supplier-invoices-list" class="small"></div>
-          </div>
           <div class="panel">
             <b data-i18n="아침 업무 요약 알림">아침 업무 요약 알림</b>
             <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.">매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.</p>
@@ -1270,7 +1323,7 @@
 <script src="js/home.js"></script>
 <script src="js/palette.js"></script>
 <script src="js/reports.js"></script>
-<script src="js/supplierInvoices.js"></script>
+<script src="js/expenses.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>
