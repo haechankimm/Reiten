@@ -8,7 +8,11 @@ const request = require("supertest");
 const { supabaseAdmin } = require("../lib/supabase");
 const { fakeAdminToken } = require("../test-helpers/fakeSupabase");
 const router = require("../routes/supplierShipments");
-const { normalizeBotShipment, buildUpdate, trackingUrl } = router;
+const { normalizeBotShipment, buildUpdate } = router;
+const { trackingUrl, findCarrier } = require("../lib/carriers");
+const supplierLib = require("../lib/supplierShipments");
+const budget = require("../lib/trackingBudget");
+const tracking = require("../lib/tracking");
 
 const KEY = "k".repeat(40);
 const ADMIN = { id: "admin-1", email: "admin@example.com" };
@@ -88,9 +92,9 @@ test("같은 공급처+송장번호는 한 줄로 갱신 — 상태는 앞으로
 
 test("입력 검사 — 필수값 누락·이상한 상태·날짜·metadata는 400", async () => {
   assert.strictEqual((await post({ ...SAMPLE, trackingNumber: "" })).status, 400);
-  assert.strictEqual((await post({ ...SAMPLE, carrierCode: undefined })).status, 400);
+  assert.strictEqual((await post({ ...SAMPLE, carrierCode: undefined, carrierName: undefined })).status, 400);
   assert.strictEqual((await post({ ...SAMPLE, trackingNumber: "12-3" })).status, 400);
-  assert.strictEqual((await post({ ...SAMPLE, carrierCode: "<script>" })).status, 400);
+  assert.strictEqual((await post({ ...SAMPLE, carrierCode: "<script>", carrierName: undefined })).status, 400);
   assert.strictEqual((await post({ ...SAMPLE, status: "RECEIVED" })).status, 400);
   assert.strictEqual((await post({ ...SAMPLE, shippedAt: "어제" })).status, 400);
   assert.strictEqual((await post({ ...SAMPLE, metadata: [1] })).status, 400);
@@ -111,9 +115,20 @@ test("buildUpdate — 관리자가 정한 입고 완료·취소는 봇이 바꾸
   assert.strictEqual(buildUpdate({ status: "SHIPPED" }, { status: "IN_TRANSIT" }, now).status, "IN_TRANSIT");
 });
 
-test("trackingUrl — 모르는 택배사는 링크 없음", () => {
-  assert.strictEqual(trackingUrl("kr.unknown", "123456"), null);
-  assert.match(trackingUrl("kr.epost", "1234567890123"), /epost\.go\.kr/);
+test("택배사 — 코드·이름 어느 쪽이든 같은 택배사로, 모르는 택배사는 네이버 검색 링크", () => {
+  assert.strictEqual(findCarrier("CJ대한통운").id, "kr.cjlogistics");
+  assert.strictEqual(findCarrier(null, "경동 택배").id, "kr.kdexp");
+  assert.match(trackingUrl("kr.epost", null, "1234567890123"), /epost\.go\.kr/);
+  assert.match(trackingUrl("kr.unknown", "새택배", "123456"), /search\.naver\.com.*123456/);
+});
+
+test("택배사 이름만 와도 등록 — 표에 있으면 코드로 바꾸고, 없으면 etc + 이름 보관", async () => {
+  const a = (await post({ ...SAMPLE, carrierCode: undefined, carrierName: "경동택배", trackingNumber: "KD1234567" })).body.shipment;
+  assert.strictEqual(a.carrierCode, "kr.kdexp");
+  const b = (await post({ ...SAMPLE, supplierName: "원단도매A", supplierLabel: "원단도매 A상사", carrierCode: undefined, carrierName: "어느화물", trackingNumber: "99887766" })).body.shipment;
+  assert.strictEqual(b.carrierCode, "etc");
+  assert.strictEqual(b.carrierName, "어느화물");
+  assert.strictEqual(b.supplierLabel, "원단도매 A상사");
 });
 
 test("Works 목록·입고 처리 — 관리자만, 기본은 진행 중만 보이고 입고 완료하면 빠진다", async () => {
@@ -134,4 +149,79 @@ test("Works 목록·입고 처리 — 관리자만, 기본은 진행 중만 보�
   list = await request(app()).get("/api/admin/supplier-shipments?status=RECEIVED").set(auth);
   assert.strictEqual(list.body.items.length, 1);
   assert.strictEqual((await request(app()).patch("/api/admin/supplier-shipments/none").set(auth).send({ status: "RECEIVED" })).status, 404);
+});
+
+/* ---------- 스마트택배 배송조회(049) ---------- */
+const NOW = new Date("2026-11-12T03:00:00.000Z");
+const shippedRow = (over = {}) => ({ id: "s1", supplier_name: "printcanvas", carrier_code: "kr.cjlogistics", tracking_number: "601373483215", status: "SHIPPED", shipped_at: "2026-11-10T00:00:00.000Z", tracking_checked_at: null, ...over });
+const fetchDelivered = async () => ({ ok: true, json: async () => ({ complete: true, level: 6, trackingDetails: [{ timeString: "2026-11-11 10:00", where: "성수", kind: "집화처리" }, { timeString: "2026-11-12 11:00", where: "강남", kind: "배달완료" }] }) });
+
+function withKey(fn) {
+  return async () => {
+    process.env.SWEETTRACKER_API_KEY = "test-key";
+    budget._resetMemory();
+    tracking._resetCompanyCache();
+    try { await fn(); } finally { delete process.env.SWEETTRACKER_API_KEY; delete process.env.SWEETTRACKER_MONTHLY_LIMIT; }
+  };
+}
+
+test("크론 — 배송완료면 DELIVERED·단계 기록 저장, 사용량 1건", withKey(async () => {
+  supabaseAdmin.__reset({ supplier_shipments: [shippedRow()], api_usage_monthly: [] });
+  const r = await supplierLib.checkSupplierShipments({ now: NOW, fetchImpl: fetchDelivered });
+  assert.deepStrictEqual(r, { checked: 1, delivered: 1 });
+  const row = (await rows())[0];
+  assert.strictEqual(row.status, "DELIVERED");
+  assert.strictEqual(row.tracking_status, "배달완료");
+  assert.strictEqual(row.tracking_events.length, 2);
+  assert.strictEqual((await budget.usage(supabaseAdmin, NOW)).calls, 1);
+}));
+
+test("크론 — 방금 조회한 송장은 다시 조회하지 않고, 입고 완료·취소는 대상 아님", withKey(async () => {
+  supabaseAdmin.__reset({
+    supplier_shipments: [
+      shippedRow({ tracking_checked_at: new Date(NOW.getTime() - 3600e3).toISOString() }),
+      shippedRow({ id: "s2", status: "RECEIVED" }),
+      shippedRow({ id: "s3", status: "CANCELED" }),
+    ],
+  });
+  const r = await supplierLib.checkSupplierShipments({ now: NOW, fetchImpl: fetchDelivered });
+  assert.strictEqual(r.checked, 0);
+}));
+
+test("월간 한도를 다 쓰면 조회하지 않는다", withKey(async () => {
+  process.env.SWEETTRACKER_MONTHLY_LIMIT = "1";
+  supabaseAdmin.__reset({ supplier_shipments: [shippedRow(), shippedRow({ id: "s2", tracking_number: "111122223333" })], api_usage_monthly: [] });
+  let calls = 0;
+  const r = await supplierLib.checkSupplierShipments({ now: NOW, fetchImpl: async (...a) => { calls++; return fetchDelivered(...a); } });
+  assert.strictEqual(r.checked, 1);
+  assert.strictEqual(calls, 1);
+}));
+
+test("표에 스마트택배 코드가 없는 택배사는 택배사 목록 API에서 이름으로 찾는다", withKey(async () => {
+  supabaseAdmin.__reset({ supplier_shipments: [shippedRow({ carrier_code: "kr.kdexp", carrier_name: "경동택배" })] });
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(url);
+    if (url.includes("companylist")) return { ok: true, json: async () => ({ Company: [{ Code: "23", Name: "경동택배" }] }) };
+    return fetchDelivered();
+  };
+  await supplierLib.checkSupplierShipments({ now: NOW, fetchImpl });
+  assert.ok(urls.some((u) => u.includes("t_code=23")));
+}));
+
+test("Works 배송조회 버튼 — 키 없으면 400, 있으면 조회해 단계 기록을 돌려준다", async () => {
+  supabaseAdmin.__reset({ profiles: [{ id: ADMIN.id, role: "admin" }], supplier_shipments: [shippedRow()] });
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+  assert.strictEqual((await request(app()).post("/api/admin/supplier-shipments/s1/track").set(auth)).status, 400);
+  const list = await request(app()).get("/api/admin/supplier-shipments").set(auth);
+  assert.strictEqual(list.body.trackingEnabled, false);
+  assert.deepStrictEqual(list.body.suppliers.map((p) => p.name), ["printcanvas"]);
+});
+
+test("patchFromResult — 조회 오류는 오류만 기록하고 상태는 그대로", () => {
+  const p = supplierLib.patchFromResult(shippedRow(), { error: "키 만료" }, NOW);
+  assert.strictEqual(p.tracking_error, "키 만료");
+  assert.strictEqual(p.status, undefined);
+  const q = supplierLib.patchFromResult(shippedRow({ status: "RECEIVED" }), { delivered: true, events: [] }, NOW);
+  assert.strictEqual(q.status, undefined);
 });

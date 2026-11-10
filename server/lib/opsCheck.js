@@ -3,6 +3,7 @@
    알림과 Works "정보" 탭의 운영 점검 패널이 같은 점검표를 본다. 외부 서비스에 실제로 요청을 보내지는 않고
    (요금·부작용 없음) 환경변수 설정 상태와 최근 오류 기록·DB 마이그레이션 상태만 확인한다.
    level: "error"(지금 고객에게 영향) / "warn"(곧 문제 되거나 기능이 꺼져 있음) / "ok" */
+const trackingBudget = require("./trackingBudget");
 const { supabaseAdmin } = require("./supabase");
 
 function envSet(name) {
@@ -49,6 +50,22 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const { error: shipErr } = await db.from("supplier_shipments").select("id").limit(1);
   if (shipErr) out.push({ level: "warn", key: "migration_048", label: "DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)" });
   else out.push({ level: "ok", key: "migration_048", label: "DB 마이그레이션 048" });
+  // 049 — 공급처 송장 배송조회 결과 칸 + 스마트택배 월간 사용량 표(2026-11-10)
+  const { error: trkErr0 } = await db.from("supplier_shipments").select("tracking_checked_at").limit(1);
+  const trkErr = trkErr0 || (await db.from("api_usage_monthly").select("key").limit(1)).error;
+  if (trkErr) out.push({ level: "warn", key: "migration_049", label: "DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)" });
+  else out.push({ level: "ok", key: "migration_049", label: "DB 마이그레이션 049" });
+  // 스마트택배 월간 한도·키 오류(무료 키는 한 달마다 새로 발급해야 함)
+  if (envSet("SWEETTRACKER_API_KEY")) {
+    const u = await trackingBudget.usage(db, now).catch(() => null);
+    if (u) {
+      if (u.remaining <= 0) out.push({ level: "warn", key: "tracking_budget", label: `이번 달 배송조회 한도(${u.limit}건)를 다 썼습니다 — 다음 달 1일까지 자동 배송조회가 멈춥니다`, i18n: { key: "이번 달 배송조회 한도({n}건)를 다 썼습니다 — 다음 달 1일까지 자동 배송조회가 멈춥니다", vars: { n: u.limit } } });
+      else out.push({ level: "ok", key: "tracking_budget", label: `배송조회 이번 달 ${u.calls}/${u.limit}건 사용`, i18n: { key: "배송조회 이번 달 {a}/{b}건 사용", vars: { a: u.calls, b: u.limit } } });
+      if (u.lastError && u.lastErrorAt && now.getTime() - new Date(u.lastErrorAt).getTime() < 24 * 3600 * 1000) {
+        out.push({ level: "warn", key: "tracking_error", label: `최근 배송조회 실패: ${u.lastError} — 키가 만료됐으면 스마트택배에서 새 키를 받아 Render SWEETTRACKER_API_KEY를 바꾸세요`, i18n: { key: "최근 배송조회 실패: {msg} — 키가 만료됐으면 스마트택배에서 새 키를 받아 Render SWEETTRACKER_API_KEY를 바꾸세요", vars: { msg: u.lastError } } });
+      }
+    }
+  }
 
   const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
   const { data: mailFails } = await db.from("system_error_log").select("id").eq("type", "notification_failed").gte("created_at", since);
