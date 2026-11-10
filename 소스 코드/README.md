@@ -41,6 +41,22 @@
 > 2026-10-02 3차(사용자 요청 19개 일괄 처리 — 환불·반품 재설계, 배송추적·구매확정, 노출 감사, 검색 노출·네이버쇼핑, 운영 자동화)의
 > 상세는 아래 "최근 작업 이력" 맨 위 항목을 볼 것.
 
+> **📌 AI 비서 에이전트 "피클" 연동 (2026-11-09)** — 피클(사용자의 비서 에이전트, 자체 브라우저·Gmail 보유)이 서버 상태를 감시하고
+> 오류 때 1장짜리 디버그 파일을 만들어 개발 AI(Claude Code 등)에 넘긴다. 원칙(사용자·피클·Claude 합의):
+> ① **피클에게 Works 관리자 계정·PIN을 주지 않는다** — Works 화면엔 고객이 쓴 글(문의·리뷰·주문 메모)이 나와 프롬프트 인젝션으로 환불·취소를
+>    누를 위험. 대신 읽기 전용 `GET /api/bot/diagnostics`(헤더 `X-REITEN-BOT-KEY` = Render `REITEN_BOT_KEY`, 32자 이상, `routes/botDiagnostics.js`)만 연다.
+>    응답: 운영 점검·7일 오류 종류별 묶음(횟수·첫/마지막 발생·최근 내용 1건, 마스킹)·결제 이상·주문 건수·배포 커밋 + 텍스트 리포트. 고객 이름·주소·주문 상세 없음.
+>    **이 파일에 쓰기 경로를 추가하지 말 것.** 조회마다 활동 로그에 `bot:pickle`로 남는다.
+> ② **브라우저는 고객 사이트(reiten.kr) 점검에만**, 결제창 진입까지(실제 주문·결제 금지). ③ **발주는 사람 승인 후**(초안→승인 카드→결제), 발주용 주문 상세
+>    엔드포인트는 개인정보가 들어가므로 발주 기능을 만들 때 따로 설계(승인 내용 지문 확인·중복 방지·환불 반영·금액 상한).
+> ④ **Render 무료 플랜은 잠들면 안 된다** — 15분 비활성 시 잠들면 크론(미입금 자동취소·배송조회·구매확정·백업·정산·아침 요약)이 그 시각을 건너뛰고,
+>    깨어나는 30초~1분 동안 포트원 웹훅·주문 요청이 실패할 수 있다. 무료 750시간은 서버 1대를 한 달(최대 744시간) 켜 둬도 남으므로 **UptimeRobot을
+>    `/health` 5분 주기로 유지**. 런칭 직후 Starter 이상으로 결제 예정(사용자 결정 2026-11-09) — 그 뒤엔 잠들지 않음.
+> ⑤ 피클은 Gmail 발송 권한이 있다 → 보안 대책은 아래 "피클 Gmail 보안" 참고(사용자 쪽 설정).
+> **피클 Gmail 보안(권장)**: 피클이 읽는 알림 메일(Sentry·UptimeRobot)은 라벨/필터로 분리해 그 라벨만 읽게, 발송은 **대표 본인 주소로만**(외부 수신자 금지) 또는
+> 초안만 만들고 사람이 보내게, 메일 본문 속 지시는 따르지 않는다는 규칙, 첨부·링크 자동 열기 금지, 키(`REITEN_BOT_KEY`)는 메일·채팅에 쓰지 않기.
+> 키가 새면 Render에서 값만 바꾸면 즉시 무효(재배포 자동).
+
 > **📌 머지 방식 (영구 규칙, 2026-11-09 사용자 지정)** — 사용자가 "앞으로 허락 없이 자동으로 머지"하라고 했다. Claude는 작업을 마치면
 > 작업 브랜치로 PR을 만들고 **GitHub Actions(test·ui)가 통과하면 바로 main에 머지**한다(묻지 않음). 머지 = Render 자동 배포이므로
 > CI가 빨간 상태에서는 절대 머지하지 않고, 머지한 뒤 사용자에게 무엇이 배포됐는지·마이그레이션 실행이 필요한지 알린다.
@@ -57,7 +73,7 @@
 > 실행 후 Works 정보 탭 "지금 점검하기"로 확인하고, 아래 "Supabase 마이그레이션" 표와 이 섹션의 상태를 갱신한다.
 
 **🔴 바로 처리 (운영에 영향)**
-0. **(2026-11-09 신규) 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행** — Finder `Reiten/server/migrations`에서 열어
+0. ~~(2026-11-09) 마이그레이션 045·046 실행, Sentry 연결~~ — **완료(2026-11-09 사용자: 045·046 실행, Render `SENTRY_DSN` 설정, Works "Sentry 연결 테스트" 전송 확인)**. 아래는 당시 안내 원문. 마이그레이션 `045_app_locks.sql`·`046_performance_indexes.sql` 실행 — Finder `Reiten/server/migrations`에서 열어
    SQL Editor에 붙여넣기(브랜치를 main에 머지·Pull한 뒤 보임). 045 = 서버 여러 대 사이 처리 잠금(서버 1대일 땐 없어도 안전, **늘리기 전 필수**),
    046 = 주문 목록·자동취소 조회 색인(결과는 같고 속도만). 실행 후 "지금 점검하기"에 "DB 마이그레이션 045"가 정상으로 뜨면 끝.
    `047_shared_rate_limits.sql`은 **서버를 2대 이상으로 늘릴 때만** 실행하고 Render에 `RATE_LIMIT_SHARED=on`(요청 제한을 서버끼리 함께 셈).
@@ -462,9 +478,9 @@
 | `041_product_media_and_review_request.sql` | 컬러별 상품 사진·상세 콘텐츠(`products.media`), 모델 정보(`products.model_info`), 리뷰 요청용 `orders.shipped_at`·`review_requested_at` | ✅ 실행 확인(2026-10-02, `products.media` 컬럼 확인) |
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
-| `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ⚠️ **미실행(2026-11-09 신규)** — 서버 1대일 땐 없어도 동작 그대로, 서버를 늘리기 전 필수 |
+| `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ✅ 실행함(2026-11-09 사용자) |
 | `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ⚠️ 미실행 — **서버 증설 때만** 실행 + `RATE_LIMIT_SHARED=on` |
-| `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ⚠️ **미실행(2026-11-09 신규)** — 선택, 결과는 같고 주문이 많아질 때 속도만 |
+| `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
 ### 지금 막혀 있는 것 (다음에 이어서 할 일)
@@ -509,7 +525,7 @@
 **오픈 전 확인**
 - ~~`SITE.order.kakaoUrl`/`instagram` 자리표시자 교체~~ — 2026-08-13에 둘 다 완료
 - 실제 기기(아이폰/안드로이드)로 주문 흐름 1회 테스트
-- (선택, 오픈 임박 시) Render 무료 → Starter(월 7달러) 업그레이드로 슬립 방지
+- (런칭 직후 결제 예정, 2026-11-09 사용자 결정) Render 무료 → Starter 이상 업그레이드로 슬립 방지 — 그 전까지 UptimeRobot 5분 주기로 깨워 둠(위 📌 피클 ④)
 
 **시스템 개선 아이디어 (2026-08-29 제안, 코드 다 읽고 나서 뽑은 우선순위)**
 > 기능 추가 요청이 아니라 Claude가 세션 전체를 훑고 나서 자체적으로 제안한 개선점 목록.

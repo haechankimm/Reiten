@@ -47,6 +47,7 @@ const adminOrdersRoutes = require("./routes/adminOrders");
 const inventoryRoutes = require("./routes/inventory");
 const couponsRoutes = require("./routes/coupons");
 const clientErrorsRoutes = require("./routes/clientErrors");
+const botDiagnosticsRoutes = require("./routes/botDiagnostics");
 const { assertNoRouteShadowing } = require("./lib/routeShadowing");
 const { htmlWithVersions, immutableAssets } = require("./lib/assetVersion");
 
@@ -200,6 +201,8 @@ app.use(
 app.use(checkoutRoutes);
 /* 화면(브라우저) 자바스크립트 오류 보고 — Sentry·서버 로그로(2026-11-09) */
 app.use(clientErrorsRoutes);
+/* AI 비서 에이전트 전용 읽기 전용 진단(X-REITEN-BOT-KEY, 2026-11-09) */
+app.use(botDiagnosticsRoutes);
 
 /* GET /health는 routes/health.js에서 가져온다 — UptimeRobot이 DB 연결까지 확인할 수 있는
    전용 엔드포인트(2026-09-01 추가, 위 0번 섹션 참고). */
