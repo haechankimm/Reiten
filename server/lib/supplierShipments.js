@@ -4,13 +4,37 @@
 const { supabaseAdmin } = require("./supabase");
 const tracking = require("./tracking");
 const carriers = require("./carriers");
-const { isMissingSchemaError, isMissingColumnError } = require("./pgErrors");
+const { isMissingSchemaError, isMissingColumnError, extractMissingColumnName } = require("./pgErrors");
+
+/* 나중 마이그레이션(049·050)에서 생긴 칸 — 아직 실행 전이면 그 칸만 빼고 다시 쓴다. */
+const OPTIONAL_COLUMNS = ["supplier_label", "tracking_checked_at", "tracking_status", "tracking_events", "tracking_error", "receipt_items", "received_at", "tracking_source"];
+
+/* run(payload) → Supabase 결과. 없는 칸 오류면 그 칸(이름을 모르면 선택 칸 하나)을 빼고 재시도. */
+async function writeWithOptionalColumns(run, payload) {
+  let current = { ...payload };
+  let result = await run(current);
+  for (let i = 0; i < OPTIONAL_COLUMNS.length && result.error && isMissingColumnError(result.error); i++) {
+    const named = extractMissingColumnName(result.error);
+    const col = named && named in current ? named : OPTIONAL_COLUMNS.find((c) => c in current);
+    if (!col) break;
+    const { [col]: _omit, ...rest } = current;
+    current = rest;
+    result = await run(current);
+  }
+  return result;
+}
 
 const TABLE = "supplier_shipments";
 /* 상태 순서 — 봇·자동 조회는 앞으로만 간다. RECEIVED(입고 완료)·CANCELED(취소)는 관리자가 Works에서만 정한다. */
 const STATUS_RANK = { SHIPPED: 1, IN_TRANSIT: 2, DELIVERED: 3, RECEIVED: 4 };
 const OPEN_STATUSES = ["SHIPPED", "IN_TRANSIT", "DELIVERED"];
 const HOUR = 3600 * 1000;
+
+/* 공급처 송장 배송조회 담당 — 기본은 피클(공식 조회 페이지를 보고 POST /api/bot/supplier-shipments/:id/tracking으로 보냄, 비용 0원).
+   Render SUPPLIER_TRACKING_PROVIDER=sweettracker로 바꾸면 서버가 스마트택배로 직접 조회한다(월간 한도를 고객 주문과 나눠 씀). (2026-11-10 사용자 결정) */
+function supplierTrackingProvider(env = process.env) {
+  return String(env.SUPPLIER_TRACKING_PROVIDER || "pickle").toLowerCase() === "sweettracker" ? "sweettracker" : "pickle";
+}
 
 /* 자동 조회 간격 — 무료 플랜(월 100건)을 고객 주문과 나눠 쓰므로 기본은 넉넉히 12시간. 유료면 Render SUPPLIER_TRACKING_RECHECK_HOURS로 줄인다. */
 function recheckHours(env = process.env) {
@@ -37,6 +61,9 @@ function toApi(r) {
     trackingStatus: r.tracking_status || null,
     trackingEvents: Array.isArray(r.tracking_events) ? r.tracking_events : [],
     trackingError: r.tracking_error || null,
+    receiptItems: Array.isArray(r.receipt_items) ? r.receipt_items : [],
+    receivedAt: r.received_at || null,
+    trackingSource: r.tracking_source || null,
     metadata: r.metadata || {},
     createdAt: r.created_at || null,
     updatedAt: r.updated_at || null,
@@ -68,7 +95,8 @@ async function trackShipment(row, { db = supabaseAdmin, now = new Date(), fetchI
     ? await tracking.trackWithBudget({ code, invoice: row.tracking_number, db, now, fetchImpl })
     : { error: "스마트택배에서 지원하는 택배사를 찾지 못했습니다" };
   if (r.budgetExhausted) return { error: r.error, budgetExhausted: true };
-  const { data, error } = await db.from(TABLE).update(patchFromResult(row, r, now)).eq("id", row.id).select().maybeSingle();
+  const patch = { ...patchFromResult(row, r, now), tracking_source: "sweettracker" };
+  const { data, error } = await writeWithOptionalColumns((p) => db.from(TABLE).update(p).eq("id", row.id).select().maybeSingle(), patch);
   if (error) {
     if (isMissingColumnError(error) || isMissingSchemaError(error)) return { error: "배송조회 결과 칸이 없습니다(마이그레이션 049 미실행)", noMigration: true };
     return { error: error.message };
@@ -78,6 +106,7 @@ async function trackShipment(row, { db = supabaseAdmin, now = new Date(), fetchI
 
 /* [크론] 진행 중인 공급처 송장 자동 조회 — 출고 6시간 뒤부터, 같은 송장은 recheckHours마다, 출고 21일이 지나면 그만. 회차당 최대 10건. */
 async function checkSupplierShipments({ db = supabaseAdmin, now = new Date(), fetchImpl } = {}) {
+  if (supplierTrackingProvider() !== "sweettracker") return { checked: 0, delivered: 0, skipped: "pickle" };
   if (!tracking.isConfigured()) return { checked: 0, delivered: 0, skipped: "no_key" };
   const { data, error } = await db
     .from(TABLE)
@@ -102,4 +131,4 @@ async function checkSupplierShipments({ db = supabaseAdmin, now = new Date(), fe
   return { checked, delivered };
 }
 
-module.exports = { TABLE, STATUS_RANK, OPEN_STATUSES, toApi, patchFromResult, trackShipment, checkSupplierShipments, recheckHours };
+module.exports = { writeWithOptionalColumns, OPTIONAL_COLUMNS, TABLE, STATUS_RANK, OPEN_STATUSES, toApi, patchFromResult, trackShipment, checkSupplierShipments, recheckHours, supplierTrackingProvider };

@@ -16,7 +16,10 @@ const { requireBotKey, BOT_ACTOR_ID } = require("../lib/botAuth");
 const carriers = require("../lib/carriers");
 const tracking = require("../lib/tracking");
 const budget = require("../lib/trackingBudget");
-const { TABLE, STATUS_RANK, OPEN_STATUSES, toApi, trackShipment } = require("../lib/supplierShipments");
+const { TABLE, STATUS_RANK, OPEN_STATUSES, toApi, trackShipment, patchFromResult, supplierTrackingProvider, recheckHours, writeWithOptionalColumns } = require("../lib/supplierShipments");
+const { botLimiter } = require("../lib/rateLimiters");
+const { logInventoryChange, logSystemError } = require("../lib/adminLog");
+const { notifyRestockSubscribers } = require("./inventory");
 
 const router = express.Router();
 
@@ -37,6 +40,29 @@ function parseDate(v) {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return { error: true };
   return { value: d.toISOString() };
+}
+
+/* 입고 품목 [{ productId?, color?, size?, qty, name? }] — 피클 초안은 상품을 못 찾았으면 name만 있어도 된다(사람이 Works에서 고른다).
+   Works 입고 확정 때는 productId·color·size가 모두 있어야 한다(requireProduct). undefined면 이번 요청에서 안 바꿈. */
+function parseReceiptItems(v, { requireProduct }) {
+  if (v === undefined || v === null) return { items: undefined };
+  if (!Array.isArray(v) || v.length > 50) return { error: "receiptItems는 50개 이하의 배열이어야 합니다" };
+  const items = [];
+  for (const it of v) {
+    const qty = Math.floor(Number(it && it.qty));
+    if (!Number.isFinite(qty) || qty < 1 || qty > 100000) return { error: "입고 수량(qty)은 1~100000 사이 정수여야 합니다" };
+    const row = {
+      productId: cleanText(it.productId, 100) || null,
+      color: cleanText(it.color, 40) || null,
+      size: cleanText(it.size, 20) || null,
+      qty,
+      name: cleanText(it.name, 100) || null,
+    };
+    if (requireProduct && !(row.productId && row.color && row.size)) return { error: "재고에 더할 품목은 상품·색상·사이즈가 모두 있어야 합니다" };
+    if (!requireProduct && !row.productId && !row.name) return { error: "입고 품목에는 productId 또는 name이 필요합니다" };
+    items.push(row);
+  }
+  return { items };
 }
 
 /* 봇 요청 본문 → 저장할 값(snake_case). 순수 함수(테스트용). { fields } 또는 { error } */
@@ -66,6 +92,9 @@ function normalizeBotShipment(body) {
   const delivered = parseDate(b.deliveredAt);
   if (shipped.error || delivered.error) return { error: "날짜 형식이 올바르지 않습니다(ISO 8601)" };
 
+  const receipt = parseReceiptItems(b.receiptItems, { requireProduct: false });
+  if (receipt.error) return { error: receipt.error };
+
   let metadata;
   if (b.metadata !== undefined && b.metadata !== null) {
     if (typeof b.metadata !== "object" || Array.isArray(b.metadata)) return { error: "metadata는 객체여야 합니다" };
@@ -84,6 +113,7 @@ function normalizeBotShipment(body) {
       items_summary: cleanText(b.itemsSummary, 1000),
       recipient_name: cleanText(b.recipientName, 50),
       status,
+      receipt_items: receipt.items,
       shipped_at: shipped.value,
       delivered_at: delivered.value,
       metadata,
@@ -106,6 +136,7 @@ function buildUpdate(existing, fields, nowIso) {
   const cur = existing.status;
   if (fields.status && cur !== "CANCELED" && (STATUS_RANK[fields.status] || 0) > (STATUS_RANK[cur] || 0)) patch.status = fields.status;
   if (fields.metadata) patch.metadata = { ...(existing.metadata || {}), ...fields.metadata };
+  if (existing.received_at) delete patch.receipt_items; // 이미 입고 처리된 품목은 바꾸지 않는다
   if ((patch.status || cur) === "DELIVERED" && !existing.delivered_at && !patch.delivered_at) patch.delivered_at = nowIso;
   patch.updated_at = nowIso;
   return patch;
@@ -117,12 +148,6 @@ function buildInsert(fields, nowIso) {
   if (row.status === "DELIVERED" && !row.delivered_at) row.delivered_at = nowIso;
   row.updated_at = nowIso;
   return row;
-}
-
-/* 049(공급처 표시 이름 칸) 실행 전에도 기록은 되게 */
-function without049(fields) {
-  const { supplier_label, ...rest } = fields;
-  return rest;
 }
 
 /* 실제 DB의 id는 uuid라, 형식이 다른 값으로 조회하면 "없음"(404)이 아니라 Postgres 형식 오류(500)가 났다(2026-11-10 점검) — 미리 거른다. */
@@ -147,8 +172,7 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
     let created = false;
     let row;
     if (!existing) {
-      let ins = await supabaseAdmin.from(TABLE).insert(buildInsert(fields, nowIso)).select().single();
-      if (ins.error && isMissingColumnError(ins.error)) ins = await supabaseAdmin.from(TABLE).insert(buildInsert(without049(fields), nowIso)).select().single();
+      const ins = await writeWithOptionalColumns((p) => supabaseAdmin.from(TABLE).insert(p).select().single(), buildInsert(fields, nowIso));
       if (ins.error && ins.error.code === "23505") {
         // 같은 메일을 거의 동시에 두 번 보낸 경우 — 먼저 들어간 행을 갱신한다.
         ({ data: existing, error } = await findExisting(fields.supplier_name, fields.tracking_number));
@@ -161,8 +185,7 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
       }
     }
     if (!row) {
-      let upd = await supabaseAdmin.from(TABLE).update(buildUpdate(existing, fields, nowIso)).eq("id", existing.id).select().single();
-      if (upd.error && isMissingColumnError(upd.error)) upd = await supabaseAdmin.from(TABLE).update(buildUpdate(existing, without049(fields), nowIso)).eq("id", existing.id).select().single();
+      const upd = await writeWithOptionalColumns((p) => supabaseAdmin.from(TABLE).update(p).eq("id", existing.id).select().single(), buildUpdate(existing, fields, nowIso));
       if (upd.error) throw upd.error;
       row = upd.data;
     }
@@ -220,7 +243,8 @@ router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
     if (OPEN_STATUSES.includes(r.status)) cur.open++;
     bySupplier.set(r.supplier_name, cur);
   }
-  const trackingEnabled = tracking.isConfigured();
+  // Works "배송조회" 버튼은 서버가 스마트택배로 조회하는 설정일 때만(기본은 피클 담당)
+  const trackingEnabled = tracking.isConfigured() && supplierTrackingProvider() === "sweettracker";
   const usage = trackingEnabled ? await budget.usage(supabaseAdmin).catch(() => null) : null;
   res.json({
     items: (data || []).map(toApi),
@@ -263,7 +287,140 @@ router.patch("/api/admin/supplier-shipments/:id", requireAdmin, notFoundUnlessUu
   res.json({ ok: true, shipment: toApi(data) });
 });
 
+/* ---------- 피클 배송조회(2026-11-10, 비용 0원 방식) ----------
+   ① GET  /api/bot/supplier-shipments/pending — 지금 조회해야 할 공급처 송장(출고·배송중, 출고 21일 이내, 마지막 조회가 12시간 이상 전).
+      피클은 각 줄의 trackingUrl(택배사 공식 조회 화면)을 열어 상태를 읽는다. 받는 사람 이름 등 개인정보는 주지 않는다.
+   ② POST /api/bot/supplier-shipments/:id/tracking — 피클이 읽은 결과 { delivered, statusText, events[], deliveredAt? } 또는 { error }.
+      상태는 앞으로만(출고→배송중→배송완료), 입고 완료·취소는 건드리지 못한다. */
+router.get("/api/bot/supplier-shipments/pending", botLimiter, requireBotKey, async (req, res) => {
+  const now = new Date();
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 30));
+  const base = () =>
+    supabaseAdmin
+      .from(TABLE)
+      .select("*")
+      .in("status", ["SHIPPED", "IN_TRANSIT"])
+      .gte("shipped_at", new Date(now.getTime() - 21 * 86400000).toISOString())
+      .order("shipped_at", { ascending: true })
+      .limit(200);
+  const { data, error } = await base();
+  if (error) {
+    if (isMissingSchemaError(error)) return res.status(503).json({ ok: false, error: MIGRATION_MISSING });
+    console.error("[bot] 조회 대기 송장 목록 실패:", error.message);
+    return res.status(500).json({ ok: false, error: "목록을 불러오지 못했습니다" });
+  }
+  const recheckBefore = now.getTime() - recheckHours() * 3600 * 1000;
+  const items = (data || [])
+    .filter((r) => !r.tracking_checked_at || new Date(r.tracking_checked_at).getTime() <= recheckBefore)
+    .slice(0, limit)
+    .map((r) => {
+      const a = toApi(r);
+      return {
+        id: a.id, supplierName: a.supplierName, supplierLabel: a.supplierLabel, carrierCode: a.carrierCode, carrierName: a.carrierName,
+        trackingNumber: a.trackingNumber, trackingUrl: a.trackingUrl, status: a.status, shippedAt: a.shippedAt,
+        lastCheckedAt: a.trackingCheckedAt, lastStatusText: a.trackingStatus,
+      };
+    });
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, recheckHours: recheckHours(), items });
+});
+
+/* 피클 조회 결과 검사 — 순수 함수(테스트용). { result } 또는 { error } */
+function normalizePickleTracking(body) {
+  const b = body && typeof body === "object" ? body : {};
+  if (b.error) return { result: { error: cleanText(b.error, 200) || "조회 실패" } };
+  if (typeof b.delivered !== "boolean") return { error: "delivered(true/false) 또는 error가 필요합니다" };
+  if (b.events !== undefined && (!Array.isArray(b.events) || b.events.length > 30)) return { error: "events는 30개 이하의 배열이어야 합니다" };
+  const events = (b.events || []).map((e) => ({ at: cleanText(e && e.at, 30) || "", where: cleanText(e && e.where, 60) || "", kind: cleanText(e && e.kind, 60) || "" })).filter((e) => e.at || e.kind);
+  const deliveredAt = parseDate(b.deliveredAt);
+  if (deliveredAt.error) return { error: "deliveredAt 날짜 형식이 올바르지 않습니다(ISO 8601)" };
+  return { result: { delivered: b.delivered, statusText: cleanText(b.statusText, 60) || (b.delivered ? "배송완료" : ""), events, deliveredAt: deliveredAt.value } };
+}
+
+router.post("/api/bot/supplier-shipments/:id/tracking", botWriteLimiter, requireBotKey, notFoundUnlessUuid, async (req, res) => {
+  const { result, error: invalid } = normalizePickleTracking(req.body);
+  if (invalid) return res.status(400).json({ ok: false, error: invalid });
+  const { data: row, error } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (error) {
+    if (isMissingSchemaError(error)) return res.status(503).json({ ok: false, error: MIGRATION_MISSING });
+    return res.status(500).json({ ok: false, error: "송장을 불러오지 못했습니다" });
+  }
+  if (!row) return res.status(404).json({ ok: false, error: "해당 송장을 찾을 수 없습니다." });
+  const now = new Date();
+  const patch = { ...patchFromResult(row, result, now), tracking_source: "pickle" };
+  if (patch.status === "DELIVERED" && result.deliveredAt && !row.delivered_at) patch.delivered_at = result.deliveredAt;
+  const upd = await writeWithOptionalColumns((p) => supabaseAdmin.from(TABLE).update(p).eq("id", row.id).select().maybeSingle(), patch);
+  if (upd.error || !upd.data) {
+    console.error("[bot] 배송조회 결과 저장 실패:", upd.error && upd.error.message);
+    return res.status(500).json({ ok: false, error: "저장 실패" });
+  }
+  res.json({ ok: true, shipment: toApi(upd.data) });
+});
+
+/* ---------- 입고 처리 → 재고 반영(2026-11-10) ----------
+   Works "입고 완료" 창에서 품목(피클이 메일에서 미리 채운 초안을 사람이 확인·수정)을 확정하면 재고에 더하고 입고 완료로 바꾼다.
+   먼저 상태를 RECEIVED로 "선점"한 뒤 재고를 더해서, 두 번 눌러도 재고가 두 번 더해지지 않는다. 재고 증가가 실패하면 상태를 되돌린다.
+   재고가 0 → 양수로 바뀐 조합은 품절 알림 신청자에게 메일(routes/inventory.js와 같은 함수). */
+router.post("/api/admin/supplier-shipments/:id/receive", requireAdmin, notFoundUnlessUuid, async (req, res) => {
+  const parsed = parseReceiptItems((req.body || {}).items || [], { requireProduct: true });
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const items = parsed.items;
+
+  // 상품·색상·사이즈가 실제 상품 설정과 맞는지
+  if (items.length) {
+    const ids = [...new Set(items.map((it) => it.productId))];
+    const { data: products, error: pErr } = await supabaseAdmin.from("products").select("id, colors, sizes").in("id", ids);
+    if (pErr) return res.status(500).json({ error: "상품 정보를 불러오지 못했습니다." });
+    const byId = new Map((products || []).map((p) => [p.id, p]));
+    for (const it of items) {
+      const p = byId.get(it.productId);
+      if (!p || !(p.colors || []).includes(it.color) || !(p.sizes || []).includes(it.size)) {
+        return res.status(400).json({ error: `상품·색상·사이즈 조합이 올바르지 않습니다: ${it.productId} ${it.color} ${it.size}` });
+      }
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: cur, error: curErr } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (curErr) return res.status(isMissingSchemaError(curErr) ? 503 : 500).json({ error: isMissingSchemaError(curErr) ? MIGRATION_MISSING : "송장을 불러오지 못했습니다." });
+  if (!cur) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
+  if (cur.status === "RECEIVED" || cur.status === "CANCELED") return res.status(409).json({ error: "이미 입고 완료(또는 취소)된 송장입니다." });
+
+  const claim = await writeWithOptionalColumns(
+    (p) => supabaseAdmin.from(TABLE).update(p).eq("id", cur.id).eq("status", cur.status).select().maybeSingle(),
+    { status: "RECEIVED", received_at: nowIso, delivered_at: cur.delivered_at || nowIso, receipt_items: items.length ? items : cur.receipt_items || null, updated_at: nowIso }
+  );
+  if (claim.error) return res.status(500).json({ error: "입고 처리에 실패했습니다." });
+  if (!claim.data) return res.status(409).json({ error: "다른 화면에서 먼저 처리됐습니다. 새로고침해 주세요." });
+
+  if (items.length) {
+    // 같은 조합은 합친다
+    const merged = new Map();
+    for (const it of items) {
+      const k = `${it.productId}:${it.color}:${it.size}`;
+      merged.set(k, { productId: it.productId, color: it.color, size: it.size, qty: (merged.get(k) ? merged.get(k).qty : 0) + it.qty });
+    }
+    const adds = [...merged.values()];
+    const { data: prevRows } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").in("product_id", [...new Set(adds.map((a) => a.productId))]);
+    const prevQty = new Map((prevRows || []).map((r) => [`${r.product_id}:${r.color}:${r.size}`, r.qty]));
+    const { error: invErr } = await supabaseAdmin.rpc("restore_inventory", { p_items: adds });
+    if (invErr) {
+      await supabaseAdmin.from(TABLE).update({ status: cur.status, received_at: null, updated_at: new Date().toISOString() }).eq("id", cur.id);
+      logSystemError("supplier_receipt_failed", { shipmentId: cur.id, error: invErr.message });
+      return res.status(500).json({ error: "재고 반영에 실패해 입고 처리를 취소했습니다. 다시 시도해 주세요." });
+    }
+    logInventoryChange(adds.map((a) => ({ productId: a.productId, color: a.color, size: a.size, delta: a.qty, reason: "supplier_receipt", ref: `${cur.supplier_name}:${cur.tracking_number}`, adminEmail: req.user.email })));
+    const restocked = adds.filter((a) => (prevQty.get(`${a.productId}:${a.color}:${a.size}`) || 0) <= 0);
+    if (restocked.length) notifyRestockSubscribers(restocked).catch((err) => console.error("[restock] 알림 처리 실패:", err.message));
+  }
+
+  logAdminAction(req, "supplier_shipment.receive", "supplier_shipment", cur.id, { tracking: cur.tracking_number, items: items.length, qty: items.reduce((n, it) => n + it.qty, 0) });
+  res.json({ ok: true, shipment: toApi(claim.data), addedToInventory: items.length });
+});
+
 module.exports = router;
 module.exports.normalizeBotShipment = normalizeBotShipment;
 module.exports.buildUpdate = buildUpdate;
 module.exports.buildInsert = buildInsert;
+module.exports.parseReceiptItems = parseReceiptItems;
+module.exports.normalizePickleTracking = normalizePickleTracking;

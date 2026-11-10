@@ -165,9 +165,10 @@ const fetchDelivered = async () => ({ ok: true, json: async () => ({ complete: t
 function withKey(fn) {
   return async () => {
     process.env.SWEETTRACKER_API_KEY = "test-key";
+    process.env.SUPPLIER_TRACKING_PROVIDER = "sweettracker";
     budget._resetMemory();
     tracking._resetCompanyCache();
-    try { await fn(); } finally { delete process.env.SWEETTRACKER_API_KEY; delete process.env.SWEETTRACKER_MONTHLY_LIMIT; }
+    try { await fn(); } finally { delete process.env.SWEETTRACKER_API_KEY; delete process.env.SWEETTRACKER_MONTHLY_LIMIT; delete process.env.SUPPLIER_TRACKING_PROVIDER; }
   };
 }
 

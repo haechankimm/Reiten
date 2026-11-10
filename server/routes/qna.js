@@ -40,6 +40,9 @@ function toAdminQnaDto(q) {
     hasAccount: !!q.user_id,
     assignedTo: q.assigned_to || null,
     internalNote: q.internal_note || null,
+    // 피클이 만든 답변 초안(050, routes/botAssist.js) — 관리자가 고쳐서 직접 등록해야 고객에게 나간다
+    aiDraft: q.ai_draft || null,
+    aiDraftAt: q.ai_draft_at || null,
   };
 }
 

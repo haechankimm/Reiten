@@ -1045,6 +1045,16 @@
               <button type="button" class="btn btn--sm btn--ghost" id="settle-send" data-i18n="메일로 다시 보내기">메일로 다시 보내기</button>
             </div>
           </div>
+          <!-- 매입 장부(2026-11-10, 마이그레이션 050) — 피클이 공급처 명세서·세금계산서 메일에서 기록, 사람이 확인. js/supplierInvoices.js -->
+          <div class="panel" id="supplier-invoices-panel">
+            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+              <b data-i18n="매입 장부">매입 장부</b>
+              <input type="month" id="invoice-month" style="max-width:180px">
+            </div>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="피클이 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.">피클이 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.</p>
+            <div id="supplier-invoices-totals" class="small" style="margin-bottom:8px"></div>
+            <div id="supplier-invoices-list" class="small"></div>
+          </div>
           <div class="panel">
             <b data-i18n="아침 업무 요약 알림">아침 업무 요약 알림</b>
             <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.">매일 오전 9시쯤 입금 확인·출고 대기·미답변 문의·반품 처리·시스템 오류 건수를 폰 푸시(텔레그램 연결 시 텔레그램도)로 보냅니다. 할 일이 없으면 보내지 않아요.</p>
@@ -1235,6 +1245,7 @@
 <script src="js/alerts.js"></script>
 <script src="js/home.js"></script>
 <script src="js/reports.js"></script>
+<script src="js/supplierInvoices.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

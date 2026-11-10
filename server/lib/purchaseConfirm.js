@@ -14,7 +14,12 @@ const tracking = require("./tracking");
 const DAY_MS = 86400000;
 const CONFIRM_AFTER_DELIVERY_DAYS = 7;
 const CONFIRM_AFTER_SHIP_DAYS = 14;
-const TRACKING_RECHECK_HOURS = 3;
+/* 같은 운송장 재조회 간격 — 스마트택배 무료 플랜(월 100건)을 오래 쓰려고 3시간 → 12시간(하루 2번)으로 늘렸다(2026-11-10 사용자 결정).
+   유료 이용권으로 바꾸면 Render ORDER_TRACKING_RECHECK_HOURS로 줄인다(최소 1). */
+function trackingRecheckHours(env = process.env) {
+  const n = Number(env.ORDER_TRACKING_RECHECK_HOURS);
+  return Number.isFinite(n) && n >= 1 ? n : 12;
+}
 const TRACKING_MIN_AGE_HOURS = 12;
 
 let capability = null; // { value, at }
@@ -93,7 +98,7 @@ async function checkDeliveries({ db = supabaseAdmin, now = new Date(), fetchImpl
     .limit(80);
   if (error || !orders) return { checked: 0, delivered: 0, error: error && error.message };
 
-  const recheckBefore = now.getTime() - TRACKING_RECHECK_HOURS * 3600 * 1000;
+  const recheckBefore = now.getTime() - trackingRecheckHours() * 3600 * 1000;
   let checked = 0;
   let delivered = 0;
   for (const o of orders) {

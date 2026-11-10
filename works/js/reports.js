@@ -223,6 +223,7 @@
     if (!result) return;
     renderDashboard(result);
     loadVisitorStats();
+    if (typeof paintSupplierInvoices === "function") paintSupplierInvoices(); // 매입 장부(js/supplierInvoices.js)
   }
 
   function downloadDashboardExport(format) {

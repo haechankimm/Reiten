@@ -55,6 +55,11 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const trkErr = trkErr0 || (await db.from("api_usage_monthly").select("key").limit(1)).error;
   if (trkErr) out.push({ level: "warn", key: "migration_049", label: "DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)" });
   else out.push({ level: "ok", key: "migration_049", label: "DB 마이그레이션 049" });
+  // 050 — 입고 품목·매입 장부·문의 답변 초안(피클 업무 확장, 2026-11-10)
+  const { error: e050a } = await db.from("supplier_invoices").select("id").limit(1);
+  const e050 = e050a || (await db.from("qna").select("ai_draft").limit(1)).error || (await db.from("supplier_shipments").select("receipt_items").limit(1)).error;
+  if (e050) out.push({ level: "warn", key: "migration_050", label: "DB 마이그레이션 050이 아직 실행되지 않았습니다(입고 재고 반영·매입 장부·문의 답변 초안이 꺼져 있음)" });
+  else out.push({ level: "ok", key: "migration_050", label: "DB 마이그레이션 050" });
   // 스마트택배 월간 한도·키 오류(무료 키는 한 달마다 새로 발급해야 함)
   if (envSet("SWEETTRACKER_API_KEY")) {
     const u = await trackingBudget.usage(db, now).catch(() => null);
