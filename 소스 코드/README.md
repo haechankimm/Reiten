@@ -39,7 +39,7 @@
 
 **지금 상태**: main = `66145da`(PR #16까지 머지, 사용자가 루트에 피클 인수인계 문서 `reiten-monitoring-handoff.md`를 직접 커밋). 열린 PR 없음.
 작업 브랜치 `claude/remote-control-review-3hq2cb`는 main과 같은 위치에서 시작한다. 서버 테스트 276건, GitHub Actions `test`·`ui` 통과.
-마이그레이션 `001`~`047` 실행 완료(045·046은 2026-11-09, 047은 2026-11-10 사용자 실행 — 047은 표만 만든 상태라 `RATE_LIMIT_SHARED`를 켜기 전엔 동작 변화 없음).
+마이그레이션 `001`~`046` 실행 완료(045·046은 2026-11-09). `047`은 2026-11-10 사용자가 실행했다고 보고 — **실제 반영은 아직 미확인**: Works "지금 점검하기"(또는 피클 진단)의 "DB 마이그레이션 047"이 정상이면 ✅로 바꿀 것(2026-11-10에 점검 항목 추가). 047은 실행해도 `RATE_LIMIT_SHARED=on`을 넣기 전엔 서버가 이 표를 쓰지 않는다.
 **`048_supplier_shipments.sql`(공급처 송장, 2026-11-10 신규)은 아직 미실행.** Sentry 연결 완료(테스트 이슈 수신 확인).
 AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_KEY` 설정, `GET /api/bot/diagnostics` 호출 정상, 마스킹·요청 제한 동작 확인.
 공급처 송장 자동 기록(2026-11-10): `POST /api/bot/supplier-shipments`(`routes/supplierShipments.js`) + Works 재고 탭 "공급처 입고·배송" — 048 실행 후 동작.
@@ -514,7 +514,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
 | `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ✅ 실행함(2026-11-09 사용자) |
-| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ✅ 실행함(2026-11-10 사용자) — 표만 있는 상태, **서버 증설 때** Render `RATE_LIMIT_SHARED=on`을 켜야 사용 |
+| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | 🟡 사용자 실행 보고(2026-11-10), **반영 확인 전** — "지금 점검하기"의 "DB 마이그레이션 047"(표 `rate_limits` + 함수 `rate_limit_undo` 존재 확인)이 정상이면 ✅. 서버 증설 때 Render `RATE_LIMIT_SHARED=on`을 켜야 실제로 사용 |
 | `048_supplier_shipments.sql` | 공급처 출고 송장 `supplier_shipments`(RLS 포함, 공급처+송장번호 유니크, 상태 CHECK) — 피클 `POST /api/bot/supplier-shipments`·Works 재고 탭 "공급처 입고·배송" | ⚠️ 미실행(2026-11-10 신규) — 실행 전엔 봇 요청이 503, Works 목록은 안내만. 실행 후 "지금 점검하기"에 "DB 마이그레이션 048" 정상 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
@@ -623,7 +623,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
 
 **2026-11-10 — 공급처 출고 송장 자동 기록(피클 인수인계서 "REITEN 공급처 배송 추적 자동화" 과제 1~3).**
-- **마이그레이션 048** `supplier_shipments`(인수인계서 스키마 + RLS·상태 CHECK, `if not exists`로 재실행 안전). 047은 사용자가 실행 완료(표 갱신).
+- **마이그레이션 048** `supplier_shipments`(인수인계서 스키마 + RLS·상태 CHECK, `if not exists`로 재실행 안전). 047은 사용자 실행 보고 — 운영 점검에 047 확인 항목을 추가해 실제 반영을 거기서 확인한다.
 - **`POST /api/bot/supplier-shipments`**(`routes/supplierShipments.js`): `X-REITEN-BOT-KEY` 확인을 `lib/botAuth.js`로 빼서 진단과 공용. 본문
   `{ supplierName, supplierOrderId, carrierCode, carrierName, trackingNumber, itemsSummary, recipientName, status?, shippedAt?, deliveredAt?, metadata? }`.
   공급처명은 소문자, 송장번호는 숫자·영문만(하이픈 제거·6~40자), status는 봇이 `SHIPPED`·`IN_TRANSIT`·`DELIVERED`만. 같은 공급처+송장이면 갱신하되
