@@ -207,7 +207,9 @@
     { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
     { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
     // 매입 장부(2026-11-11): 직접 입력·수정·확인·제외 버튼
-    { tab: "dashboard", panel: null, hide: ["#settle-send", "#briefing-test", "#supplier-invoices-new", ".invoice-edit", ".invoice-confirm", ".invoice-reject", ".invoice-reopen", ".invoice-total"] },
+    { tab: "dashboard", panel: null, hide: ["#settle-send", "#briefing-test"] },
+    // 지출·정산(2026-11-11): 보기 전용이면 입력·수정·정산·설정 버튼을 숨긴다(내보내기·요약 복사는 그대로)
+    { tab: "expenses", panel: "admin-expenses", hide: ["#exp-new", "#exp-import-toggle", "#exp-budget-edit", "#exp-rec-new", "#exp-cost-save", "#exp-partners-save", ".exp-edit", ".exp-confirm", ".exp-reject", ".exp-reopen", ".exp-total", ".exp-settle", ".exp-settle-cancel", ".exp-rec-toggle"], disable: [".exp-cost-input", ".exp-partner-input"] },
     { tab: "lookbook", panel: "admin-lookbook", hidePanel: ["#lookbook-form"], hide: [".look-tile-add"], disable: [".look-tile"] },
     { tab: "members", panel: "admin-members", hide: [".member-ban-toggle", ".member-delete", ".member-promote", ".member-demote", ".member-resend", ".member-verify"] },
     { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },

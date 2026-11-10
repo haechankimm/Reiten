@@ -33,7 +33,7 @@
     paymentlog: "admin-paymentlog",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
     members: "admin-members", calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
-    dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff",
+    dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff", expenses: "admin-expenses",
   });
 
   /* ---------- 사이드바 카테고리 아코디언 ----------

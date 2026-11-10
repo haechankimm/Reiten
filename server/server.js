@@ -51,6 +51,7 @@ const botDiagnosticsRoutes = require("./routes/botDiagnostics");
 const supplierShipmentsRoutes = require("./routes/supplierShipments");
 const supplierInvoicesRoutes = require("./routes/supplierInvoices");
 const botAssistRoutes = require("./routes/botAssist");
+const expensesRoutes = require("./routes/expenses");
 const { assertNoRouteShadowing } = require("./lib/routeShadowing");
 const { htmlWithVersions, immutableAssets } = require("./lib/assetVersion");
 
@@ -211,6 +212,8 @@ app.use(supplierShipmentsRoutes);
 /* 매입 장부(피클 기록 + Works 확인)·피클 브리핑·문의 답변 초안(2026-11-10, 마이그레이션 050) */
 app.use(supplierInvoicesRoutes);
 app.use(botAssistRoutes);
+/* 지출 장부·동업자 정산·정기 지출·예산·상품 마진(2026-11-11, 마이그레이션 052) */
+app.use(expensesRoutes);
 
 /* GET /health는 routes/health.js에서 가져온다 — UptimeRobot이 DB 연결까지 확인할 수 있는
    전용 엔드포인트(2026-09-01 추가, 위 0번 섹션 참고). */

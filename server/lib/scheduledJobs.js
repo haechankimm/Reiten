@@ -20,6 +20,7 @@ const { sendMorningBriefing } = require("./briefing");
 const { buildBackup } = require("./backup");
 const { checkDeliveries, autoConfirmOrders } = require("./purchaseConfirm");
 const { checkSupplierShipments } = require("./supplierShipments");
+const { generateRecurringExpenses } = require("../routes/expenses");
 const { buildSettlement } = require("./settlement");
 const { PENDING_CANCEL_HOURS } = require("./orderRules");
 
@@ -184,6 +185,11 @@ scheduleExclusive("tracking", "15 * * * *", async () => {
   await checkDeliveries().catch((err) => console.error("[tracking] 실행 실패:", err.message));
   await checkSupplierShipments().catch((err) => console.error("[supplier-tracking] 실행 실패:", err.message));
 });
+
+/* 정기 지출(서버비·구독료 등) — 매일 06:10(KST) 결제일이 지난 것을 "확인 대기"로 기록(2026-11-11, 052) */
+scheduleExclusive("expense-recurring", "10 6 * * *", () => {
+  generateRecurringExpenses().catch((err) => console.error("[expense-recurring] 실행 실패:", err.message));
+}, { timezone: "Asia/Seoul" });
 
 /* 자동 구매확정 — 매일 03:40(KST), 배송완료 7일·출고 14일 지난 주문(반품·교환 처리 중 제외) 확정 + 적립금 지급 */
 scheduleExclusive("purchase-confirm", "40 3 * * *", () => {
