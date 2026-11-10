@@ -11,7 +11,9 @@
   }
 
   function qnaCardHTML(q) {
-    const matched = q.status !== "답변완료" ? matchQnaTemplate(q.question) : null;
+    // 피클 답변 초안(2026-11-10, 050)이 있으면 템플릿보다 먼저 채운다 — 고객에게는 관리자가 고쳐서 "답변 등록"을 눌러야 나간다
+    const draft = q.status !== "답변완료" ? q.aiDraft : null;
+    const matched = q.status !== "답변완료" && !draft ? matchQnaTemplate(q.question) : null;
     return `
       <div class="panel" data-id="${esc(q.id)}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
@@ -31,9 +33,10 @@
             <option value="">${esc(t("빠른 답변 템플릿 선택..."))}</option>
             ${qnaTemplates.map((tpl) => `<option value="${esc(tpl.id)}" ${matched && matched.id === tpl.id ? "selected" : ""}>${esc(tpl.label)}</option>`).join("")}
           </select>` : ""}
+          ${draft ? `<p class="small" style="color:var(--text-muted);margin-top:4px">🤖 ${esc(t("피클이 만든 답변 초안입니다 — 내용을 확인하고 고친 뒤 등록하세요."))}</p>` : ""}
           ${matched ? `<p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("키워드가 일치해 \"{label}\" 템플릿을 미리 채웠습니다 — 확인 후 등록하거나 자유롭게 고쳐 쓰세요.", { label: matched.label }))}</p>` : ""}
           <div class="field" style="margin-top:8px">
-            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}">${matched ? esc(matched.body) : ""}</textarea>
+            <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}">${draft ? esc(draft) : matched ? esc(matched.body) : ""}</textarea>
           </div>
           <button type="button" class="btn btn--sm admin-qna-submit">${esc(t("답변 등록"))}</button>`
         }

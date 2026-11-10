@@ -198,3 +198,5 @@ router.get("/api/admin/inventory/export", requireAdmin, async (req, res) => {
 });
 
 module.exports = router;
+/* 공급처 입고 처리(routes/supplierShipments.js)도 재고를 늘리므로 같은 알림 함수를 쓴다(2026-11-10). */
+module.exports.notifyRestockSubscribers = notifyRestockSubscribers;

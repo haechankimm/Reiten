@@ -134,6 +134,20 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
   });
   summary.monthKey = range.monthKey;
 
+  /* 매입 장부(050, routes/supplierInvoices.js) — 사람이 확인한 매입만 정산에 넣는다. 표가 없으면 0. 발행일(한국 날짜) 기준. */
+  const [yy, mm] = range.monthKey.split("-").map(Number);
+  const nextMonthFirst = mm === 12 ? `${yy + 1}-01-01` : `${yy}-${String(mm + 1).padStart(2, "0")}-01`;
+  const { data: invoiceRows, error: invoiceErr } = await db
+    .from("supplier_invoices")
+    .select("*")
+    .gte("issued_on", `${range.monthKey}-01`)
+    .lt("issued_on", nextMonthFirst);
+  const invoices = invoiceErr ? [] : invoiceRows || [];
+  const confirmedInvoices = invoices.filter((r) => r.status === "CONFIRMED");
+  summary.purchaseTotal = confirmedInvoices.reduce((n, r) => n + (r.total_amount || 0), 0);
+  summary.purchasePending = invoices.filter((r) => r.status === "RECORDED").reduce((n, r) => n + (r.total_amount || 0), 0);
+  summary.grossProfit = summary.netRevenue - summary.purchaseTotal;
+
   const won = (n) => Number(n || 0).toLocaleString("ko-KR") + "원";
   const sheets = [
     {
@@ -148,6 +162,9 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
         { label: "환불 건수(부분 환불 포함)", value: `${summary.refundCount}건` },
         { label: "환불 합계", value: won(summary.refundTotal) },
         { label: "순매출(매출-환불)", value: won(summary.netRevenue) },
+        { label: "매입 합계(확인된 것)", value: won(summary.purchaseTotal) },
+        { label: "매입 확인 대기", value: won(summary.purchasePending) },
+        { label: "순매출 - 매입", value: won(summary.grossProfit) },
       ],
     },
     {
@@ -187,6 +204,22 @@ async function buildSettlement(monthKey, { db = supabaseAdmin } = {}) {
         { key: "reason", label: "사유" }, { key: "at", label: "처리일시" },
       ],
       rows: refundLines.map((r) => ({ ...r, at: fmtExportDate(r.at) })),
+    },
+    {
+      name: "매입 내역",
+      columns: [
+        { key: "issuedOn", label: "발행일" }, { key: "supplier", label: "공급처" }, { key: "docType", label: "문서" },
+        { key: "docNumber", label: "문서번호" }, { key: "supply", label: "공급가액" }, { key: "vat", label: "부가세" },
+        { key: "total", label: "합계" }, { key: "items", label: "품목" }, { key: "status", label: "상태" },
+      ],
+      rows: invoices
+        .filter((r) => r.status !== "REJECTED")
+        .map((r) => ({
+          issuedOn: r.issued_on, supplier: r.supplier_label || r.supplier_name,
+          docType: { statement: "거래명세서", tax_invoice: "세금계산서", receipt: "영수증", other: "기타" }[r.doc_type] || r.doc_type,
+          docNumber: r.doc_number || "", supply: r.supply_amount ?? "", vat: r.vat_amount ?? "", total: r.total_amount,
+          items: r.items_summary || "", status: r.status === "CONFIRMED" ? "확인" : "확인 대기",
+        })),
     },
   ];
 

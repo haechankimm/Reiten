@@ -40,8 +40,10 @@
 **지금 상태**: main = `66145da`(PR #16까지 머지, 사용자가 루트에 피클 인수인계 문서 `reiten-monitoring-handoff.md`를 직접 커밋). 열린 PR 없음.
 작업 브랜치 `claude/remote-control-review-3hq2cb`는 main과 같은 위치에서 시작한다. 서버 테스트 276건, GitHub Actions `test`·`ui` 통과.
 마이그레이션 `001`~`047` 실행 완료(045·046은 2026-11-09, 047은 2026-11-10 — Works "지금 점검하기"에서 "DB 마이그레이션 047" 정상 확인). 047은 `RATE_LIMIT_SHARED=on`을 넣기 전엔 서버가 쓰지 않는다.
-`048_supplier_shipments.sql`·`049_supplier_tracking.sql`(공급처 송장·배송조회)도 2026-11-10 사용자 실행 완료. 스마트택배 키는 런칭 직전에 발급 예정. Sentry 연결 완료(테스트 이슈 수신 확인).
+`048_supplier_shipments.sql`·`049_supplier_tracking.sql`(공급처 송장·배송조회)도 2026-11-10 사용자 실행 완료. **`050_pickle_ops.sql`(입고 재고 반영·매입 장부·답변 초안)은 미실행.** 스마트택배 키는 런칭 직전에 발급 예정. Sentry 연결 완료(테스트 이슈 수신 확인).
 AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_KEY` 설정, `GET /api/bot/diagnostics` 호출 정상, 마스킹·요청 제한 동작 확인.
+**배송조회 방침(2026-11-10 사용자 결정)**: 공급처 송장 = 피클이 택배사 공식 조회 화면을 보고 보고(비용 0원, 서버 스마트택배 조회는 `SUPPLIER_TRACKING_PROVIDER=sweettracker`일 때만),
+고객 주문 = 스마트택배 무료 키(런칭 직전 발급, 1개월마다 갱신)로 12시간마다 재조회(`ORDER_TRACKING_RECHECK_HOURS`, 기본 12), 주문이 늘면 유료(스타터 1,000건 5만 원) + `SWEETTRACKER_MONTHLY_LIMIT`.
 공급처 송장 자동 기록(2026-11-10): `POST /api/bot/supplier-shipments`(`routes/supplierShipments.js`) + Works 재고 탭 "공급처 입고·배송" — 048 실행 후 동작.
 
 **영구 규칙(사용자 지정 — 반드시 지킬 것)**
@@ -50,7 +52,9 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
    사용자는 GitHub Desktop(main) Pull → Finder `iCloud Drive/나/Reiten/server/migrations`에서 열어 Supabase SQL Editor에 실행.
 3. **사용설명서.md에는 마스터 관리자 계정 정보(이메일 등)를 쓰지 않는다** — README에만.
 4. **피클(에이전트)에게 쓰기 권한·Works 관리자 계정·PIN을 주지 않는다.** `routes/botDiagnostics.js`에 쓰기 경로 추가 금지.
-   유일한 예외(2026-11-10 사용자 요청): 공급처 송장 기록 `POST /api/bot/supplier-shipments` — 고객 주문·돈과 무관한 `supplier_shipments` 표에만 쓴다(`routes/supplierShipments.js`, 다른 표 건드리기 금지). 아래 "📌 AI 비서 에이전트 피클 연동" 참고.
+   예외(2026-11-10 사용자 요청) — 피클이 쓸 수 있는 곳은 사람이 Works에서 확인하는 칸뿐: 공급처 송장(`supplier_shipments` — 등록·배송조회 결과·입고 품목 "초안"),
+   매입 장부(`supplier_invoices` — "확인 대기"로만, 확인은 사람), 문의 답변 초안(`qna.ai_draft` — 발송은 사람). 주문·환불·재고 수량·답변 발송 통로는 만들지 말 것.
+   피클용 전체 지시는 루트 `pickle-handoff-2026-11-10.md`(API 8개·업무 6개·준비 목록). 새 피클 기능을 만들면 이 문서도 갱신. 아래 "📌 AI 비서 에이전트 피클 연동" 참고.
 5. 범위가 크거나 판단이 필요한 추가 작업은 보고·승인 후 진행(요청받은 범위 안의 버그 수정은 바로).
 6. 매주 월요일 09:51 KST 정기 감사 루틴(이 세션에 묶인 예약 작업 "REITEN 주간 정기 감사") — 새 세션에서는 돌지 않으므로 필요하면 새로 등록.
 
@@ -517,6 +521,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ✅ 실행 확인(2026-11-10, "지금 점검하기"의 "DB 마이그레이션 047" 정상 — 표 `rate_limits`·함수 `rate_limit_undo` 존재) — 서버 증설 때 Render `RATE_LIMIT_SHARED=on`을 켜야 실제로 사용 |
 | `048_supplier_shipments.sql` | 공급처 출고 송장 `supplier_shipments`(RLS 포함, 공급처+송장번호 유니크, 상태 CHECK) — 피클 `POST /api/bot/supplier-shipments`·Works 재고 탭 "공급처 입고·배송" | ✅ 실행함(2026-11-10 사용자) |
 | `049_supplier_tracking.sql` | 공급처 송장 배송조회 결과 칸(`supplier_label`·`tracking_checked_at`·`tracking_status`·`tracking_events`·`tracking_error`) + 스마트택배 월간 사용량 `api_usage_monthly`(RLS) | ✅ 실행함(2026-11-10 사용자) |
+| `050_pickle_ops.sql` | 피클 업무 확장 — `supplier_shipments.receipt_items`·`received_at`·`tracking_source`, `inventory_log` 사유 `supplier_receipt` 추가(027 목록 + 1), 매입 장부 `supplier_invoices`(RLS), `qna.ai_draft`·`ai_draft_at` | ⚠️ 미실행(2026-11-10 신규) — 실행 전엔 입고 재고 반영 이력·매입 장부·답변 초안이 꺼짐 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -622,6 +627,22 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-10 (4) — 피클 업무 5종 서버 구축(사용자 요청) + 배송조회 비용 방침, 피클 인수인계서 `pickle-handoff-2026-11-10.md`.**
+- **배송조회 방침**: 고객 주문 재조회 3시간 → 12시간(`lib/purchaseConfirm.js`, `ORDER_TRACKING_RECHECK_HOURS`). 공급처 송장은 기본 피클 담당 —
+  서버 크론·Works "배송조회" 버튼은 `SUPPLIER_TRACKING_PROVIDER=sweettracker`일 때만(`lib/supplierShipments.js`).
+- **① 피클 배송조회**: `GET /api/bot/supplier-shipments/pending`(조회할 송장, 받는 사람 이름 없음, 12시간 안에 조회한 건 제외) →
+  `POST /api/bot/supplier-shipments/:id/tracking`({ delivered, statusText, events, deliveredAt } 또는 { error }; 상태는 앞으로만, 출처 `tracking_source=pickle`).
+- **② 입고 → 재고**: 피클이 `receiptItems` 초안(상품 id·색상·사이즈·수량 또는 이름만)을 송장과 함께 보냄 → Works 재고 탭 "입고 처리" 창에서 확인·수정 →
+  `POST /api/admin/supplier-shipments/:id/receive` — 상태를 먼저 RECEIVED로 선점(중복 클릭 409) 후 `restore_inventory`로 재고 증가, 실패 시 상태 되돌림·시스템 오류 기록,
+  `inventory_log` 사유 `supplier_receipt`, 0→양수 조합은 품절 알림 메일(`routes/inventory.js`의 `notifyRestockSubscribers` 재사용). 상품·색상·사이즈 조합은 상품 설정과 대조.
+- **③ 매입 장부**: `routes/supplierInvoices.js` — 피클 `POST /api/bot/supplier-invoices`(같은 공급처+문서번호 / 번호 없으면 발행일+합계로 한 줄, 확인된 줄은 안 바뀜,
+  공급가액+부가세≠합계면 `amountMismatch`), Works 대시보드 "매입 장부"(달별·확인/제외/합계 수정, 권한 영역 dashboard). 월간 정산 엑셀에 "매입 합계(확인된 것)"·"매입 확인 대기"·
+  "순매출 - 매입" 줄과 "매입 내역" 시트 추가(`lib/settlement.js`).
+- **④ 브리핑**: `GET /api/bot/briefing`(`routes/botAssist.js`) — 기존 아침 요약 건수 + 공급처 입고 대기·5일 넘게 미도착·배송 중, 이번 달 매입 확인 대기, 초안 없는 문의, 배송조회 한도.
+- **⑤ 문의 답변 초안**: `GET /api/bot/qna/pending`(작성자 이름·이메일 없음, 질문 속 연락처는 `maskText`로 가림, 빠른 답변 템플릿 포함) → `POST /api/bot/qna/:id/draft`
+  (`qna.ai_draft`, 답변대기만 — 답변된 문의는 409). Works Q&A 답변창에 초안이 미리 채워지고 "피클 초안" 안내 — 등록은 사람.
+- 운영 점검에 "DB 마이그레이션 050". 테스트 `test/pickleOps.test.js`(13건), 서버 테스트 304건 통과.
 
 **2026-11-10 — 공급처 출고 송장 자동 기록(피클 인수인계서 "REITEN 공급처 배송 추적 자동화" 과제 1~3).**
 - **마이그레이션 048** `supplier_shipments`(인수인계서 스키마 + RLS·상태 CHECK, `if not exists`로 재실행 안전). 047은 사용자 실행 보고 — 운영 점검에 047 확인 항목을 추가해 실제 반영을 거기서 확인한다.
