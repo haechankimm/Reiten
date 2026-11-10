@@ -58,6 +58,8 @@ const clientErrorLimiter = makeLimiter("clientError", 30);
 
 /* 에이전트 진단 조회(GET /api/bot/diagnostics) — 정상은 하루 몇 번, 틀린 키 대입을 막는 용도로 IP당 15분 20회. */
 const botLimiter = makeLimiter("bot", 20);
+/* 에이전트 공급처 송장 기록(POST /api/bot/supplier-shipments, 2026-11-10) — 메일 여러 통을 한꺼번에 보낼 수 있어 진단과 따로 IP당 15분 60회. */
+const botWriteLimiter = makeLimiter("botWrite", 60);
 
 /* 전체 /api 기본 한도 — 공유 IP 환경과 Works(관리자 화면은 요청이 많음)를 감안해 넉넉하게. */
 const apiLimiter = rateLimit({
@@ -69,4 +71,4 @@ const apiLimiter = rateLimit({
   message: TOO_MANY,
 });
 
-module.exports = { orderLimiter, lookupLimiter, couponLimiter, writeLimiter, authLimiter, apiLimiter, memberOrIpKey, clientErrorLimiter, botLimiter };
+module.exports = { orderLimiter, lookupLimiter, couponLimiter, writeLimiter, authLimiter, apiLimiter, memberOrIpKey, clientErrorLimiter, botLimiter, botWriteLimiter };

@@ -290,6 +290,7 @@
      "상품 등록 폼"에 저장된 컬러·사이즈 목록을 기준으로 입력칸을 전부 만들고, 값이 있으면 채워
      넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
   async function paintAdminInventory() {
+    if (typeof paintSupplierShipments === "function") paintSupplierShipments(); // 공급처 입고·배송(js/supplierShipments.js)
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
       adminFetchAll("/api/admin/products"),

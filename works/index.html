@@ -388,6 +388,18 @@
               </div>
             </div>
           </div>
+          <!-- 공급처 입고·배송(2026-11-10, 마이그레이션 048) — 비서 에이전트가 출고 메일에서 기록한 송장. js/supplierShipments.js -->
+          <div class="panel" id="supplier-shipments-panel" style="margin-bottom:16px">
+            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px">
+              <b data-i18n="공급처 입고·배송">공급처 입고·배송</b>
+              <select id="supplier-shipments-filter">
+                <option value="open" data-i18n="진행 중">진행 중</option>
+                <option value="RECEIVED" data-i18n="입고 완료">입고 완료</option>
+                <option value="all" data-i18n="전체">전체</option>
+              </select>
+            </div>
+            <div id="supplier-shipments-list" class="small"></div>
+          </div>
           <div id="admin-inventory-body"></div>
         </div>
         <div id="admin-qna" hidden>
@@ -1204,6 +1216,7 @@
 <script src="js/paymentlog.js"></script>
 <script src="js/refunds.js"></script>
 <script src="js/returns-inventory.js"></script>
+<script src="js/supplierShipments.js"></script>
 <script src="js/qna.js"></script>
 <script src="js/reviews-coupons.js"></script>
 <script src="js/products.js"></script>

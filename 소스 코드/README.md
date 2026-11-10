@@ -39,15 +39,18 @@
 
 **지금 상태**: main = `66145da`(PR #16까지 머지, 사용자가 루트에 피클 인수인계 문서 `reiten-monitoring-handoff.md`를 직접 커밋). 열린 PR 없음.
 작업 브랜치 `claude/remote-control-review-3hq2cb`는 main과 같은 위치에서 시작한다. 서버 테스트 276건, GitHub Actions `test`·`ui` 통과.
-마이그레이션 `001`~`046` 실행 완료(045·046은 2026-11-09 사용자 실행), `047`은 서버 증설 때만. Sentry 연결 완료(테스트 이슈 수신 확인).
+마이그레이션 `001`~`047` 실행 완료(045·046은 2026-11-09, 047은 2026-11-10 사용자 실행 — 047은 표만 만든 상태라 `RATE_LIMIT_SHARED`를 켜기 전엔 동작 변화 없음).
+**`048_supplier_shipments.sql`(공급처 송장, 2026-11-10 신규)은 아직 미실행.** Sentry 연결 완료(테스트 이슈 수신 확인).
 AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_KEY` 설정, `GET /api/bot/diagnostics` 호출 정상, 마스킹·요청 제한 동작 확인.
+공급처 송장 자동 기록(2026-11-10): `POST /api/bot/supplier-shipments`(`routes/supplierShipments.js`) + Works 재고 탭 "공급처 입고·배송" — 048 실행 후 동작.
 
 **영구 규칙(사용자 지정 — 반드시 지킬 것)**
 1. **자동 머지**: 작업이 끝나면 PR → GitHub Actions(test·ui) 통과 → 묻지 않고 main 머지 → 무엇이 배포됐는지 보고. CI가 빨가면 절대 머지 금지.
 2. **마이그레이션**: DB 변경은 `server/migrations/`에 새 번호 `.sql`(여러 번 실행해도 안전)로만. 채팅에 SQL을 길게 붙이지 않는다. 머지 후 "지금 Pull 하면 몇 번 파일이 보임"을 알린다.
    사용자는 GitHub Desktop(main) Pull → Finder `iCloud Drive/나/Reiten/server/migrations`에서 열어 Supabase SQL Editor에 실행.
 3. **사용설명서.md에는 마스터 관리자 계정 정보(이메일 등)를 쓰지 않는다** — README에만.
-4. **피클(에이전트)에게 쓰기 권한·Works 관리자 계정·PIN을 주지 않는다.** `routes/botDiagnostics.js`에 쓰기 경로 추가 금지. 아래 "📌 AI 비서 에이전트 피클 연동" 참고.
+4. **피클(에이전트)에게 쓰기 권한·Works 관리자 계정·PIN을 주지 않는다.** `routes/botDiagnostics.js`에 쓰기 경로 추가 금지.
+   유일한 예외(2026-11-10 사용자 요청): 공급처 송장 기록 `POST /api/bot/supplier-shipments` — 고객 주문·돈과 무관한 `supplier_shipments` 표에만 쓴다(`routes/supplierShipments.js`, 다른 표 건드리기 금지). 아래 "📌 AI 비서 에이전트 피클 연동" 참고.
 5. 범위가 크거나 판단이 필요한 추가 작업은 보고·승인 후 진행(요청받은 범위 안의 버그 수정은 바로).
 6. 매주 월요일 09:51 KST 정기 감사 루틴(이 세션에 묶인 예약 작업 "REITEN 주간 정기 감사") — 새 세션에서는 돌지 않으므로 필요하면 새로 등록.
 
@@ -58,7 +61,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 2. 🟠 **UptimeRobot `/health` 5분 주기** — Render 무료 플랜은 15분 비활성이면 잠들어 크론·결제 웹훅이 깨진다. 런칭 직후 Render 유료 전환 예정.
 3. 🟠 **Dependabot 켜기**(GitHub 저장소 Settings → Advanced Security → Dependabot alerts·security updates Enable).
 4. 🟡 텔레그램 긴급 알림 연결, 스마트택배 `SWEETTRACKER_API_KEY`, 카드결제 개통 후 실결제 테스트, 네이버쇼핑 등록, 피클 Gmail 보안 설정(아래 📌 피클 ⑤).
-5. 🟢 런칭 시: Render 유료 플랜, Supabase Pro(아래 🟢 13번 체크리스트), 서버 2대 이상이면 047 실행 + `RATE_LIMIT_SHARED=on`.
+5. 🟢 런칭 시: Render 유료 플랜, Supabase Pro(아래 🟢 13번 체크리스트), 서버 2대 이상이면 `RATE_LIMIT_SHARED=on`(047은 실행 완료).
 6. 반품/취소 처리 대기 1건(2026-11-10 피클 진단 기준) — Works "반품·교환" 탭에서 확인.
 
 **런칭 후 다음 개발 후보(아직 안 함)**: 발주 초안 API(입금 확인·취소/환불 반영 주문만, 승인 지문 확인·중복 방지·금액 상한 — 피클이 승인 카드로 사용).
@@ -75,6 +78,10 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 >    누를 위험. 대신 읽기 전용 `GET /api/bot/diagnostics`(헤더 `X-REITEN-BOT-KEY` = Render `REITEN_BOT_KEY`, 32자 이상, `routes/botDiagnostics.js`)만 연다.
 >    응답: 운영 점검·7일 오류 종류별 묶음(횟수·첫/마지막 발생·최근 내용 1건, 마스킹)·결제 이상·주문 건수·배포 커밋 + 텍스트 리포트. 고객 이름·주소·주문 상세 없음.
 >    **이 파일에 쓰기 경로를 추가하지 말 것.** 조회마다 활동 로그에 `bot:pickle`로 남는다.
+>    **예외 하나(2026-11-10)**: 공급처 출고 송장 `POST /api/bot/supplier-shipments`(`routes/supplierShipments.js`, 마이그레이션 048) — 피클이 공급처
+>    출고 메일에서 공급처명·주문번호·택배사 코드·송장번호·품목을 뽑아 보낸다. `supplier_shipments` 표에만 쓰고(고객 주문·환불 무관), 같은 공급처+송장번호는
+>    갱신(상태는 앞으로만, Works에서 정한 "입고 완료"·"취소"는 봇이 못 바꿈, metadata는 합침), 입력은 서버가 길이·형식을 다시 검사한다. 요청 제한 IP당 15분 60회
+>    (`botWriteLimiter`), 기록마다 활동 로그 `bot.supplier_shipment_create/update`. 키 확인은 `lib/botAuth.js`(진단과 공용).
 > ② **브라우저는 고객 사이트(reiten.kr) 점검에만**, 결제창 진입까지(실제 주문·결제 금지). ③ **발주는 사람 승인 후**(초안→승인 카드→결제), 발주용 주문 상세
 >    엔드포인트는 개인정보가 들어가므로 발주 기능을 만들 때 따로 설계(승인 내용 지문 확인·중복 방지·환불 반영·금액 상한).
 > ④ **Render 무료 플랜은 잠들면 안 된다** — 15분 비활성 시 잠들면 크론(미입금 자동취소·배송조회·구매확정·백업·정산·아침 요약)이 그 시각을 건너뛰고,
@@ -507,7 +514,8 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
 | `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ✅ 실행함(2026-11-09 사용자) |
-| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ⚠️ 미실행 — **서버 증설 때만** 실행 + `RATE_LIMIT_SHARED=on` |
+| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ✅ 실행함(2026-11-10 사용자) — 표만 있는 상태, **서버 증설 때** Render `RATE_LIMIT_SHARED=on`을 켜야 사용 |
+| `048_supplier_shipments.sql` | 공급처 출고 송장 `supplier_shipments`(RLS 포함, 공급처+송장번호 유니크, 상태 CHECK) — 피클 `POST /api/bot/supplier-shipments`·Works 재고 탭 "공급처 입고·배송" | ⚠️ 미실행(2026-11-10 신규) — 실행 전엔 봇 요청이 503, Works 목록은 안내만. 실행 후 "지금 점검하기"에 "DB 마이그레이션 048" 정상 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -613,6 +621,18 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-10 — 공급처 출고 송장 자동 기록(피클 인수인계서 "REITEN 공급처 배송 추적 자동화" 과제 1~3).**
+- **마이그레이션 048** `supplier_shipments`(인수인계서 스키마 + RLS·상태 CHECK, `if not exists`로 재실행 안전). 047은 사용자가 실행 완료(표 갱신).
+- **`POST /api/bot/supplier-shipments`**(`routes/supplierShipments.js`): `X-REITEN-BOT-KEY` 확인을 `lib/botAuth.js`로 빼서 진단과 공용. 본문
+  `{ supplierName, supplierOrderId, carrierCode, carrierName, trackingNumber, itemsSummary, recipientName, status?, shippedAt?, deliveredAt?, metadata? }`.
+  공급처명은 소문자, 송장번호는 숫자·영문만(하이픈 제거·6~40자), status는 봇이 `SHIPPED`·`IN_TRANSIT`·`DELIVERED`만. 같은 공급처+송장이면 갱신하되
+  상태는 뒤로 가지 않고 출고일은 처음 값 유지·metadata 병합. 응답 `{ ok, created, shipment }`(배송조회 링크 `trackingUrl` 포함). 048 미실행이면 503.
+  인수인계서 예시와 다른 점: 송장번호에서 영문을 지우지 않음(해외 택배), upsert 대신 조회 후 insert/update(상태 역행·출고일 덮어쓰기 방지).
+- **Works 재고 탭 맨 위 "공급처 입고·배송"**(`works/js/supplierShipments.js`): 진행 중/입고 완료/전체, 송장번호 클릭 시 택배사 배송조회(택배사 코드
+  `kr.cjlogistics`·`kr.hanjin`·`kr.lotte`·`kr.logen`·`kr.epost` → `data.js` COURIERS 링크 재사용), "입고 완료" 버튼(`PATCH /api/admin/supplier-shipments/:id`,
+  권한 영역 inventory). 운영 점검에 "DB 마이그레이션 048" 항목 추가. 테스트 `test/supplierShipments.test.js`(8건), 서버 테스트 284건 통과.
+- **아직 안 한 것(필요하면 다음)**: 스마트택배 키가 생기면 기존 배송조회 크론(`lib/tracking.js`)으로 공급처 송장도 자동 배송완료 처리.
 
 **2026-11-09 (3) — 보완점 전부 처리(사용자 요청) + Sentry 테스트 버튼, 자동 머지 규칙.**
 - **번역 사전 분리**: Works 전용 독일어를 `assets/js/i18n.de.js`로(works/index.html만 불러옴) → 고객 페이지마다 내려가던 `i18n.js` 226KB → 121KB.

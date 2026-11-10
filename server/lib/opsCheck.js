@@ -40,6 +40,10 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const { error: lockErr } = await db.from("app_locks").select("key").limit(1);
   if (lockErr) out.push({ level: "warn", key: "migration_045", label: "DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)" });
   else out.push({ level: "ok", key: "migration_045", label: "DB 마이그레이션 045" });
+  // 048 — 공급처 출고 송장(routes/supplierShipments.js). 없어도 다른 기능엔 영향 없음(2026-11-10)
+  const { error: shipErr } = await db.from("supplier_shipments").select("id").limit(1);
+  if (shipErr) out.push({ level: "warn", key: "migration_048", label: "DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)" });
+  else out.push({ level: "ok", key: "migration_048", label: "DB 마이그레이션 048" });
 
   const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
   const { data: mailFails } = await db.from("system_error_log").select("id").eq("type", "notification_failed").gte("created_at", since);
