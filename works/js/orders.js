@@ -278,8 +278,9 @@
 
   async function paintAdminOrders(loadMore = false, { keepSelection = false } = {}) {
     ordersState.page = loadMore ? ordersState.page + 1 : 1;
+    const seq = (ordersState.seq = (ordersState.seq || 0) + 1); // 마지막 요청만 화면에 반영(검색 직후 탭 첫 로딩과 겹칠 때, 2026-11-11)
     const result = await adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`);
-    if (!result) return;
+    if (!result || seq !== ordersState.seq) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;
     // 부분 취소 직후처럼 작업 뒤 새로고침할 땐 보던 주문을 그대로 연다(예전엔 목록 첫 주문으로 바뀜, 2026-10-28)

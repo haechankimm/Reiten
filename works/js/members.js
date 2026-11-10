@@ -189,8 +189,9 @@
     membersState.page = loadMore ? membersState.page + 1 : 1;
     const params = new URLSearchParams({ page: membersState.page, pageSize: membersState.pageSize });
     if (membersState.q) params.set("q", membersState.q);
+    const seq = (membersState.seq = (membersState.seq || 0) + 1); // 마지막 요청만 반영(2026-11-11)
     const result = await adminFetch(`/api/admin/members?${params.toString()}`);
-    if (!result) return;
+    if (!result || seq !== membersState.seq) return;
     membersState.total = result.total;
     membersState.items = loadMore ? membersState.items.concat(result.items) : result.items;
     membersState.adminItems = result.adminItems || []; // 마스터 관리자에게만 옴(server 참고), 매번 전체 목록이라 그대로 덮어씀

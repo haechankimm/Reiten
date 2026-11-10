@@ -144,6 +144,7 @@
     });
 
     el("logout")?.addEventListener("click", async () => {
+      if (typeof inventoryHasUnsavedChanges === "function" && inventoryHasUnsavedChanges() && !confirm(t("재고 탭에 저장하지 않은 변경이 있습니다. 그래도 로그아웃할까요?"))) return;
       await client.auth.signOut();
       location.reload();
     });

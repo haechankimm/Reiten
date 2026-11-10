@@ -91,9 +91,18 @@
         const result = await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, { method: "PATCH", body: JSON.stringify({ aiDraft: "" }) });
         if (!result) { btn.disabled = false; return; }
         const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+        const oldDraft = idx > -1 ? qnaState.items[idx].aiDraft : null;
         if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], aiDraft: null };
-        toast(t("초안을 지웠습니다"));
         renderAdminQna();
+        toast(t("초안을 지웠습니다"), {
+          undo: async () => {
+            const r = await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, { method: "PATCH", body: JSON.stringify({ aiDraft: oldDraft || "" }) });
+            const j = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+            if (r && j > -1) qnaState.items[j] = { ...qnaState.items[j], aiDraft: oldDraft };
+            renderAdminQna();
+            return !!r;
+          },
+        });
       })
     );
 
@@ -130,8 +139,9 @@
 
   async function paintAdminQna(loadMore = false) {
     qnaState.page = loadMore ? qnaState.page + 1 : 1;
+    const seq = (qnaState.seq = (qnaState.seq || 0) + 1); // 마지막 요청만 화면에 반영(검색 직후 탭 첫 로딩과 겹칠 때, 2026-11-11)
     const result = await adminFetch(`/api/admin/qna?${qnaQueryParams().toString()}`);
-    if (!result) return;
+    if (!result || seq !== qnaState.seq) return;
     qnaState.total = result.total;
     qnaState.items = loadMore ? qnaState.items.concat(result.items) : result.items;
     renderAdminQna();

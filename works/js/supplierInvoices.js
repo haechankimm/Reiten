@@ -102,8 +102,22 @@
     const form = row.querySelector(".invoice-form");
     if (form && e.target.closest(".if-cancel")) { form.remove(); return; }
     if (form && e.target.closest(".if-save")) {
+      const before = invoiceState.items.get(id) || {};
       const r = await adminFetch(`/api/admin/supplier-invoices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(readInvoiceForm(form)) });
-      if (r) { toast(r.unchanged ? t("바뀐 내용이 없습니다") : t("저장했습니다")); paintSupplierInvoices(); }
+      if (!r) return;
+      paintSupplierInvoices();
+      if (r.unchanged) { toast(t("바뀐 내용이 없습니다")); return; }
+      toast(t("저장했습니다"), {
+        undo: async () => {
+          const back = {
+            supplierName: before.supplierName, supplierLabel: before.supplierLabel || "", docType: before.docType, docNumber: before.docNumber || "",
+            issuedOn: before.issuedOn, supplyAmount: before.supplyAmount ?? "", vatAmount: before.vatAmount ?? "", totalAmount: before.totalAmount, itemsSummary: before.itemsSummary || "",
+          };
+          const x = await adminFetch(`/api/admin/supplier-invoices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(back) });
+          paintSupplierInvoices();
+          return !!x;
+        },
+      });
       return;
     }
     let body = null;
@@ -114,8 +128,21 @@
     } else if (e.target.closest(".invoice-reject")) body = { status: "REJECTED" };
     else if (e.target.closest(".invoice-reopen")) body = { status: "RECORDED" };
     if (!body) return;
-    const res = await adminFetch(`/api/admin/supplier-invoices/${encodeURIComponent(row.dataset.id)}`, { method: "PATCH", body: JSON.stringify(body) });
-    if (res) paintSupplierInvoices();
+    const before = invoiceState.items.get(id) || {};
+    const res = await adminFetch(`/api/admin/supplier-invoices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+    if (!res) return;
+    paintSupplierInvoices();
+    // 되돌리기 — 상태(와 확인 때 고친 합계)를 원래대로
+    const msg = { CONFIRMED: "매입을 확인했습니다", REJECTED: "매입을 제외했습니다", RECORDED: "확인 대기로 되돌렸습니다" }[body.status];
+    toast(t(msg), {
+      undo: async () => {
+        const back = { status: before.status };
+        if (body.totalAmount !== undefined && before.totalAmount !== undefined) back.totalAmount = before.totalAmount;
+        const r = await adminFetch(`/api/admin/supplier-invoices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(back) });
+        paintSupplierInvoices();
+        return !!r;
+      },
+    });
   });
 
   /* "+ 직접 입력" */

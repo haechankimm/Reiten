@@ -224,6 +224,7 @@ router.patch("/api/admin/members/:id/promote", requireMasterAdmin, async (req, r
   if (!(await requireCustomerTarget(id, res))) return;
 
   const { error } = await supabaseAdmin.from("profiles").update({ role: "admin" }).eq("id", id);
+  invalidateAdminCache(id); // 관리자 여부 캐시(lib/adminGuard.js)를 바로 비운다
   if (error) return res.status(500).json({ error: "관리자 승격에 실패했습니다." });
 
   // 승격된 직원은 기본 권한으로 시작(이미 설정된 권한이 있으면 유지). 테이블이 없으면 조용히 건너뜀.

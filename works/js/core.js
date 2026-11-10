@@ -11,18 +11,40 @@
   };
 
   let toastTimer;
-  function toast(msg) {
-    let t = document.querySelector(".toast");
-    if (!t) {
-      t = document.createElement("div");
-      t.className = "toast";
-      t.setAttribute("role", "status");
-      document.body.appendChild(t);
+  /* toast(msg) — 짧은 안내. toast(msg, { undo: async () => {...} }) — "되돌리기" 버튼이 붙고 6초 동안 보인다(2026-11-11).
+     되돌리기는 같은 서버 기능을 반대로 한 번 더 부르는 것이라 활동 로그에도 두 줄(원래 동작·되돌림)이 남는다. */
+  function toast(msg, opts) {
+    let box = document.querySelector(".toast");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "toast";
+      box.setAttribute("role", "status");
+      document.body.appendChild(box);
     }
-    t.textContent = msg;
-    requestAnimationFrame(() => t.classList.add("on"));
+    box.textContent = msg;
+    const undo = opts && typeof opts.undo === "function" ? opts.undo : null;
+    if (undo) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "toast-undo";
+      btn.textContent = t("되돌리기");
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        clearTimeout(toastTimer);
+        box.classList.remove("on");
+        try {
+          const ok = await undo();
+          if (ok !== false) toast(t("되돌렸습니다"));
+        } catch (e) {
+          toast(t("되돌리지 못했습니다"));
+        }
+      });
+      box.appendChild(btn);
+    }
+    box.classList.toggle("toast--action", !!undo);
+    requestAnimationFrame(() => box.classList.add("on"));
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
+    toastTimer = setTimeout(() => box.classList.remove("on"), undo ? 6000 : 2600);
   }
 
   /* 라이트/다크는 기본적으로 OS 설정을 따르고, 한 번 수동으로 바꾸면 그 이후로는

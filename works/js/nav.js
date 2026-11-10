@@ -124,11 +124,14 @@
 
     /* 벨 드롭다운을 열어봐야만 알 수 있으면 눈에 잘 안 띈다는 피드백 — 같은 데이터를 왼쪽
        사이드바의 해당 탭에도 작은 빨간 배지로 바로 보이게 중복 표시한다. */
-    result.items.forEach((it) => {
-      const badge = el(`nav-badge-${it.tab}`);
+    // 같은 탭에 알림이 여러 종류면 합친다(재고 탭: 품절 조합 + 공급처 입고 대기 — 2026-11-11)
+    const perTab = {};
+    result.items.forEach((it) => { perTab[it.tab] = (perTab[it.tab] || 0) + (it.count || 0); });
+    Object.entries(perTab).forEach(([tab, count]) => {
+      const badge = el(`nav-badge-${tab}`);
       if (!badge) return;
-      badge.hidden = it.count === 0;
-      badge.textContent = it.count > 99 ? "99+" : it.count;
+      badge.hidden = count === 0;
+      badge.textContent = count > 99 ? "99+" : count;
     });
   }
 
@@ -263,7 +266,34 @@
      필요한 곳만 이 값을 확인한다. 성공하면 null로 비운다. */
   let lastAdminFetchError = null;
 
+  /* 상단 로딩 막대(2026-11-11) — 서버 요청이 하나라도 진행 중이면 화면 맨 위에 얇은 막대가 움직인다.
+     짧은 요청(0.25초 미만)은 깜빡이지 않게 늦게 띄운다. */
+  let busyCount = 0;
+  let busyTimer = null;
+  function busyStart() {
+    busyCount++;
+    if (busyCount === 1) busyTimer = setTimeout(() => el("busy-bar") && el("busy-bar").classList.add("on"), 250);
+  }
+  function busyEnd() {
+    busyCount = Math.max(0, busyCount - 1);
+    if (busyCount === 0) { clearTimeout(busyTimer); el("busy-bar") && el("busy-bar").classList.remove("on"); }
+  }
+
   async function adminFetch(path, opts) {
+    busyStart();
+    try {
+      return await adminFetchInner(path, opts);
+    } catch (e) {
+      // 네트워크가 끊겼을 때(서버가 잠들어 깨어나는 중 포함) — 예전엔 아무 안내 없이 화면이 비어 있었다
+      lastAdminFetchError = { status: 0, code: "NETWORK" };
+      toast(t("서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+      return null;
+    } finally {
+      busyEnd();
+    }
+  }
+
+  async function adminFetchInner(path, opts) {
     lastAdminFetchError = null;
     const token = await getAccessToken();
     if (!token) {
