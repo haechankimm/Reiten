@@ -39,8 +39,8 @@
 
 **지금 상태**: main = `66145da`(PR #16까지 머지, 사용자가 루트에 피클 인수인계 문서 `reiten-monitoring-handoff.md`를 직접 커밋). 열린 PR 없음.
 작업 브랜치 `claude/remote-control-review-3hq2cb`는 main과 같은 위치에서 시작한다. 서버 테스트 276건, GitHub Actions `test`·`ui` 통과.
-마이그레이션 `001`~`046` 실행 완료(045·046은 2026-11-09). `047`은 2026-11-10 사용자가 실행했다고 보고 — **실제 반영은 아직 미확인**: Works "지금 점검하기"(또는 피클 진단)의 "DB 마이그레이션 047"이 정상이면 ✅로 바꿀 것(2026-11-10에 점검 항목 추가). 047은 실행해도 `RATE_LIMIT_SHARED=on`을 넣기 전엔 서버가 이 표를 쓰지 않는다.
-**`048_supplier_shipments.sql`(공급처 송장, 2026-11-10 신규)은 아직 미실행.** Sentry 연결 완료(테스트 이슈 수신 확인).
+마이그레이션 `001`~`047` 실행 완료(045·046은 2026-11-09, 047은 2026-11-10 — Works "지금 점검하기"에서 "DB 마이그레이션 047" 정상 확인). 047은 `RATE_LIMIT_SHARED=on`을 넣기 전엔 서버가 쓰지 않는다.
+**`048_supplier_shipments.sql`·`049_supplier_tracking.sql`(공급처 송장·배송조회, 2026-11-10 신규)은 아직 미실행 — 048 먼저, 그다음 049.** Sentry 연결 완료(테스트 이슈 수신 확인).
 AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_KEY` 설정, `GET /api/bot/diagnostics` 호출 정상, 마스킹·요청 제한 동작 확인.
 공급처 송장 자동 기록(2026-11-10): `POST /api/bot/supplier-shipments`(`routes/supplierShipments.js`) + Works 재고 탭 "공급처 입고·배송" — 048 실행 후 동작.
 
@@ -514,8 +514,9 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `042_calendar_event_range.sql` | 캘린더 기간 일정용 `calendar_events.end_date` | ✅ 실행 확인(2026-10-02, `end_date` 컬럼 확인) |
 | `043_refunds_delivery_confirm.sql` | 부분 환불·배송추적·구매확정(2026-10-02 3차) — `orders`에 `refunded_amount`·`delivered_at`·`confirmed_at`·`tracking_checked_at`·`tracking_status`, 환불 기록 `order_refunds` 테이블(RLS 포함), 교환 재발송용 `return_requests.reship_*`, `qna.email`, 적립금 원장 `ref` 컬럼 + `earn_review` 사유 + 리뷰당 1회 유니크 인덱스 | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 각 기능이 꺼진 채 예전 방식으로 동작(위 📌 1번). 실행 후 Works 정보 탭 "지금 점검하기"로 확인 |
 | `045_app_locks.sql` | 서버 여러 대 사이 처리 잠금 `app_locks`(RLS 포함, `lib/dbLock.js`) — 결제 확정·환불·주문 변경·PIN·크론 중복 방지 | ✅ 실행함(2026-11-09 사용자) |
-| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | 🟡 사용자 실행 보고(2026-11-10), **반영 확인 전** — "지금 점검하기"의 "DB 마이그레이션 047"(표 `rate_limits` + 함수 `rate_limit_undo` 존재 확인)이 정상이면 ✅. 서버 증설 때 Render `RATE_LIMIT_SHARED=on`을 켜야 실제로 사용 |
+| `047_shared_rate_limits.sql` | 서버 여러 대 공유 요청 제한 `rate_limits` + `rate_limit_hit`/`rate_limit_undo` 함수(`lib/rateLimitStore.js`) | ✅ 실행 확인(2026-11-10, "지금 점검하기"의 "DB 마이그레이션 047" 정상 — 표 `rate_limits`·함수 `rate_limit_undo` 존재) — 서버 증설 때 Render `RATE_LIMIT_SHARED=on`을 켜야 실제로 사용 |
 | `048_supplier_shipments.sql` | 공급처 출고 송장 `supplier_shipments`(RLS 포함, 공급처+송장번호 유니크, 상태 CHECK) — 피클 `POST /api/bot/supplier-shipments`·Works 재고 탭 "공급처 입고·배송" | ⚠️ 미실행(2026-11-10 신규) — 실행 전엔 봇 요청이 503, Works 목록은 안내만. 실행 후 "지금 점검하기"에 "DB 마이그레이션 048" 정상 |
+| `049_supplier_tracking.sql` | 공급처 송장 배송조회 결과 칸(`supplier_label`·`tracking_checked_at`·`tracking_status`·`tracking_events`·`tracking_error`) + 스마트택배 월간 사용량 `api_usage_monthly`(RLS) | ⚠️ 미실행(2026-11-10 신규, 048 다음에) — 실행 전엔 공급처 배송조회 결과가 저장되지 않고 사용량은 서버 메모리로만 셈 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -632,7 +633,16 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 - **Works 재고 탭 맨 위 "공급처 입고·배송"**(`works/js/supplierShipments.js`): 진행 중/입고 완료/전체, 송장번호 클릭 시 택배사 배송조회(택배사 코드
   `kr.cjlogistics`·`kr.hanjin`·`kr.lotte`·`kr.logen`·`kr.epost` → `data.js` COURIERS 링크 재사용), "입고 완료" 버튼(`PATCH /api/admin/supplier-shipments/:id`,
   권한 영역 inventory). 운영 점검에 "DB 마이그레이션 048" 항목 추가. 테스트 `test/supplierShipments.test.js`(8건), 서버 테스트 284건 통과.
-- **아직 안 한 것(필요하면 다음)**: 스마트택배 키가 생기면 기존 배송조회 크론(`lib/tracking.js`)으로 공급처 송장도 자동 배송완료 처리.
+- **같은 날 2차 — 공급처 송장 배송조회 + 확장성(마이그레이션 049)**:
+  - `lib/carriers.js` 택배사 표(CJ·한진·롯데·로젠·우체국 + 경동·대신·일양·합동·CU·GS). **택배사 추가 = 이 표에 한 줄.** 피클은 코드(`kr.kdexp`)나 이름(`경동택배`)
+    아무거나 보내도 되고, 표에 없는 택배사도 `etc`+이름으로 받는다. 스마트택배 코드를 모르는 택배사는 스마트택배 택배사 목록 API에서 이름으로 찾음(하루 캐시).
+    링크는 알려진 택배사면 그 회사 조회 화면, 아니면 네이버 "택배사 송장번호" 검색.
+  - 공급처: `supplierName`은 고정 식별자(소문자, 한글 가능), 화면 이름은 `supplierLabel`(선택). Works에 공급처 고르기(진행 중 건수 표시).
+  - 배송조회: `lib/supplierShipments.js` — 매시 15분 크론이 고객 주문 다음에 공급처 송장(출고·배송중, 출고 6시간~21일)을 회차당 최대 10건,
+    같은 송장은 12시간마다(`SUPPLIER_TRACKING_RECHECK_HOURS`) 조회 → 배송완료면 `DELIVERED`, 단계 기록 저장. Works "배송조회" 버튼으로 즉시 조회·"단계 보기".
+  - **스마트택배 월간 예산** `lib/trackingBudget.js`: 무료 플랜 월 100건을 고객 주문·공급처·버튼이 함께 쓴다. 한도 `SWEETTRACKER_MONTHLY_LIMIT`(기본 100,
+    유료 이용권이면 그 건수로). 다 쓰면 조회 중지, 운영 점검에 사용량·한도 소진·최근 조회 실패(키 만료 등) 표시. **무료 키는 한 달마다 새로 발급**해 Render 값을 바꿔야 함.
+  - `lib/tracking.js`에 `fetchTrackingByCode`·`trackWithBudget`·`resolveSweetCode` 추가, 고객 주문 크론(`checkDeliveries`)도 예산을 거친다.
 
 **2026-11-09 (3) — 보완점 전부 처리(사용자 요청) + Sentry 테스트 버튼, 자동 머지 규칙.**
 - **번역 사전 분리**: Works 전용 독일어를 `assets/js/i18n.de.js`로(works/index.html만 불러옴) → 고객 페이지마다 내려가던 `i18n.js` 226KB → 121KB.

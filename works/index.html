@@ -391,12 +391,15 @@
           <!-- 공급처 입고·배송(2026-11-10, 마이그레이션 048) — 비서 에이전트가 출고 메일에서 기록한 송장. js/supplierShipments.js -->
           <div class="panel" id="supplier-shipments-panel" style="margin-bottom:16px">
             <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px">
-              <b data-i18n="공급처 입고·배송">공급처 입고·배송</b>
+              <div><b data-i18n="공급처 입고·배송">공급처 입고·배송</b> <span id="supplier-tracking-usage" class="small" style="color:var(--text-muted);margin-left:6px"></span></div>
+              <div style="display:flex;gap:6px">
+              <select id="supplier-shipments-supplier"><option value="" data-i18n="모든 공급처">모든 공급처</option></select>
               <select id="supplier-shipments-filter">
                 <option value="open" data-i18n="진행 중">진행 중</option>
                 <option value="RECEIVED" data-i18n="입고 완료">입고 완료</option>
                 <option value="all" data-i18n="전체">전체</option>
               </select>
+              </div>
             </div>
             <div id="supplier-shipments-list" class="small"></div>
           </div>

@@ -1183,3 +1183,16 @@
   ["DB 마이그레이션 047이 아직 실행되지 않았습니다(서버를 2대 이상으로 늘릴 때만 필요)", "DB-Migration 047 wurde noch nicht ausgeführt (nur nötig bei mehr als einem Server)"],
   ["DB 마이그레이션 047", "DB-Migration 047"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* ---------- 2026-11-10: 공급처 송장 배송조회(마이그레이션 049) ---------- */
+[
+  ["모든 공급처", "Alle Lieferanten"],
+  ["마지막 배송조회", "Letzte Sendungsabfrage"],
+  ["단계 보기", "Verlauf anzeigen"],
+  ["배송조회", "Sendung verfolgen"],
+  ["배송조회 이번 달 {a}/{b}건 사용", "Sendungsabfragen diesen Monat: {a}/{b}"],
+  ["이번 달 배송조회 한도({n}건)를 다 썼습니다 — 다음 달 1일까지 자동 배송조회가 멈춥니다", "Monatliches Abfragelimit ({n}) erreicht — automatische Sendungsabfrage pausiert bis zum 1. des nächsten Monats"],
+  ["최근 배송조회 실패: {msg} — 키가 만료됐으면 스마트택배에서 새 키를 받아 Render SWEETTRACKER_API_KEY를 바꾸세요", "Letzte Sendungsabfrage fehlgeschlagen: {msg} — falls der Schlüssel abgelaufen ist, bei Smart Taekbae einen neuen holen und SWEETTRACKER_API_KEY in Render ersetzen"],
+  ["DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)", "DB-Migration 049 wurde noch nicht ausgeführt (Abfrageergebnisse für Lieferanten-Sendungen werden nicht gespeichert)"],
+  ["DB 마이그레이션 049", "DB-Migration 049"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

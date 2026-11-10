@@ -19,6 +19,7 @@ const { isMissingColumnError } = require("./pgErrors");
 const { sendMorningBriefing } = require("./briefing");
 const { buildBackup } = require("./backup");
 const { checkDeliveries, autoConfirmOrders } = require("./purchaseConfirm");
+const { checkSupplierShipments } = require("./supplierShipments");
 const { buildSettlement } = require("./settlement");
 const { PENDING_CANCEL_HOURS } = require("./orderRules");
 
@@ -177,9 +178,11 @@ scheduleExclusive("review-request", "0 11 * * *", () => {
   sendReviewRequests().catch((err) => console.error("[review-request] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
-/* 배송조회 자동화(SWEETTRACKER_API_KEY가 있을 때만) — 매시 15분, 배송완료면 주문 "완료" + delivered_at */
-scheduleExclusive("tracking", "15 * * * *", () => {
-  checkDeliveries().catch((err) => console.error("[tracking] 실행 실패:", err.message));
+/* 배송조회 자동화(SWEETTRACKER_API_KEY가 있을 때만) — 매시 15분, 배송완료면 주문 "완료" + delivered_at.
+   이어서 공급처 송장(2026-11-10, lib/supplierShipments.js)도 조회 — 월간 한도는 고객 주문이 먼저 쓴다(lib/trackingBudget.js). */
+scheduleExclusive("tracking", "15 * * * *", async () => {
+  await checkDeliveries().catch((err) => console.error("[tracking] 실행 실패:", err.message));
+  await checkSupplierShipments().catch((err) => console.error("[supplier-tracking] 실행 실패:", err.message));
 });
 
 /* 자동 구매확정 — 매일 03:40(KST), 배송완료 7일·출고 14일 지난 주문(반품·교환 처리 중 제외) 확정 + 적립금 지급 */

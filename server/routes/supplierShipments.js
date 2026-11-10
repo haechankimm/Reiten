@@ -10,35 +10,20 @@ const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
 const { requireAdmin } = require("../lib/auth");
 const { logAdminAction } = require("../lib/adminLog");
-const { isMissingSchemaError } = require("../lib/pgErrors");
+const { isMissingSchemaError, isMissingColumnError } = require("../lib/pgErrors");
 const { botWriteLimiter } = require("../lib/rateLimiters");
 const { requireBotKey, BOT_ACTOR_ID } = require("../lib/botAuth");
-const { COURIERS } = require("../../소스 코드/assets/js/data.js");
+const carriers = require("../lib/carriers");
+const tracking = require("../lib/tracking");
+const budget = require("../lib/trackingBudget");
+const { TABLE, STATUS_RANK, OPEN_STATUSES, toApi, trackShipment } = require("../lib/supplierShipments");
 
 const router = express.Router();
-const TABLE = "supplier_shipments";
 
-/* 상태 순서 — 봇 갱신은 앞으로만 간다. RECEIVED(입고 완료)·CANCELED(취소)는 관리자가 Works에서만 정한다. */
-const STATUS_RANK = { SHIPPED: 1, IN_TRANSIT: 2, DELIVERED: 3, RECEIVED: 4 };
 const BOT_STATUSES = ["SHIPPED", "IN_TRANSIT", "DELIVERED"];
 const ADMIN_STATUSES = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RECEIVED", "CANCELED"];
 const METADATA_MAX_CHARS = 4000;
 const MIGRATION_MISSING = "공급처 송장 표가 아직 없습니다(마이그레이션 048 미실행)";
-
-/* 택배사 코드(tracker.delivery 방식 'kr.cjlogistics' 또는 짧은 이름) → data.js COURIERS key. 모르면 배송조회 링크 없이 송장번호만 보인다. */
-const CARRIER_ALIASES = {
-  "kr.cjlogistics": "cj", cj: "cj", cjlogistics: "cj",
-  "kr.hanjin": "hanjin", hanjin: "hanjin",
-  "kr.lotte": "lotte", lotte: "lotte",
-  "kr.logen": "logen", logen: "logen",
-  "kr.epost": "epost", epost: "epost",
-};
-
-function trackingUrl(carrierCode, trackingNumber) {
-  const courier = COURIERS.find((c) => c.key === CARRIER_ALIASES[String(carrierCode || "").toLowerCase()]);
-  if (!courier || !trackingNumber) return null;
-  return courier.urlTemplate.replace("{tracking}", encodeURIComponent(trackingNumber));
-}
 
 /* 메일에서 온 글 — 제어문자를 지우고 길이를 자른다. 빈 값은 undefined(= 이번 요청에서 안 바꿈). */
 function cleanText(v, max) {
@@ -58,11 +43,19 @@ function parseDate(v) {
 function normalizeBotShipment(body) {
   const b = body && typeof body === "object" ? body : {};
   const supplierName = cleanText(b.supplierName, 50);
-  const carrierCode = cleanText(b.carrierCode, 50);
+  const rawCarrierCode = cleanText(b.carrierCode, 50);
+  const carrierName = cleanText(b.carrierName, 50);
   const trackingNumber = String(b.trackingNumber || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-  if (!supplierName || !carrierCode || !trackingNumber) return { error: "필수 정보(공급처, 택배사, 송장번호) 누락" };
+  if (!supplierName || !(rawCarrierCode || carrierName) || !trackingNumber) return { error: "필수 정보(공급처, 택배사, 송장번호) 누락" };
   if (trackingNumber.length < 6 || trackingNumber.length > 40) return { error: "송장번호 형식이 올바르지 않습니다(숫자·영문 6~40자)" };
-  if (!/^[a-z0-9._-]+$/i.test(carrierCode)) return { error: "택배사 코드 형식이 올바르지 않습니다(예: kr.cjlogistics)" };
+  /* 택배사는 코드('kr.cjlogistics')나 이름('CJ대한통운', '경동택배') 어느 쪽으로 와도 lib/carriers.js 표에서 찾아 같은 코드로 저장한다.
+     표에 없는 택배사도 받는다(코드 형식이면 그대로, 이름만 왔으면 'etc') — 배송조회 때 이름으로 스마트택배 목록을 찾는다. */
+  const known = carriers.findCarrier(rawCarrierCode, carrierName);
+  let carrierCode = known ? known.id : rawCarrierCode && /^[a-z0-9._-]+$/i.test(rawCarrierCode) ? rawCarrierCode.toLowerCase() : null;
+  if (!carrierCode) {
+    if (!carrierName) return { error: "택배사를 알아볼 수 없습니다(코드 예: kr.cjlogistics, 또는 carrierName에 택배사 이름)" };
+    carrierCode = "etc";
+  }
 
   let status;
   if (b.status !== undefined && b.status !== null && b.status !== "") {
@@ -83,10 +76,11 @@ function normalizeBotShipment(body) {
   return {
     fields: {
       supplier_name: supplierName.toLowerCase(),
-      carrier_code: carrierCode.toLowerCase(),
+      supplier_label: cleanText(b.supplierLabel, 80),
+      carrier_code: carrierCode,
       tracking_number: trackingNumber,
       supplier_order_id: cleanText(b.supplierOrderId, 100),
-      carrier_name: cleanText(b.carrierName, 50),
+      carrier_name: carrierName || (known ? known.name : undefined),
       items_summary: cleanText(b.itemsSummary, 1000),
       recipient_name: cleanText(b.recipientName, 50),
       status,
@@ -120,24 +114,10 @@ function buildInsert(fields, nowIso) {
   return row;
 }
 
-function toApi(r) {
-  return {
-    id: r.id,
-    supplierName: r.supplier_name,
-    supplierOrderId: r.supplier_order_id || null,
-    carrierCode: r.carrier_code,
-    carrierName: r.carrier_name || null,
-    trackingNumber: r.tracking_number,
-    trackingUrl: trackingUrl(r.carrier_code, r.tracking_number),
-    itemsSummary: r.items_summary || null,
-    recipientName: r.recipient_name || null,
-    status: r.status,
-    shippedAt: r.shipped_at || null,
-    deliveredAt: r.delivered_at || null,
-    metadata: r.metadata || {},
-    createdAt: r.created_at || null,
-    updatedAt: r.updated_at || null,
-  };
+/* 049(공급처 표시 이름 칸) 실행 전에도 기록은 되게 */
+function without049(fields) {
+  const { supplier_label, ...rest } = fields;
+  return rest;
 }
 
 async function findExisting(supplierName, trackingNumber) {
@@ -155,7 +135,8 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
     let created = false;
     let row;
     if (!existing) {
-      const ins = await supabaseAdmin.from(TABLE).insert(buildInsert(fields, nowIso)).select().single();
+      let ins = await supabaseAdmin.from(TABLE).insert(buildInsert(fields, nowIso)).select().single();
+      if (ins.error && isMissingColumnError(ins.error)) ins = await supabaseAdmin.from(TABLE).insert(buildInsert(without049(fields), nowIso)).select().single();
       if (ins.error && ins.error.code === "23505") {
         // 같은 메일을 거의 동시에 두 번 보낸 경우 — 먼저 들어간 행을 갱신한다.
         ({ data: existing, error } = await findExisting(fields.supplier_name, fields.tracking_number));
@@ -168,7 +149,8 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
       }
     }
     if (!row) {
-      const upd = await supabaseAdmin.from(TABLE).update(buildUpdate(existing, fields, nowIso)).eq("id", existing.id).select().single();
+      let upd = await supabaseAdmin.from(TABLE).update(buildUpdate(existing, fields, nowIso)).eq("id", existing.id).select().single();
+      if (upd.error && isMissingColumnError(upd.error)) upd = await supabaseAdmin.from(TABLE).update(buildUpdate(existing, without049(fields), nowIso)).eq("id", existing.id).select().single();
       if (upd.error) throw upd.error;
       row = upd.data;
     }
@@ -193,18 +175,53 @@ router.post("/api/bot/supplier-shipments", botWriteLimiter, requireBotKey, async
   }
 });
 
+/* Works 목록 — 상태(진행 중/입고 완료/전체…)·공급처로 거르고, 공급처 목록(건수)·배송조회 사용 가능 여부·이번 달 조회 사용량을 함께 준다. */
 router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
   const filter = String(req.query.status || "open");
+  const supplier = String(req.query.supplier || "").trim().toLowerCase();
   let q = supabaseAdmin.from(TABLE).select("*").order("created_at", { ascending: false }).limit(200);
-  if (filter === "open") q = q.in("status", ["SHIPPED", "IN_TRANSIT", "DELIVERED"]);
+  if (filter === "open") q = q.in("status", OPEN_STATUSES);
   else if (ADMIN_STATUSES.includes(filter)) q = q.eq("status", filter);
-  const { data, error } = await q;
+  if (supplier) q = q.eq("supplier_name", supplier);
+  const [{ data, error }, sup] = await Promise.all([
+    q,
+    supabaseAdmin.from(TABLE).select("*").order("created_at", { ascending: false }).limit(2000),
+  ]);
   if (error) {
-    if (isMissingSchemaError(error)) return res.json({ items: [], migrationMissing: true });
+    if (isMissingSchemaError(error)) return res.json({ items: [], suppliers: [], migrationMissing: true });
     console.error("[supplier-shipments] 목록 조회 실패:", error.message);
     return res.status(500).json({ error: "공급처 배송 목록을 불러오지 못했습니다." });
   }
-  res.json({ items: (data || []).map(toApi) });
+  // 공급처별 건수(진행 중 많은 순) — 공급처가 늘어도 Works에서 골라 볼 수 있게
+  const bySupplier = new Map();
+  for (const r of (sup && sup.data) || []) {
+    const cur = bySupplier.get(r.supplier_name) || { name: r.supplier_name, label: null, open: 0, total: 0 };
+    cur.label = cur.label || r.supplier_label || null;
+    cur.total++;
+    if (OPEN_STATUSES.includes(r.status)) cur.open++;
+    bySupplier.set(r.supplier_name, cur);
+  }
+  const trackingEnabled = tracking.isConfigured();
+  const usage = trackingEnabled ? await budget.usage(supabaseAdmin).catch(() => null) : null;
+  res.json({
+    items: (data || []).map(toApi),
+    suppliers: [...bySupplier.values()].sort((a, b) => b.open - a.open || b.total - a.total),
+    trackingEnabled,
+    trackingUsage: usage && { month: usage.month, calls: usage.calls, limit: usage.limit, remaining: usage.remaining },
+  });
+});
+
+/* Works "배송조회" 버튼 — 지금 스마트택배로 1건 조회해 저장하고 단계 기록을 돌려준다(월간 한도 1건 사용). */
+router.post("/api/admin/supplier-shipments/:id/track", requireAdmin, async (req, res) => {
+  const { data: row, error } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (error) {
+    if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
+    return res.status(500).json({ error: "송장을 불러오지 못했습니다." });
+  }
+  if (!row) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
+  const r = await trackShipment(row);
+  if (r.error) return res.status(r.budgetExhausted || r.noMigration ? 409 : 400).json({ error: r.error });
+  res.json({ ok: true, shipment: toApi(r.row), lookupError: r.lookupError });
 });
 
 router.patch("/api/admin/supplier-shipments/:id", requireAdmin, async (req, res) => {
@@ -231,4 +248,3 @@ module.exports = router;
 module.exports.normalizeBotShipment = normalizeBotShipment;
 module.exports.buildUpdate = buildUpdate;
 module.exports.buildInsert = buildInsert;
-module.exports.trackingUrl = trackingUrl;

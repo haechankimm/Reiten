@@ -100,8 +100,10 @@ async function checkDeliveries({ db = supabaseAdmin, now = new Date(), fetchImpl
     if (checked >= 40) break;
     if (!o.tracking_no || !tracking.COURIER_CODES[o.courier]) continue;
     if (o.tracking_checked_at && new Date(o.tracking_checked_at).getTime() > recheckBefore) continue;
+    // 스마트택배 월간 한도를 공급처 송장 조회와 함께 쓴다(lib/trackingBudget.js, 2026-11-10) — 다 쓰면 이번 회차는 멈춘다
+    const r = await tracking.trackWithBudget({ code: tracking.COURIER_CODES[o.courier], invoice: o.tracking_no, db, now, fetchImpl });
+    if (r.budgetExhausted) break;
     checked++;
-    const r = await tracking.fetchTracking(o.courier, o.tracking_no, fetchImpl ? { fetchImpl } : undefined);
     const patch = { tracking_checked_at: now.toISOString() };
     if (!r.error) patch.tracking_status = r.statusText || null;
     if (r.delivered) {
