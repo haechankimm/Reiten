@@ -161,11 +161,12 @@
       <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="메뉴 열기" data-i18n-attr="aria-label:메뉴 열기" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
-      <div class="brand">
+      <!-- 로고를 누르면 "오늘"(홈)으로(2026-11-11 — 눌러도 반응이 없어 이상하다는 요청) -->
+      <a href="#" class="brand" id="brand-home" title="오늘(홈)으로" data-i18n-attr="title:오늘(홈)으로" style="text-decoration:none;color:inherit">
         <img src="/assets/img/logo-mark.png" class="brand-mark-img" alt="Reiten">
         <span class="brand-word">REITEN</span>
         <span class="brand-badge">WORKS</span>
-      </div>
+      </a>
       <div class="topbar-right">
         <div class="notif-wrap" id="notif-wrap" hidden>
           <button type="button" class="icon-btn" id="notif-toggle" aria-label="알림" data-i18n-attr="aria-label:알림">
@@ -392,7 +393,8 @@
           <div class="panel" id="supplier-shipments-panel" style="margin-bottom:16px">
             <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px">
               <div><b data-i18n="공급처 입고·배송">공급처 입고·배송</b> <span id="supplier-tracking-usage" class="small" style="color:var(--text-muted);margin-left:6px"></span></div>
-              <div style="display:flex;gap:6px">
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn btn--sm btn--ghost" id="supplier-shipments-new" data-i18n="+ 직접 등록">+ 직접 등록</button>
               <select id="supplier-shipments-supplier"><option value="" data-i18n="모든 공급처">모든 공급처</option></select>
               <select id="supplier-shipments-filter">
                 <option value="open" data-i18n="진행 중">진행 중</option>
@@ -401,6 +403,7 @@
               </select>
               </div>
             </div>
+            <div id="supplier-shipments-newform" class="small"></div>
             <div id="supplier-shipments-list" class="small"></div>
           </div>
           <div id="admin-inventory-body"></div>
@@ -1045,14 +1048,18 @@
               <button type="button" class="btn btn--sm btn--ghost" id="settle-send" data-i18n="메일로 다시 보내기">메일로 다시 보내기</button>
             </div>
           </div>
-          <!-- 매입 장부(2026-11-10, 마이그레이션 050) — 피클이 공급처 명세서·세금계산서 메일에서 기록, 사람이 확인. js/supplierInvoices.js -->
+          <!-- 매입 장부(2026-11-10, 마이그레이션 050) — 실시간 에이전트 AI가 공급처 명세서·세금계산서 메일에서 기록, 사람이 확인. js/supplierInvoices.js -->
           <div class="panel" id="supplier-invoices-panel">
             <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
               <b data-i18n="매입 장부">매입 장부</b>
-              <input type="month" id="invoice-month" style="max-width:180px">
+              <div style="display:flex;gap:6px;align-items:center">
+                <button type="button" class="btn btn--sm btn--ghost" id="supplier-invoices-new" data-i18n="+ 직접 입력">+ 직접 입력</button>
+                <input type="month" id="invoice-month" style="max-width:180px">
+              </div>
             </div>
-            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="피클이 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.">피클이 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.</p>
+            <p class="small" style="color:var(--text-muted);margin:6px 0 10px" data-i18n="실시간 에이전트 AI가 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.">실시간 에이전트 AI가 공급처 거래명세서·세금계산서 메일에서 금액을 기록합니다. 확인을 누른 매입만 월간 정산 엑셀에 들어갑니다.</p>
             <div id="supplier-invoices-totals" class="small" style="margin-bottom:8px"></div>
+            <div id="supplier-invoices-newform" class="small"></div>
             <div id="supplier-invoices-list" class="small"></div>
           </div>
           <div class="panel">

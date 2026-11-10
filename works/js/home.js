@@ -119,6 +119,7 @@
       : `<p class="small" style="color:var(--text-muted)">${esc(t("아직 남긴 노트가 없습니다"))}</p>`;
     el("handoff-list").querySelectorAll(".handoff-delete").forEach((btn) =>
       btn.addEventListener("click", async () => {
+        if (!confirm(t("이 인수인계 노트를 삭제할까요?"))) return; // 실수로 지우지 않게(2026-11-11 점검)
         const id = btn.closest("[data-id]").dataset.id;
         btn.disabled = true;
         const ok = await adminFetch(`/api/admin/handoff-notes/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -162,8 +163,8 @@
     el("home-tiles").innerHTML = [
       canView("dashboard") && homeTileHTML(t("오늘 매출"), money(dash.todayRevenue), "dashboard"),
       canView("dashboard") && homeTileHTML(t("이번 달 매출"), money(dash.monthRevenue), "dashboard"),
-      canView("dashboard") && homeTileHTML(t("오늘 주문"), t("{n}건", { n: dash.todayOrders }), "orders"),
-      canView("dashboard") && homeTileHTML(t("입금 확인 대기"), t("{n}건", { n: dash.pendingCount }), "orders"),
+      canView("dashboard") && homeTileHTML(t("오늘 주문"), t("{n}건", { n: dash.todayOrders ?? 0 }), "orders"),
+      canView("dashboard") && homeTileHTML(t("입금 확인 대기"), t("{n}건", { n: dash.pendingCount ?? 0 }), "orders"),
       homeTileHTML(t("확인 필요 총계"), t("확인 필요 {n}건", { n: pendingTotal }), canView("orders") ? "orders" : "home"),
     ].filter(Boolean).join("");
 
@@ -186,3 +187,10 @@
 
     if (canView("calendar")) paintHandoffNotes();
   }
+
+  /* 상단 REITEN 로고 → "오늘"(홈) 탭으로(2026-11-11) */
+  el("brand-home")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    goToTab("home");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });

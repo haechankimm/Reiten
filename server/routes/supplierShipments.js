@@ -137,6 +137,8 @@ function buildUpdate(existing, fields, nowIso) {
   if (fields.status && cur !== "CANCELED" && (STATUS_RANK[fields.status] || 0) > (STATUS_RANK[cur] || 0)) patch.status = fields.status;
   if (fields.metadata) patch.metadata = { ...(existing.metadata || {}), ...fields.metadata };
   if (existing.received_at) delete patch.receipt_items; // 이미 입고 처리된 품목은 바꾸지 않는다
+  // 사람이 Works에서 고친 칸은 AI가 같은 메일을 다시 보내도 덮어쓰지 않는다(2026-11-11)
+  for (const col of (existing.metadata && existing.metadata.humanEdited) || []) delete patch[col];
   if ((patch.status || cur) === "DELIVERED" && !existing.delivered_at && !patch.delivered_at) patch.delivered_at = nowIso;
   patch.updated_at = nowIso;
   return patch;
@@ -250,6 +252,7 @@ router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
     items: (data || []).map(toApi),
     suppliers: [...bySupplier.values()].sort((a, b) => b.open - a.open || b.total - a.total),
     trackingEnabled,
+    carriers: carriers.CARRIERS.map((c) => ({ id: c.id, name: c.name })),
     trackingUsage: usage && { month: usage.month, calls: usage.calls, limit: usage.limit, remaining: usage.remaining },
   });
 });
@@ -267,24 +270,98 @@ router.post("/api/admin/supplier-shipments/:id/track", requireAdmin, notFoundUnl
   res.json({ ok: true, shipment: toApi(r.row), lookupError: r.lookupError });
 });
 
-router.patch("/api/admin/supplier-shipments/:id", requireAdmin, notFoundUnlessUuid, async (req, res) => {
-  const status = String((req.body || {}).status || "").toUpperCase();
-  if (!ADMIN_STATUSES.includes(status)) return res.status(400).json({ error: "상태 값이 올바르지 않습니다." });
+/* ---------- 사람이 직접 등록·수정·취소 (2026-11-11) ----------
+   실시간 에이전트 AI가 놓친 송장을 직접 등록하고, AI가 잘못 적은 값(공급처·택배사·송장번호·품목·상태 등)을 고칠 수 있다.
+   상태는 사람이면 어느 쪽으로든 바꿀 수 있다(되돌리기 포함). 단, 재고에 반영된 입고는 "입고 취소"(재고 차감)로만 되돌린다.
+   모든 변경은 활동 로그에 바뀌기 전 값과 함께 남는다. */
+const EDITABLE = {
+  supplierName: "supplier_name", supplierLabel: "supplier_label", supplierOrderId: "supplier_order_id", carrierCode: "carrier_code",
+  carrierName: "carrier_name", trackingNumber: "tracking_number", itemsSummary: "items_summary", shippedAt: "shipped_at",
+  deliveredAt: "delivered_at", receiptItems: "receipt_items", status: "status",
+};
+
+router.post("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
+  const { fields, error: invalid } = normalizeBotShipment(req.body);
+  if (invalid) return res.status(400).json({ error: invalid });
   const nowIso = new Date().toISOString();
-  const patch = { status, updated_at: nowIso };
-  if ((status === "DELIVERED" || status === "RECEIVED")) {
-    const { data: cur } = await supabaseAdmin.from(TABLE).select("delivered_at").eq("id", req.params.id).maybeSingle();
-    if (cur && !cur.delivered_at) patch.delivered_at = nowIso;
+  const { data: dup } = await findExisting(fields.supplier_name, fields.tracking_number);
+  if (dup) return res.status(409).json({ error: "같은 공급처·송장번호가 이미 있습니다. 목록에서 수정해 주세요." });
+  const row = { ...buildInsert(fields, nowIso), metadata: { ...(fields.metadata || {}), createdBy: req.user.email }, tracking_source: "manual" };
+  const ins = await writeWithOptionalColumns((p) => supabaseAdmin.from(TABLE).insert(p).select().single(), row);
+  if (ins.error) {
+    if (isMissingSchemaError(ins.error)) return res.status(503).json({ error: MIGRATION_MISSING });
+    console.error("[supplier-shipments] 직접 등록 실패:", ins.error.message);
+    return res.status(500).json({ error: "등록에 실패했습니다." });
   }
-  const { data, error } = await supabaseAdmin.from(TABLE).update(patch).eq("id", req.params.id).select().maybeSingle();
-  if (error) {
-    if (isMissingSchemaError(error)) return res.status(503).json({ error: MIGRATION_MISSING });
-    console.error("[supplier-shipments] 상태 변경 실패:", error.message);
-    return res.status(500).json({ error: "상태를 바꾸지 못했습니다." });
+  logAdminAction(req, "supplier_shipment.create", "supplier_shipment", ins.data.id, { supplier: ins.data.supplier_name, tracking: ins.data.tracking_number });
+  res.json({ ok: true, shipment: toApi(ins.data) });
+});
+
+router.patch("/api/admin/supplier-shipments/:id", requireAdmin, notFoundUnlessUuid, async (req, res) => {
+  const b = req.body || {};
+  const { data: cur, error: curErr } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (curErr) return res.status(isMissingSchemaError(curErr) ? 503 : 500).json({ error: isMissingSchemaError(curErr) ? MIGRATION_MISSING : "송장을 불러오지 못했습니다." });
+  if (!cur) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
+
+  // 바뀐 칸만 검사 — 기존 값 위에 새 값을 얹어 봇 등록과 같은 규칙으로 다시 정리한다
+  const merged = {
+    supplierName: cur.supplier_name, supplierLabel: cur.supplier_label, supplierOrderId: cur.supplier_order_id, carrierCode: cur.carrier_code,
+    carrierName: cur.carrier_name, trackingNumber: cur.tracking_number, itemsSummary: cur.items_summary, shippedAt: cur.shipped_at, deliveredAt: cur.delivered_at,
+  };
+  for (const k of Object.keys(EDITABLE)) if (b[k] !== undefined && k !== "status" && k !== "receiptItems") merged[k] = b[k];
+  if (b.carrierCode !== undefined && b.carrierName === undefined) merged.carrierName = undefined; // 택배사를 바꾸면 예전 이름은 버린다
+  const { fields, error: invalid } = normalizeBotShipment(merged);
+  if (invalid) return res.status(400).json({ error: invalid });
+
+  const patch = {};
+  for (const col of ["supplier_name", "supplier_label", "supplier_order_id", "carrier_code", "carrier_name", "tracking_number", "items_summary", "shipped_at", "delivered_at"]) {
+    const v = fields[col] === undefined ? null : fields[col];
+    if (String(v ?? "") !== String(cur[col] ?? "")) patch[col] = v;
   }
-  if (!data) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
-  logAdminAction(req, "supplier_shipment.status", "supplier_shipment", data.id, { status, tracking: data.tracking_number });
-  res.json({ ok: true, shipment: toApi(data) });
+  // 빈 칸으로 지운 값(선택 항목)은 null로
+  if (b.supplierLabel === "") patch.supplier_label = null;
+  if (b.supplierOrderId === "") patch.supplier_order_id = null;
+  if (b.itemsSummary === "") patch.items_summary = null;
+
+  if (b.receiptItems !== undefined) {
+    if (cur.received_at) return res.status(409).json({ error: "이미 입고 처리된 송장의 품목은 바꿀 수 없습니다. 입고 취소 후 다시 처리해 주세요." });
+    const r = parseReceiptItems(b.receiptItems, { requireProduct: false });
+    if (r.error) return res.status(400).json({ error: r.error });
+    patch.receipt_items = r.items.length ? r.items : null;
+  }
+
+  if (b.status !== undefined) {
+    const status = String(b.status).toUpperCase();
+    if (!ADMIN_STATUSES.includes(status)) return res.status(400).json({ error: "상태 값이 올바르지 않습니다." });
+    const applied = cur.metadata && Array.isArray(cur.metadata.inventoryApplied) && cur.metadata.inventoryApplied.length;
+    if (cur.status === "RECEIVED" && status !== "RECEIVED" && applied) {
+      return res.status(409).json({ error: "재고에 반영된 입고입니다. \"입고 취소\"로 되돌려 주세요(재고도 함께 빠집니다)." });
+    }
+    if (status !== cur.status) {
+      patch.status = status;
+      if ((status === "DELIVERED" || status === "RECEIVED") && !cur.delivered_at && patch.delivered_at === undefined) patch.delivered_at = new Date().toISOString();
+      if (status === "RECEIVED" && !cur.received_at) patch.received_at = new Date().toISOString();
+      if (cur.status === "RECEIVED" && status !== "RECEIVED") patch.received_at = null;
+    }
+  }
+  if (!Object.keys(patch).length) return res.json({ ok: true, unchanged: true, shipment: toApi(cur) });
+
+  if (patch.supplier_name || patch.tracking_number) {
+    const { data: dup } = await findExisting(patch.supplier_name || cur.supplier_name, patch.tracking_number || cur.tracking_number);
+    if (dup && dup.id !== cur.id) return res.status(409).json({ error: "같은 공급처·송장번호가 이미 있습니다." });
+  }
+  const editedCols = Object.keys(patch).filter((k) => k !== "status" && k !== "received_at");
+  if (editedCols.length) patch.metadata = { ...(cur.metadata || {}), humanEdited: [...new Set([...((cur.metadata && cur.metadata.humanEdited) || []), ...editedCols])] };
+  patch.updated_at = new Date().toISOString();
+  const upd = await writeWithOptionalColumns((p) => supabaseAdmin.from(TABLE).update(p).eq("id", cur.id).select().maybeSingle(), patch);
+  if (upd.error || !upd.data) {
+    console.error("[supplier-shipments] 수정 실패:", upd.error && upd.error.message);
+    return res.status(500).json({ error: "저장에 실패했습니다." });
+  }
+  const before = Object.fromEntries(Object.keys(patch).filter((k) => k !== "updated_at" && k !== "metadata").map((k) => [k, cur[k] ?? null]));
+  const after = Object.fromEntries(Object.keys(patch).filter((k) => k !== "updated_at" && k !== "metadata").map((k) => [k, patch[k]]));
+  logAdminAction(req, patch.status && Object.keys(after).length === 1 ? "supplier_shipment.status" : "supplier_shipment.update", "supplier_shipment", cur.id, { tracking: upd.data.tracking_number, before, after });
+  res.json({ ok: true, shipment: toApi(upd.data) });
 });
 
 /* ---------- 피클 배송조회(2026-11-10, 비용 0원 방식) ----------
@@ -357,6 +434,16 @@ router.post("/api/bot/supplier-shipments/:id/tracking", botWriteLimiter, require
   res.json({ ok: true, shipment: toApi(upd.data) });
 });
 
+/* 같은 상품·색상·사이즈는 합친다 */
+function mergeReceiptItems(items) {
+  const merged = new Map();
+  for (const it of items) {
+    const k = `${it.productId}:${it.color}:${it.size}`;
+    merged.set(k, { productId: it.productId, color: it.color, size: it.size, qty: (merged.get(k) ? merged.get(k).qty : 0) + it.qty });
+  }
+  return [...merged.values()];
+}
+
 /* ---------- 입고 처리 → 재고 반영(2026-11-10) ----------
    Works "입고 완료" 창에서 품목(피클이 메일에서 미리 채운 초안을 사람이 확인·수정)을 확정하면 재고에 더하고 입고 완료로 바꾼다.
    먼저 상태를 RECEIVED로 "선점"한 뒤 재고를 더해서, 두 번 눌러도 재고가 두 번 더해지지 않는다. 재고 증가가 실패하면 상태를 되돌린다.
@@ -388,19 +475,21 @@ router.post("/api/admin/supplier-shipments/:id/receive", requireAdmin, notFoundU
 
   const claim = await writeWithOptionalColumns(
     (p) => supabaseAdmin.from(TABLE).update(p).eq("id", cur.id).eq("status", cur.status).select().maybeSingle(),
-    { status: "RECEIVED", received_at: nowIso, delivered_at: cur.delivered_at || nowIso, receipt_items: items.length ? items : cur.receipt_items || null, updated_at: nowIso }
+    {
+      status: "RECEIVED", received_at: nowIso, delivered_at: cur.delivered_at || nowIso, receipt_items: items.length ? items : cur.receipt_items || null, updated_at: nowIso,
+      // 재고에 더한 품목을 남겨 두어 "입고 취소" 때 정확히 그만큼 뺀다(2026-11-11)
+      metadata: {
+        ...(cur.metadata || {}),
+        inventoryApplied: mergeReceiptItems(items),
+        receiptHistory: [...((cur.metadata && cur.metadata.receiptHistory) || []), { action: "receive", at: nowIso, by: req.user.email, items: mergeReceiptItems(items) }].slice(-20),
+      },
+    }
   );
   if (claim.error) return res.status(500).json({ error: "입고 처리에 실패했습니다." });
   if (!claim.data) return res.status(409).json({ error: "다른 화면에서 먼저 처리됐습니다. 새로고침해 주세요." });
 
   if (items.length) {
-    // 같은 조합은 합친다
-    const merged = new Map();
-    for (const it of items) {
-      const k = `${it.productId}:${it.color}:${it.size}`;
-      merged.set(k, { productId: it.productId, color: it.color, size: it.size, qty: (merged.get(k) ? merged.get(k).qty : 0) + it.qty });
-    }
-    const adds = [...merged.values()];
+    const adds = mergeReceiptItems(items);
     const { data: prevRows } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").in("product_id", [...new Set(adds.map((a) => a.productId))]);
     const prevQty = new Map((prevRows || []).map((r) => [`${r.product_id}:${r.color}:${r.size}`, r.qty]));
     const { error: invErr } = await supabaseAdmin.rpc("restore_inventory", { p_items: adds });
@@ -416,6 +505,49 @@ router.post("/api/admin/supplier-shipments/:id/receive", requireAdmin, notFoundU
 
   logAdminAction(req, "supplier_shipment.receive", "supplier_shipment", cur.id, { tracking: cur.tracking_number, items: items.length, qty: items.reduce((n, it) => n + it.qty, 0) });
   res.json({ ok: true, shipment: toApi(claim.data), addedToInventory: items.length });
+});
+
+/* ---------- 입고 취소 (2026-11-11) ----------
+   잘못 누른 입고 처리를 되돌린다: 그때 더한 재고(metadata.inventoryApplied)를 빼고, 상태를 배송완료로 돌린다.
+   이미 팔려서 재고가 그만큼 없으면 되돌리지 않고 알려준다(재고가 음수가 되지 않게). 재고 이력 사유 supplier_receipt_undo(051). */
+router.post("/api/admin/supplier-shipments/:id/receive/undo", requireAdmin, notFoundUnlessUuid, async (req, res) => {
+  const { data: cur, error } = await supabaseAdmin.from(TABLE).select("*").eq("id", req.params.id).maybeSingle();
+  if (error) return res.status(500).json({ error: "송장을 불러오지 못했습니다." });
+  if (!cur) return res.status(404).json({ error: "해당 송장을 찾을 수 없습니다." });
+  if (cur.status !== "RECEIVED") return res.status(409).json({ error: "입고 완료 상태가 아닙니다." });
+  const applied = (cur.metadata && Array.isArray(cur.metadata.inventoryApplied) && cur.metadata.inventoryApplied) || [];
+
+  if (applied.length) {
+    const { data: invRows } = await supabaseAdmin.from("inventory").select("product_id, color, size, qty").in("product_id", [...new Set(applied.map((a) => a.productId))]);
+    const qty = new Map((invRows || []).map((r) => [`${r.product_id}:${r.color}:${r.size}`, r.qty]));
+    const short = applied.filter((a) => (qty.get(`${a.productId}:${a.color}:${a.size}`) || 0) < a.qty);
+    if (short.length) {
+      return res.status(409).json({ error: `이미 판매돼 재고가 부족해 되돌릴 수 없습니다: ${short.map((a) => `${a.productId} ${a.color} ${a.size}`).join(", ")} — 재고 탭에서 직접 수정해 주세요.` });
+    }
+  }
+
+  // 먼저 상태를 되돌려 선점(두 번 눌러도 한 번만 빠지게)
+  const nowIso = new Date().toISOString();
+  const history = [...((cur.metadata && cur.metadata.receiptHistory) || []), { action: "undo", at: nowIso, by: req.user.email, items: applied }].slice(-20);
+  const { inventoryApplied: _drop, ...restMeta } = cur.metadata || {};
+  const claim = await writeWithOptionalColumns(
+    (p) => supabaseAdmin.from(TABLE).update(p).eq("id", cur.id).eq("status", "RECEIVED").select().maybeSingle(),
+    { status: "DELIVERED", received_at: null, metadata: { ...restMeta, receiptHistory: history }, updated_at: nowIso }
+  );
+  if (claim.error) return res.status(500).json({ error: "입고 취소에 실패했습니다." });
+  if (!claim.data) return res.status(409).json({ error: "다른 화면에서 먼저 처리됐습니다. 새로고침해 주세요." });
+
+  if (applied.length) {
+    const { error: invErr } = await supabaseAdmin.rpc("restore_inventory", { p_items: applied.map((a) => ({ ...a, qty: -a.qty })) });
+    if (invErr) {
+      await supabaseAdmin.from(TABLE).update({ status: "RECEIVED", received_at: cur.received_at, metadata: cur.metadata, updated_at: new Date().toISOString() }).eq("id", cur.id);
+      logSystemError("supplier_receipt_failed", { shipmentId: cur.id, undo: true, error: invErr.message });
+      return res.status(500).json({ error: "재고 차감에 실패해 입고 취소를 되돌렸습니다. 다시 시도해 주세요." });
+    }
+    logInventoryChange(applied.map((a) => ({ productId: a.productId, color: a.color, size: a.size, delta: -a.qty, reason: "supplier_receipt_undo", ref: `${cur.supplier_name}:${cur.tracking_number}`, adminEmail: req.user.email })));
+  }
+  logAdminAction(req, "supplier_shipment.receive_undo", "supplier_shipment", cur.id, { tracking: cur.tracking_number, items: applied });
+  res.json({ ok: true, shipment: toApi(claim.data), removedFromInventory: applied.length });
 });
 
 module.exports = router;

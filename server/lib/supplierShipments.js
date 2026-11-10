@@ -63,6 +63,9 @@ function toApi(r) {
     trackingError: r.tracking_error || null,
     receiptItems: Array.isArray(r.receipt_items) ? r.receipt_items : [],
     receivedAt: r.received_at || null,
+    // 입고 처리 때 재고에 더한 품목(있으면 "입고 취소"로 재고까지 되돌릴 수 있다)
+    inventoryApplied: (r.metadata && Array.isArray(r.metadata.inventoryApplied) && r.metadata.inventoryApplied) || [],
+    createdBy: (r.metadata && r.metadata.createdBy) || null,
     trackingSource: r.tracking_source || null,
     metadata: r.metadata || {},
     createdAt: r.created_at || null,

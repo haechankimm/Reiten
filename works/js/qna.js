@@ -11,7 +11,7 @@
   }
 
   function qnaCardHTML(q) {
-    // 피클 답변 초안(2026-11-10, 050)이 있으면 템플릿보다 먼저 채운다 — 고객에게는 관리자가 고쳐서 "답변 등록"을 눌러야 나간다
+    // 실시간 에이전트 AI(피클) 답변 초안(2026-11-10, 050)이 있으면 템플릿보다 먼저 채운다 — 고객에게는 관리자가 고쳐서 "답변 등록"을 눌러야 나간다
     const draft = q.status !== "답변완료" ? q.aiDraft : null;
     const matched = q.status !== "답변완료" && !draft ? matchQnaTemplate(q.question) : null;
     return `
@@ -20,7 +20,7 @@
           <b>${esc(q.name)}</b>
           <span class="small tnum">${fmtDate(q.at)}</span>
         </div>
-        <div class="small" style="margin-top:6px">${esc(q.productId)} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
+        <div class="small" style="margin-top:6px" title="${esc(q.productId)}">${esc(q.productName || (q.productId === "general" ? t("일반 문의") : q.productId))} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
         ${q.email ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("답변을 등록하면 {email}로 안내 메일이 갑니다", { email: q.email }))}</div>`
           : q.hasAccount ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("회원 문의 — 답변을 등록하면 계정 이메일로 안내 메일이 갑니다"))}</div>` : ""}
         <p style="margin-top:10px">${esc(q.question)}</p>
@@ -33,7 +33,8 @@
             <option value="">${esc(t("빠른 답변 템플릿 선택..."))}</option>
             ${qnaTemplates.map((tpl) => `<option value="${esc(tpl.id)}" ${matched && matched.id === tpl.id ? "selected" : ""}>${esc(tpl.label)}</option>`).join("")}
           </select>` : ""}
-          ${draft ? `<p class="small" style="color:var(--text-muted);margin-top:4px">🤖 ${esc(t("피클이 만든 답변 초안입니다 — 내용을 확인하고 고친 뒤 등록하세요."))}</p>` : ""}
+          ${draft ? `<p class="small" style="color:var(--text-muted);margin-top:4px">🤖 ${esc(t("실시간 에이전트 AI가 만든 답변 초안입니다 — 내용을 확인하고 고친 뒤 등록하세요."))}
+            <button type="button" class="btn btn--sm btn--ghost admin-qna-clear-draft" style="margin-left:6px">${esc(t("초안 지우기"))}</button></p>` : ""}
           ${matched ? `<p class="small" style="color:var(--text-muted);margin-top:4px">${esc(t("키워드가 일치해 \"{label}\" 템플릿을 미리 채웠습니다 — 확인 후 등록하거나 자유롭게 고쳐 쓰세요.", { label: matched.label }))}</p>` : ""}
           <div class="field" style="margin-top:8px">
             <textarea class="admin-qna-answer" placeholder="${esc(t("답변을 입력하세요"))}">${draft ? esc(draft) : matched ? esc(matched.body) : ""}</textarea>
@@ -78,6 +79,20 @@
         toast(t("답변을 등록했습니다"));
         const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
         if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], answer, status: "답변완료" };
+        renderAdminQna();
+      })
+    );
+
+    /* AI 초안 지우기(2026-11-11) — 고객에게 나간 적 없는 초안만 지운다. 활동 로그에 남는다. */
+    el("admin-qna-list").querySelectorAll(".admin-qna-clear-draft").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-id]");
+        btn.disabled = true;
+        const result = await adminFetch(`/api/admin/qna/${encodeURIComponent(card.dataset.id)}`, { method: "PATCH", body: JSON.stringify({ aiDraft: "" }) });
+        if (!result) { btn.disabled = false; return; }
+        const idx = qnaState.items.findIndex((x) => x.id === card.dataset.id);
+        if (idx > -1) qnaState.items[idx] = { ...qnaState.items[idx], aiDraft: null };
+        toast(t("초안을 지웠습니다"));
         renderAdminQna();
       })
     );

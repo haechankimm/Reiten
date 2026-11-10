@@ -242,6 +242,7 @@
       : `<p class="small" style="color:var(--text-muted)">${esc(t("등록된 템플릿이 없습니다"))}</p>`;
     el("qna-template-list").querySelectorAll(".qt-delete").forEach((btn) =>
       btn.addEventListener("click", async () => {
+        if (!confirm(t("이 빠른 답변 템플릿을 삭제할까요?"))) return; // 실수로 지우지 않게(2026-11-11 점검)
         const id = btn.closest("[data-id]").dataset.id;
         btn.disabled = true;
         const ok = await adminFetch(`/api/admin/qna-templates/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -274,6 +275,23 @@
   /* ---------- 감사 로그 (관리자가 2명 이상일 때 "누가 언제 무엇을 바꿨는지" 추적용) ----------
      008_admin_audit_log.sql을 실행하지 않았으면 서버가 저장을 조용히 건너뛰므로 여기도 빈 목록만 보임. */
   const AUDIT_ACTION_LABELS = {
+    // 실시간 에이전트 AI·공급처(2026-11-10~11)
+    "bot.diagnostics_read": "AI 서버 진단 조회",
+    "bot.briefing_read": "AI 아침 브리핑 조회",
+    "bot.qna_pending_read": "AI 답변 대기 문의 조회",
+    "bot.qna_draft": "AI 문의 답변 초안 작성",
+    "bot.supplier_shipment_create": "AI 공급처 송장 등록",
+    "bot.supplier_shipment_update": "AI 공급처 송장 갱신",
+    "bot.supplier_invoice_create": "AI 매입 기록",
+    "bot.supplier_invoice_update": "AI 매입 기록 갱신",
+    "supplier_shipment.create": "공급처 송장 직접 등록",
+    "supplier_shipment.update": "공급처 송장 수정",
+    "supplier_shipment.status": "공급처 송장 상태 변경",
+    "supplier_shipment.receive": "공급처 입고 처리",
+    "supplier_shipment.receive_undo": "공급처 입고 취소",
+    "supplier_invoice.create": "매입 직접 입력",
+    "supplier_invoice.update": "매입 기록 수정",
+    "supplier_invoice.status": "매입 확인·제외",
     "order.update": "주문 정보 변경",
     "order.export": "주문 목록 내보내기",
     "order.bulk_update": "주문 일괄 처리",
@@ -353,6 +371,8 @@
   /* 로그에는 실제 이메일 전체를 저장해두지만(감사 목적상 정확한 기록이 필요), 화면에는
      "@" 앞부분만 이름처럼 잘라서 보여준다 — 저장된 값 자체는 안 바뀐다. */
   function emailName(email) {
+    // 실시간 에이전트 AI(서버 기록은 "bot:pickle")는 다른 관리자도 알아보게 이름으로 보여준다(2026-11-11)
+    if (/^bot:/i.test(String(email || ""))) return t("실시간 에이전트 AI");
     return String(email || "").split("@")[0];
   }
 

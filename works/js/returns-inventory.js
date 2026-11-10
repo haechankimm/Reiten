@@ -536,6 +536,8 @@
     admin_adjust: "관리자 수정",
     order_finalize_duplicate: "중복 결제요청 정리",
     order_finalize_failed: "주문 확정 실패 복원",
+    supplier_receipt: "공급처 입고",
+    supplier_receipt_undo: "공급처 입고 취소",
   };
 
   async function toggleInventoryLog(btn) {

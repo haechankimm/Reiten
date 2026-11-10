@@ -31,6 +31,14 @@ function configChecks(env = process.env) {
    전부 적용됐으면 "DB 마이그레이션 최신(NNN)까지 적용됨" 한 줄만, 빠진 게 있으면 빠진 번호만 경고로 보여준다.
    새 마이그레이션을 추가하면 이 표 맨 아래에 한 줄(번호·확인 방법·미실행 때 꺼지는 기능)만 넣으면 된다.
    probe(db)는 "없으면 오류가 나는" 가벼운 조회 — 오류(또는 null)를 돌려준다. 042 이하는 오래전에 실행 확인돼 표에서 뺐다. */
+function schemaVersionAtLeast(n) {
+  return async (db) => {
+    const { data, error } = await db.rpc("reiten_schema_version");
+    if (error) return error;
+    return Number(data) >= n ? null : { message: `schema version ${data} < ${n}` };
+  };
+}
+
 const MIGRATION_CHECKS = [
   { no: "043", probe: async (db) => (await db.from("orders").select("confirmed_at").limit(1)).error || (await db.from("order_refunds").select("id").limit(1)).error,
     missing: "DB 마이그레이션 043이 아직 실행되지 않았습니다(부분 환불 이력·구매확정·사진 리뷰 적립이 꺼져 있음)" },
@@ -49,6 +57,8 @@ const MIGRATION_CHECKS = [
     missing: "DB 마이그레이션 049가 아직 실행되지 않았습니다(공급처 송장 배송조회 결과 저장 불가)" },
   { no: "050", probe: async (db) => (await db.from("supplier_invoices").select("id").limit(1)).error || (await db.from("qna").select("ai_draft").limit(1)).error || (await db.from("supplier_shipments").select("receipt_items").limit(1)).error,
     missing: "DB 마이그레이션 050이 아직 실행되지 않았습니다(입고 재고 반영·매입 장부·문의 답변 초안이 꺼져 있음)" },
+  // 051부터는 DB 버전 함수(reiten_schema_version)로 확인 — 제약 변경처럼 조회로 알 수 없는 것도 잡힌다. 새 마이그레이션은 그 숫자를 올리고 아래에 한 줄.
+  { no: "051", probe: schemaVersionAtLeast(51), missing: "DB 마이그레이션 051이 아직 실행되지 않았습니다(입고 취소 때 재고 이력이 남지 않음)" },
 ];
 
 async function migrationChecks(db = supabaseAdmin) {

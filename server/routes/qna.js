@@ -9,7 +9,7 @@ const { paginationParams } = require("../lib/pagination");
 const { applyKstDateRangeFilter } = require("../lib/kst");
 const { getAllProductIds } = require("../lib/productIds");
 const { isMissingColumnError } = require("../lib/pgErrors");
-const { updateWithOptionalColumnFallback } = require("../lib/dbUpdate");
+const { updateWithOptionalColumnFallback, ASSIGNEE_NOTE_OPTIONAL_COLUMNS } = require("../lib/dbUpdate");
 const { sendCustomerQnaAnswered } = require("../lib/mailer");
 
 const router = express.Router();
@@ -41,7 +41,7 @@ function toAdminQnaDto(q) {
     assignedTo: q.assigned_to || null,
     internalNote: q.internal_note || null,
     // 피클이 만든 답변 초안(050, routes/botAssist.js) — 관리자가 고쳐서 직접 등록해야 고객에게 나간다
-    aiDraft: q.ai_draft || null,
+    aiDraft: q.ai_draft || null, // ""(지운 초안)도 null로
     aiDraftAt: q.ai_draft_at || null,
   };
 }
@@ -142,27 +142,38 @@ router.get("/api/admin/qna", requireAdmin, async (req, res) => {
   const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ error: "문의 목록을 불러오지 못했습니다." });
-  res.json({ items: data.map(toAdminQnaDto), page, pageSize, total: count ?? data.length });
+  // 카드에 상품 id 대신 상품 이름을 보여주려고 이름만 함께 조회(2026-11-11 Works 점검)
+  const ids = [...new Set(data.map((q) => q.product_id).filter((id) => id && id !== "general"))];
+  const { data: products } = ids.length ? await supabaseAdmin.from("products").select("id, name_ko").in("id", ids) : { data: [] };
+  const nameById = new Map((products || []).map((p) => [p.id, p.name_ko]));
+  res.json({ items: data.map((q) => ({ ...toAdminQnaDto(q), productName: nameById.get(q.product_id) || null })), page, pageSize, total: count ?? data.length });
 });
 
 /* 답변 등록(answer)과 담당자·내부 메모 저장을 하나의 PATCH로 합쳤다 — answer가 없어도
    assignedTo/internalNote만 보내면 그 값만 저장된다(담당자만 먼저 지정해두고 답변은 나중에
    다는 흐름을 지원). */
 router.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
-  const { answer, assignedTo, internalNote } = req.body || {};
+  const { answer, assignedTo, internalNote, aiDraft } = req.body || {};
   const patch = {};
+  // 실시간 에이전트 AI 답변 초안 지우기·고쳐 두기(2026-11-11) — 고객에게는 나가지 않는다
+  if (aiDraft !== undefined) {
+    // 빈 값 = "초안 지우기"(AI가 같은 문의에 다시 쓰지 않도록 빈 문자열로 표시)
+    patch.ai_draft = String(aiDraft || "").trim().slice(0, 2000);
+    patch.ai_draft_at = patch.ai_draft ? new Date().toISOString() : null;
+  }
   if (answer !== undefined) {
     const answerStr = String(answer || "").trim().slice(0, 2000);
     if (!answerStr) return res.status(400).json({ error: "답변 내용을 입력해 주세요." });
     patch.answer = answerStr;
     patch.status = "답변완료";
     patch.answered_at = new Date().toISOString();
+    if (aiDraft === undefined) patch.ai_draft = null; // 답변이 나가면 초안은 정리
   }
   if (assignedTo !== undefined) patch.assigned_to = assignedTo || null;
   if (internalNote !== undefined) patch.internal_note = String(internalNote || "").trim().slice(0, 2000) || null;
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
 
-  const { data, error } = await updateWithOptionalColumnFallback("qna", "id", req.params.id, patch);
+  const { data, error } = await updateWithOptionalColumnFallback("qna", "id", req.params.id, patch, [...ASSIGNEE_NOTE_OPTIONAL_COLUMNS, "ai_draft", "ai_draft_at"]);
   if (error || !data) return res.status(500).json({ error: "저장에 실패했습니다." });
   if (answer !== undefined) {
     logAdminAction(req, "qna.answer", "qna", req.params.id);
