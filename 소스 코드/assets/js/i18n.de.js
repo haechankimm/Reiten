@@ -1180,4 +1180,6 @@
   ["재고·공급처 입고", "Lagerbestand · Lieferanten-Eingang"],
   ["DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)", "DB-Migration 048 wurde noch nicht ausgeführt (automatische Erfassung von Lieferanten-Sendungen ist aus)"],
   ["DB 마이그레이션 048", "DB-Migration 048"],
+  ["DB 마이그레이션 047이 아직 실행되지 않았습니다(서버를 2대 이상으로 늘릴 때만 필요)", "DB-Migration 047 wurde noch nicht ausgeführt (nur nötig bei mehr als einem Server)"],
+  ["DB 마이그레이션 047", "DB-Migration 047"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

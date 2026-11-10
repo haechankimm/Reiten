@@ -40,6 +40,11 @@ async function dbChecks(db = supabaseAdmin, now = new Date()) {
   const { error: lockErr } = await db.from("app_locks").select("key").limit(1);
   if (lockErr) out.push({ level: "warn", key: "migration_045", label: "DB 마이그레이션 045가 아직 실행되지 않았습니다(서버를 2대 이상으로 늘리기 전에 필요)" });
   else out.push({ level: "ok", key: "migration_045", label: "DB 마이그레이션 045" });
+  // 047 — 서버 여러 대 공유 요청 제한(lib/rateLimitStore.js). 표와 함수 둘 다 있어야 실행된 것(2026-11-10). 없는 키를 되돌리는 호출이라 아무것도 바뀌지 않는다.
+  const { error: rlTableErr } = await db.from("rate_limits").select("key").limit(1);
+  const rlErr = rlTableErr || (await db.rpc("rate_limit_undo", { p_key: "__opscheck__" })).error;
+  if (rlErr) out.push({ level: "warn", key: "migration_047", label: "DB 마이그레이션 047이 아직 실행되지 않았습니다(서버를 2대 이상으로 늘릴 때만 필요)" });
+  else out.push({ level: "ok", key: "migration_047", label: "DB 마이그레이션 047" });
   // 048 — 공급처 출고 송장(routes/supplierShipments.js). 없어도 다른 기능엔 영향 없음(2026-11-10)
   const { error: shipErr } = await db.from("supplier_shipments").select("id").limit(1);
   if (shipErr) out.push({ level: "warn", key: "migration_048", label: "DB 마이그레이션 048이 아직 실행되지 않았습니다(공급처 송장 자동 기록이 꺼져 있음)" });
