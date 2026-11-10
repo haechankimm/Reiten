@@ -151,9 +151,46 @@ const CACHE_TTL_MS = 10000;
 const pinCache = new Map();
 const permCache = new Map();
 
+/* 로그인 토큰 확인 결과 캐시(2026-11-11 속도 개선) — 예전엔 관리자 요청마다 Supabase Auth(토큰 확인)와 profiles(관리자 여부)를
+   매번 다시 물어 요청 하나에 왕복이 2번씩 더 붙었다. 같은 토큰은 30초 동안(토큰 만료 전까지만) 결과를 재사용한다.
+   관리자 해제·권한 변경 때는 invalidateAdminCache가 그 사람 것을 바로 지운다. 토큰 원문은 저장하지 않고 해시만. */
+const AUTH_CACHE_TTL_MS = 30000;
+const AUTH_CACHE_MAX = 500;
+const authCache = new Map();
+
+function tokenKey(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function tokenExpMs(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    return payload && payload.exp ? payload.exp * 1000 : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function verifyAdminToken(token) {
+  const key = tokenKey(token);
+  const now = Date.now();
+  const hit = authCache.get(key);
+  if (hit && now - hit.at < AUTH_CACHE_TTL_MS && (!hit.exp || hit.exp > now)) return hit.value;
+  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authError || !authData.user) return { status: 401 };
+  const { data: profile, error: profileError } = await supabaseAdmin.from("profiles").select("role").eq("id", authData.user.id).single();
+  const value = profileError || !profile || profile.role !== "admin" ? { status: 403, user: authData.user } : { status: 200, user: authData.user };
+  if (authCache.size >= AUTH_CACHE_MAX) authCache.clear();
+  authCache.set(key, { at: now, exp: tokenExpMs(token), value });
+  return value;
+}
+
 function invalidateAdminCache(userId) {
-  if (userId) { pinCache.delete(userId); permCache.delete(userId); }
-  else { pinCache.clear(); permCache.clear(); }
+  if (userId) {
+    pinCache.delete(userId);
+    permCache.delete(userId);
+    for (const [k, v] of authCache) if (v.value && v.value.user && v.value.user.id === userId) authCache.delete(k);
+  } else { pinCache.clear(); permCache.clear(); authCache.clear(); }
 }
 
 async function getPinRow(userId) {
@@ -228,12 +265,10 @@ async function adminGuard(req, res, next) {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: "로그인이 필요합니다." });
-    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !authData.user) return res.status(401).json({ error: "로그인이 만료되었습니다. 다시 로그인해 주세요." });
-    req.user = authData.user;
-
-    const { data: profile, error: profileError } = await supabaseAdmin.from("profiles").select("role").eq("id", req.user.id).single();
-    if (profileError || !profile || profile.role !== "admin") return res.status(403).json({ error: "관리자만 접근할 수 있습니다." });
+    const verified = await verifyAdminToken(token);
+    if (verified.status === 401) return res.status(401).json({ error: "로그인이 만료되었습니다. 다시 로그인해 주세요." });
+    req.user = verified.user;
+    if (verified.status !== 200) return res.status(403).json({ error: "관리자만 접근할 수 있습니다." });
     req.adminVerified = true;
 
     const isMaster = (req.user.email || "").toLowerCase() === MASTER_ADMIN_EMAIL;
@@ -277,7 +312,7 @@ async function adminGuard(req, res, next) {
   }
 }
 
-module.exports = {
+module.exports = { verifyAdminToken,
   AREAS, LEVELS, DEFAULT_STAFF_PERMISSIONS,
   areaForPath, requiredLevel, resolvePermissions, normalizePermissions,
   signPinToken, verifyPinToken, hashPin, isValidPin, pinVersionOf,

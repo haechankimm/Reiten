@@ -67,3 +67,25 @@ test("isValidPin / hashPin", () => {
   assert.equal(g.hashPin("123456", "salt"), g.hashPin("123456", "salt"));
   assert.notEqual(g.hashPin("123456", "salt"), g.hashPin("123457", "salt"));
 });
+
+/* 2026-11-11 속도 개선 — 같은 토큰은 30초 동안 Supabase Auth·profiles를 다시 묻지 않고, 관리자 해제 시 바로 지운다 */
+test("verifyAdminToken — 같은 토큰은 캐시, invalidateAdminCache로 즉시 무효", async () => {
+  const { supabaseAdmin } = require("../lib/supabase");
+  const { fakeAdminToken } = require("../test-helpers/fakeSupabase");
+  supabaseAdmin.__reset({ profiles: [{ id: "u-cache", role: "admin" }] });
+  let calls = 0;
+  const orig = supabaseAdmin.auth.getUser;
+  supabaseAdmin.auth.getUser = async (t) => { calls++; return orig(t); };
+  try {
+    const tok = fakeAdminToken("u-cache", "c@x.com");
+    assert.equal((await g.verifyAdminToken(tok)).status, 200);
+    assert.equal((await g.verifyAdminToken(tok)).status, 200);
+    assert.equal(calls, 1);
+    supabaseAdmin.__reset({ profiles: [{ id: "u-cache", role: "customer" }] });
+    g.invalidateAdminCache("u-cache");
+    assert.equal((await g.verifyAdminToken(tok)).status, 403);
+    assert.equal(calls, 2);
+  } finally {
+    supabaseAdmin.auth.getUser = orig;
+  }
+});

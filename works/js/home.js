@@ -43,6 +43,19 @@
       </button>`;
   }
 
+  /* 홈 "자주 쓰는 기능" — 즐겨찾기 → 이 기기에서 자주 연 화면 → 기본 순서(js/favorites.js, 2026-11-11).
+     즐겨찾기를 바꾸거나 홈으로 돌아올 때마다 다시 그린다(데이터 요청 없음). */
+  function renderHomeShortcuts() {
+    const box = el("home-shortcuts");
+    if (!box || typeof homeShortcutTabs !== "function") return;
+    box.innerHTML = homeShortcutTabs().map((x) => homeShortcutHTML((x.fav ? "★ " : "") + x.title, x.desc, x.tab)).join("");
+  }
+  el("home-shortcuts")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab-link]");
+    if (b) goToTab(b.dataset.tabLink);
+  });
+  document.querySelector('#sidebar .nav-item[data-tab="home"]')?.addEventListener("click", () => renderHomeShortcuts());
+
   function homeShortcutHTML(label, desc, tab) {
     return `
       <button type="button" class="panel home-shortcut" data-tab-link="${esc(tab)}" style="text-align:left;cursor:pointer">
@@ -171,17 +184,9 @@
     el("home-revenue-chart").innerHTML = canView("dashboard") ? homeRevenueChartHTML(dash.dailyRevenue || []) : "";
     el("home-bestsellers").innerHTML = canView("dashboard") ? homeBestsellersHTML(dash.bestsellers || []) : "";
 
-    el("home-shortcuts").innerHTML = [
-      ["orders", t("전체 주문"), t("주문 검색·상태 변경·배송 등록")],
-      ["inventory", t("재고"), t("색상·사이즈별 수량 확인·수정")],
-      ["paymentlog", t("결제 트랜잭션"), t("실패·불일치한 결제 시도 확인")],
-      ["members", t("회원 계정 관리"), t("회원 검색, 차단·삭제, 관리자 승격")],
-      ["outbox", t("발송 실패 아웃박스"), t("이메일·알림 발송 실패 확인")],
-      ["dashboard", t("대시보드"), t("매출·베스트셀러·기기별 통계")],
-      ["calendar", t("캘린더"), t("발매일·행사·휴무 일정 확인")],
-    ].filter(([tab]) => canView(tab)).map(([tab, title, sub]) => homeShortcutHTML(title, sub, tab)).join("");
+    renderHomeShortcuts();
 
-    document.querySelectorAll("[data-tab-link]").forEach((btn) =>
+    document.querySelectorAll("#home-tiles [data-tab-link]").forEach((btn) => // 바로가기 카드는 위에서 위임으로 처리
       btn.addEventListener("click", () => goToTab(btn.dataset.tabLink))
     );
 

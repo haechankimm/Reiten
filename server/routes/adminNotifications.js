@@ -16,12 +16,20 @@ const router = express.Router();
    펼쳐 보여준다(아래 /api/admin/system-errors 참고). system_error_log 테이블이 아직
    없으면(019 미실행) 조회가 실패하는데, 다른 마이그레이션과 같은 원칙으로 조용히 0건 취급한다. */
 router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
-  const [orders, inventory, qna, returns, systemErrors] = await Promise.all([
+  // 품절 조합은 "판매 중(공개)" 상품만 센다 — 비공개 상품의 0개 재고까지 세어 알림이 늘 떠 있던 것(2026-11-11 점검)
+  const { data: activeProducts } = await supabaseAdmin.from("products").select("id").eq("active", true);
+  const activeIds = (activeProducts || []).map((p) => p.id);
+  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
-    supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0),
+    activeIds.length
+      ? supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0).in("product_id", activeIds)
+      : Promise.resolve({ count: 0 }),
     supabaseAdmin.from("qna").select("id", { count: "exact", head: true }).is("answer", null),
     supabaseAdmin.from("return_requests").select("id", { count: "exact", head: true }).eq("status", "접수"),
     supabaseAdmin.from("system_error_log").select("id", { count: "exact", head: true }).eq("resolved", false),
+    // 공급처 배송완료인데 아직 입고 처리 안 한 송장(048), 확인 대기 매입(050) — 표가 없으면 0
+    supabaseAdmin.from("supplier_shipments").select("id", { count: "exact", head: true }).eq("status", "DELIVERED"),
+    supabaseAdmin.from("supplier_invoices").select("id", { count: "exact", head: true }).eq("status", "RECORDED"),
   ]);
 
   /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불
@@ -34,6 +42,8 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "unansweredQna", label: "답변 대기 Q&A", count: qna.count || 0, tab: "qna", severity: "info" },
     { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns", severity: "warning" },
     { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors", severity: "critical" },
+    { key: "supplierAwaitingReceipt", label: "공급처 도착·입고 처리 대기", count: (!supplierDelivered.error && supplierDelivered.count) || 0, tab: "inventory", severity: "info" },
+    { key: "invoicesPending", label: "확인 대기 매입", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "dashboard", severity: "info" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
 });

@@ -1303,3 +1303,38 @@
 [
   ["일반 문의", "Allgemeine Anfrage"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* ---------- 2026-11-11 (3): 상단 검색·즐겨찾기·로딩·되돌리기 ---------- */
+[
+  ["되돌렸습니다", "Rückgängig gemacht"],
+  ["되돌리기", "Rückgängig"],
+  ["되돌리지 못했습니다", "Rückgängig machen fehlgeschlagen"],
+  ["서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.", "Keine Verbindung zum Server. Bitte gleich noch einmal versuchen."],
+  ["자주 쓰는 기능", "Häufig genutzt"],
+  ["재고 탭에 저장하지 않은 변경이 있습니다. 그래도 로그아웃할까요?", "Im Lager-Tab gibt es ungespeicherte Änderungen. Trotzdem abmelden?"],
+  ["즐겨찾기", "Favoriten"],
+  ["찾는 메뉴가 없습니다", "Kein passendes Menü gefunden"],
+  ["화면 제목 옆 ☆를 누르면 여기와 사이드바 맨 위에 고정됩니다", "Mit ☆ neben dem Seitentitel hier und oben in der Seitenleiste anheften"],
+  ["메뉴·기능 검색", "Menü & Funktionen suchen"],
+  ["메뉴·기능 검색 (⌘K)", "Menü & Funktionen suchen (⌘K)"],
+  ["불러오는 중…", "Wird geladen …"],
+  ["즐겨찾기에 추가했습니다", "Zu Favoriten hinzugefügt"],
+  ["즐겨찾기에서 뺐습니다", "Aus Favoriten entfernt"],
+  ["즐겨찾기에서 빼기", "Aus Favoriten entfernen"],
+  ["즐겨찾기에 추가(사이드바 맨 위·홈에 고정)", "Zu Favoriten (oben in der Seitenleiste und auf der Startseite)"],
+  ["공급처 송장 직접 등록", "Lieferanten-Sendung manuell erfassen"],
+  ["매입 직접 입력", "Einkauf manuell eingeben"],
+  ["지금 점검하기(운영 점검)", "Jetzt prüfen (Betriebscheck)"],
+  ["인수인계 노트 남기기", "Übergabenotiz schreiben"],
+  ["월간 정산 엑셀 받기", "Monatsabrechnung (Excel) herunterladen"],
+  ["주문 찾기: {q}", "Bestellungen suchen: {q}"],
+  ["회원 찾기: {q}", "Mitglieder suchen: {q}"],
+  ["문의 찾기: {q}", "Anfragen suchen: {q}"],
+  ["반품·교환 찾기: {q}", "Rückgaben/Umtausch suchen: {q}"],
+  ["매입을 확인했습니다", "Einkauf bestätigt"],
+  ["매입을 제외했습니다", "Einkauf ausgeschlossen"],
+  ["확인 대기로 되돌렸습니다", "Auf „zu prüfen“ zurückgesetzt"],
+  ["더 보기", "Mehr anzeigen"],
+  ["공급처 도착·입고 처리 대기", "Lieferanten-Sendungen: Eingang zu buchen"],
+  ["확인 대기 매입", "Einkäufe zu prüfen"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

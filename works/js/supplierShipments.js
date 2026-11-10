@@ -67,7 +67,17 @@
   async function submitReceive(row, id, items) {
     const res = await adminFetch(`/api/admin/supplier-shipments/${encodeURIComponent(id)}/receive`, { method: "POST", body: JSON.stringify({ items }) });
     if (!res) return false;
-    toast(res.addedToInventory ? t("재고에 반영하고 입고 완료로 표시했습니다") : t("입고 완료로 표시했습니다"));
+    // 되돌리기 = 입고 취소(재고에 더했으면 그만큼 다시 뺀다)
+    toast(res.addedToInventory ? t("재고에 반영하고 입고 완료로 표시했습니다") : t("입고 완료로 표시했습니다"), {
+      undo: async () => {
+        const x = res.addedToInventory
+          ? await adminFetch(`/api/admin/supplier-shipments/${encodeURIComponent(id)}/receive/undo`, { method: "POST" })
+          : await adminFetch(`/api/admin/supplier-shipments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status: "DELIVERED" }) });
+        if (typeof paintAdminInventory === "function" && res.addedToInventory) paintAdminInventory();
+        else paintSupplierShipments();
+        return !!x;
+      },
+    });
     if (res.addedToInventory && typeof paintAdminInventory === "function") paintAdminInventory();
     else paintSupplierShipments();
     return true;
@@ -177,10 +187,11 @@
     sel.value = suppliers.some((p) => p.name === cur) ? cur : "";
   }
 
-  async function paintSupplierShipments() {
+  async function paintSupplierShipments(append = false) {
     const list = el("supplier-shipments-list");
     if (!list) return;
     const params = new URLSearchParams({ status: el("supplier-shipments-filter").value });
+    if (append === true && supplierState.nextOffset) params.set("offset", supplierState.nextOffset);
     if (el("supplier-shipments-supplier").value) params.set("supplier", el("supplier-shipments-supplier").value);
     const res = await adminFetch(`/api/admin/supplier-shipments?${params}`);
     if (!res) return;
@@ -192,14 +203,19 @@
     supplierState.carriers = res.carriers || [];
     // 입고 품목을 상품 이름으로 보여주려면 상품 목록이 먼저 필요하다(처음 한 번만 받아 두고 재사용)
     if (!supplierState.products && res.items.some((x) => (x.receiptItems || []).some((it) => it.productId))) await supplierProducts().catch(() => {});
-    supplierState.items = new Map(res.items.map((s) => [s.id, s]));
+    if (append !== true) supplierState.items = new Map();
+    res.items.forEach((s) => supplierState.items.set(s.id, s));
+    supplierState.nextOffset = res.hasMore ? res.nextOffset : null;
     paintSupplierFilter(res.suppliers || []);
     const u = res.trackingUsage;
     el("supplier-tracking-usage").textContent = u ? t("배송조회 이번 달 {a}/{b}건 사용").replace("{a}", u.calls).replace("{b}", u.limit) : "";
     const editable = !adminMe || canEdit("inventory");
-    list.innerHTML = res.items.length
-      ? res.items.map((s) => supplierShipmentRowHTML(s, editable)).join("")
+    const all = [...supplierState.items.values()];
+    list.innerHTML = all.length
+      ? all.map((s) => supplierShipmentRowHTML(s, editable)).join("") +
+        (res.hasMore ? `<button type="button" class="btn btn--sm btn--ghost" id="supplier-shipments-more" style="margin-top:8px">${esc(t("더 보기"))}</button>` : "")
       : `<p style="color:var(--text-muted)">${esc(t("표시할 공급처 배송이 없습니다"))}</p>`;
+    el("supplier-shipments-more")?.addEventListener("click", () => paintSupplierShipments(true));
   }
 
   el("supplier-shipments-filter")?.addEventListener("change", paintSupplierShipments);
@@ -242,11 +258,25 @@
     if (sform && e.target.closest(".sf-save")) {
       const btn = e.target.closest(".sf-save");
       btn.disabled = true;
+      const before = supplierState.items.get(id) || {};
       const r = await adminFetch(`/api/admin/supplier-shipments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(readShipmentForm(sform)) });
       btn.disabled = false;
       if (!r) return;
-      toast(r.unchanged ? t("바뀐 내용이 없습니다") : t("저장했습니다"));
       paintSupplierShipments();
+      if (r.unchanged) { toast(t("바뀐 내용이 없습니다")); return; }
+      toast(t("저장했습니다"), {
+        undo: async () => {
+          const back = {
+            supplierName: before.supplierName, supplierLabel: before.supplierLabel || "", carrierCode: before.carrierCode, carrierName: before.carrierName || undefined,
+            trackingNumber: before.trackingNumber, supplierOrderId: before.supplierOrderId || "", itemsSummary: before.itemsSummary || "",
+            shippedAt: before.shippedAt || undefined,
+          };
+          if (before.status !== "RECEIVED" || !(before.inventoryApplied || []).length) back.status = before.status;
+          const x = await adminFetch(`/api/admin/supplier-shipments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(back) });
+          paintSupplierShipments();
+          return !!x;
+        },
+      });
       return;
     }
     const trackBtn = e.target.closest(".supplier-track");

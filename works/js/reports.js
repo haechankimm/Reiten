@@ -242,6 +242,8 @@
     el("sidebar").hidden = false;
     el("admin-chip").hidden = false;
     el("notif-wrap").hidden = false;
+    el("palette").hidden = false;
+    renderFavorites();
     el("logout").hidden = false;
     el("change-pin").hidden = !me.pin.enabled;
     const name = profile.name || profile.email;
@@ -266,23 +268,10 @@
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */
     if (!notifPollTimer) notifPollTimer = setInterval(paintNotifications, 60000);
     paintAdminAccounts();
-    if (canView("members")) paintAdminMembers();
-    if (canView("orders")) paintAdminOrders();
-    if (canView("returns")) paintAdminReturns();
-    if (canView("inventory")) paintAdminInventory();
-    if (canView("qna")) paintQnaTemplates().then(() => paintAdminQna());
+    /* 탭 데이터는 그 탭을 처음 열 때 불러온다(2026-11-11 속도 개선) — 예전엔 로그인하자마자 모든 탭(약 30개 요청)을
+       한꺼번에 불러와 첫 화면이 늦게 떴다. 다시 열 때는 1분이 지났으면 새로 고친다(loadTab). */
     // 문의 권한이 없으면 정보 탭의 CS 템플릿 패널째 숨긴다 — 템플릿 조회·수정 모두 서버가 "qna" 권한으로 막는다(2026-10-28 정기 감사)
-    else el("qna-template-form").closest(".panel").hidden = true;
-    if (canView("products")) paintAdminProducts();
-    if (canView("coupons")) paintAdminCoupons();
-    if (canView("reviews")) paintAdminReviews();
-    if (canView("lookbook")) paintAdminLookbook();
-    if (canView("settings")) paintAdminSettings();
-    if (canView("auditlog")) paintAdminAuditLog();
-    if (canView("dashboard")) paintAdminDashboard();
-    if (canView("paymentlog")) paintAdminPaymentLog();
-    if (canView("notices")) paintAdminNotices();
-    if (canView("outbox")) paintAdminOutbox();
+    if (!canView("qna")) el("qna-template-form").closest(".panel").hidden = true;
     paintAdminHome(profile);
     initPush();
     paintAlertPanel();
@@ -290,6 +279,59 @@
   }
 
 
+
+  /* ---------- 탭별 지연 로딩(2026-11-11) ----------
+     처음 열 때 불러오고, 1분 넘게 지나 다시 열면 새로 고친다. 재고 탭은 저장 안 한 수정이 있으면 새로 고치지 않는다. */
+  const TAB_LOADERS = {
+    members: () => paintAdminMembers(),
+    orders: () => paintAdminOrders(),
+    returns: () => paintAdminReturns(),
+    inventory: () => paintAdminInventory(),
+    qna: () => paintQnaTemplates().then(() => paintAdminQna()),
+    products: () => paintAdminProducts(),
+    coupons: () => paintAdminCoupons(),
+    reviews: () => paintAdminReviews(),
+    lookbook: () => paintAdminLookbook(),
+    settings: () => { paintAdminSettings(); if (canView("qna")) paintQnaTemplates(); },
+    auditlog: () => paintAdminAuditLog(),
+    dashboard: () => paintAdminDashboard(),
+    paymentlog: () => paintAdminPaymentLog(),
+    notices: () => paintAdminNotices(),
+    outbox: () => paintAdminOutbox(),
+  };
+  const TAB_REFRESH_MS = 60000;
+  const TAB_PANEL_IDS = {
+    members: "admin-members", orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
+    products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings",
+    auditlog: "admin-auditlog", dashboard: "admin-dashboard", paymentlog: "admin-paymentlog", notices: "admin-notices", outbox: "admin-outbox",
+  };
+  const tabLoadedAt = {};
+  function tabHasUnsavedChanges(tab) {
+    return tab === "inventory" && typeof inventoryHasUnsavedChanges === "function" && inventoryHasUnsavedChanges();
+  }
+  function loadTab(tab, { force = false } = {}) {
+    const fn = TAB_LOADERS[tab];
+    if (!fn || !adminMe || !canView(tab)) return;
+    const at = tabLoadedAt[tab];
+    if (!force && at && Date.now() - at < TAB_REFRESH_MS) return;
+    if (!force && at && tabHasUnsavedChanges(tab)) return;
+    tabLoadedAt[tab] = Date.now();
+    // 처음 여는 탭은 "불러오는 중…"을 띄운다(다시 열 때는 기존 내용을 보여 주며 조용히 새로 고침)
+    const panel = el(TAB_PANEL_IDS[tab]);
+    const first = !at;
+    if (first && panel) { panel.classList.add("is-loading"); panel.setAttribute("data-loading-text", t("불러오는 중…")); }
+    const done = () => panel && panel.classList.remove("is-loading");
+    try {
+      const r = fn();
+      if (r && typeof r.then === "function") r.then(done, (e) => { done(); delete tabLoadedAt[tab]; console.error(e); });
+      else done();
+    } catch (e) {
+      done();
+      delete tabLoadedAt[tab];
+      console.error(e);
+    }
+  }
+  document.querySelectorAll("#sidebar .nav-item[data-tab]").forEach((b) => b.addEventListener("click", () => loadTab(b.dataset.tab)));
 
   /* ---------- 월간 정산 리포트 · 아침 요약 (2026-10-02) ---------- */
   (function initSettlementPanel() {

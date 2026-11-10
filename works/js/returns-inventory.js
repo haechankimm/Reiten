@@ -170,8 +170,9 @@
 
   async function paintAdminReturns(loadMore = false) {
     returnsState.page = loadMore ? returnsState.page + 1 : 1;
+    const seq = (returnsState.seq = (returnsState.seq || 0) + 1); // 마지막 요청만 화면에 반영(검색 직후 탭 첫 로딩과 겹칠 때, 2026-11-11)
     const result = await adminFetch(`/api/admin/returns?${returnsQueryParams().toString()}`);
-    if (!result) return;
+    if (!result || seq !== returnsState.seq) return;
     returnsState.total = result.total;
     returnsState.items = loadMore ? returnsState.items.concat(result.items) : result.items;
     renderAdminReturns();
@@ -507,8 +508,10 @@
         return;
       }
       const touchedProducts = new Set();
+      const previous = []; // 되돌리기용 저장 전 수량
       items.forEach((it) => {
         const meta = productMeta.get(it.productId);
+        previous.push({ productId: it.productId, color: it.color, size: it.size, qty: (meta && meta.qtyByColorSize.get(`${it.color}:${it.size}`)) || 0 });
         if (meta) meta.qtyByColorSize.set(`${it.color}:${it.size}`, it.qty);
         touchedProducts.add(it.productId);
       });
@@ -519,7 +522,14 @@
       });
       pendingChanges.clear();
       updateSaveBtn();
-      toast(t("재고 {n}건을 저장했습니다", { n: items.length }));
+      // 되돌리기 — 6초 안에 누르면 저장 전 수량으로 다시 저장(재고 이력에도 "관리자 수정"으로 한 줄 더 남는다)
+      toast(t("재고 {n}건을 저장했습니다", { n: items.length }), {
+        undo: async () => {
+          const r = await adminFetch("/api/admin/inventory/bulk", { method: "PATCH", body: JSON.stringify({ items: previous }) });
+          paintAdminInventory();
+          return !!r;
+        },
+      });
     };
 
     el("admin-inventory-body").querySelectorAll(".inv-log-toggle").forEach((btn) =>
@@ -577,3 +587,15 @@
   // 재고 탭은 수량만 다룬다 — 상품 자체의 등록·수정·삭제는 "상품" 탭이 맡아서 바로가기만 둔다.
   el("inv-go-products")?.addEventListener("click", () => goToTab("products"));
 
+
+  /* 저장 안 한 재고 수정이 있는지(2026-11-11) — 탭을 다시 열 때 새로 고침을 건너뛰고, 창을 닫거나 새로 고칠 때 경고한다.
+     (다른 탭으로 옮겨 가는 것만으로는 사라지지 않는다 — 화면은 숨겨질 뿐 그대로 남아 있음) */
+  function inventoryHasUnsavedChanges() {
+    const b = el("inv-save-btn");
+    return !!b && !b.disabled;
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if (!inventoryHasUnsavedChanges()) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });

@@ -223,7 +223,10 @@ async function supplierSummaryRows() {
 router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
   const filter = String(req.query.status || "open");
   const supplier = String(req.query.supplier || "").trim().toLowerCase();
-  let q = supabaseAdmin.from(TABLE).select("*").order("created_at", { ascending: false }).limit(200);
+  // 한 번에 50건씩, "더 보기"로 이어서(2026-11-11 — 예전엔 최근 200건에서 끊겼다)
+  const PAGE = 50;
+  const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
+  let q = supabaseAdmin.from(TABLE).select("*").order("created_at", { ascending: false }).range(offset, offset + PAGE);
   if (filter === "open") q = q.in("status", OPEN_STATUSES);
   else if (ADMIN_STATUSES.includes(filter)) q = q.eq("status", filter);
   if (supplier) q = q.eq("supplier_name", supplier);
@@ -249,7 +252,9 @@ router.get("/api/admin/supplier-shipments", requireAdmin, async (req, res) => {
   const trackingEnabled = tracking.isConfigured() && supplierTrackingProvider() === "sweettracker";
   const usage = trackingEnabled ? await budget.usage(supabaseAdmin).catch(() => null) : null;
   res.json({
-    items: (data || []).map(toApi),
+    items: (data || []).slice(0, PAGE).map(toApi),
+    hasMore: (data || []).length > PAGE,
+    nextOffset: offset + PAGE,
     suppliers: [...bySupplier.values()].sort((a, b) => b.open - a.open || b.total - a.total),
     trackingEnabled,
     carriers: carriers.CARRIERS.map((c) => ({ id: c.id, name: c.name })),
