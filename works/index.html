@@ -540,15 +540,15 @@
             <div id="exp-list" class="small" style="margin-top:8px" data-compact="15" data-compact-search="15"></div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:16px">
+            <div class="panel" style="flex:1 1 100%;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="상품별 마진">상품별 마진</b><div style="display:flex;gap:6px;align-items:center"><select id="exp-margin-sort"><option value="revenue" data-i18n="판매액 많은 순">판매액 많은 순</option><option value="marginLow" data-i18n="마진 낮은 순">마진 낮은 순</option><option value="noCost" data-i18n="원가 미입력 먼저">원가 미입력 먼저</option><option value="name" data-i18n="이름순">이름순</option></select><button type="button" class="btn btn--sm btn--ghost" id="exp-cost-save" data-i18n="원가 저장">원가 저장</button></div></div>
+              <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.">1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.</p>
+              <div id="exp-margin" class="small" data-compact="8" data-compact-item=".margin-row" data-compact-search="10"></div>
+            </div>
             <div class="panel" style="flex:1 1 360px;min-width:0">
               <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="정기 지출">정기 지출</b><button type="button" class="btn btn--sm btn--ghost" id="exp-rec-new" data-i18n="+ 추가">+ 추가</button></div>
               <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="서버비·구독료처럼 매달 나가는 돈. 결제일이 지나면 확인 대기로 자동 기록됩니다.">서버비·구독료처럼 매달 나가는 돈. 결제일이 지나면 확인 대기로 자동 기록됩니다.</p>
               <div id="exp-recurring" class="small" data-compact="5"></div>
-            </div>
-            <div class="panel" style="flex:2 1 460px;min-width:0">
-              <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="상품별 마진">상품별 마진</b><button type="button" class="btn btn--sm btn--ghost" id="exp-cost-save" data-i18n="원가 저장">원가 저장</button></div>
-              <p class="small" style="color:var(--text-muted);margin:4px 0 8px" data-i18n="1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.">1벌당 원가를 넣으면 이 달 판매액에서 원가를 뺀 마진을 계산합니다.</p>
-              <div id="exp-margin" class="small" data-compact="8" data-compact-item=".margin-row" data-compact-search="10"></div>
             </div>
             <div class="panel" style="flex:1 1 360px;min-width:0">
               <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="동업자 설정">동업자 설정</b><button type="button" class="btn btn--sm btn--ghost" id="exp-partners-save" data-i18n="저장">저장</button></div>

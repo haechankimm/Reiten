@@ -1600,3 +1600,27 @@
   ["사진 리뷰면 적립금이 지급됩니다(되돌려도 적립금은 회수되지 않음)", "Bei Fotobewertungen werden Punkte gutgeschrieben (werden beim Rückgängig-Machen nicht zurückgebucht)"],
   ["DB 마이그레이션 054가 아직 실행되지 않았습니다(AI 승인함이 꺼져 있음)", "DB-Migration 054 wurde noch nicht ausgeführt (KI-Freigaben sind aus)"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* 2026-11-11 (9): 복사해 오기(원가 구성·재고·상품)·마진 정렬 */
+[
+  ["판매액 많은 순", "Umsatz absteigend"],
+  ["마진 낮은 순", "Marge aufsteigend"],
+  ["원가 미입력 먼저", "Ohne Kosten zuerst"],
+  ["이름순", "Nach Name"],
+  ["다른 상품에서 가져오기", "Von anderem Produkt übernehmen"],
+  ["상품 선택…", "Produkt wählen…"],
+  ["{n}개 항목", "{n} Posten"],
+  ["1벌 원가 구성", "Stückkosten-Aufschlüsselung"],
+  ["지금 항목을 지우고 가져온 항목으로 바꿀까요?\n확인: 바꾸기 · 취소: 지금 항목 뒤에 추가", "Aktuelle Posten durch die übernommenen ersetzen?\nOK: ersetzen · Abbrechen: hinten anfügen"],
+  ["{name}의 원가 항목 {n}개를 가져왔습니다 — 고친 뒤 '원가 구성 저장'", "{n} Kostenposten von {name} übernommen — anpassen und 'Kostenaufbau speichern'"],
+  ["{name} 복사본", "Kopie von {name}"],
+  ["(복사)", "(Kopie)"],
+  ["복사한 내용으로 새 상품 폼을 채웠습니다 — 상품 ID를 정하고 저장하세요(비공개로 시작)", "Neues Produktformular mit der Kopie gefüllt — Produkt-ID festlegen und speichern (startet unveröffentlicht)"],
+  ["이 상품을 복사해 새 상품 만들기", "Dieses Produkt als neues kopieren"],
+  ["복사", "Kopieren"],
+  ["복사해 오기…", "Übernehmen von…"],
+  ["이 상품의 다른 컬러", "Andere Farben dieses Produkts"],
+  ["다른 컬러·상품의 사이즈별 수량을 지금 고른 컬러에 그대로 채웁니다(저장은 위 '변경사항 저장')", "Übernimmt die Mengen je Größe einer anderen Farbe/eines anderen Produkts in die gewählte Farbe (speichern über 'Änderungen speichern')"],
+  ["지금 보고 있는 컬러입니다", "Das ist die aktuell gewählte Farbe"],
+  ["{n}개 사이즈 수량을 채웠습니다 — 확인 후 '변경사항 저장'을 누르세요", "Mengen für {n} Größen eingetragen — prüfen und 'Änderungen speichern' drücken"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

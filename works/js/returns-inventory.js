@@ -314,6 +314,16 @@
         <span class="inv-legend-item"><i class="inv-legend-dot" style="background:var(--status-pending-ink)"></i>${esc(t("재고 2개 이하"))}</span>
       </div>`;
 
+    /* "복사해 오기"(2026-11-11): 다른 컬러·다른 상품의 사이즈별 수량을 지금 고른 컬러 칸에 그대로 채운다(저장 전 — 상단 "변경사항 저장"). */
+    const copyable = productsRes.items.filter((x) => (x.colors || []).some((c) => COLORS[c]) && (x.sizes || []).length);
+    function copyFromOptions(p) {
+      const opt = (x, c) => `<option value="${esc(x.id)}|${esc(c)}">${esc(t(COLORS[c].label))}${x.id === p.id ? "" : ` — ${esc(t(x.nameKo))}`}</option>`;
+      const own = (p.colors || []).filter((c) => COLORS[c]).map((c) => opt(p, c)).join("");
+      const others = copyable.filter((x) => x.id !== p.id && (x.sizes || []).some((z) => (p.sizes || []).includes(z)))
+        .map((x) => `<optgroup label="${esc(t(x.nameKo))}">${x.colors.filter((c) => COLORS[c]).map((c) => opt(x, c)).join("")}</optgroup>`).join("");
+      return `<option value="">${esc(t("복사해 오기…"))}</option><optgroup label="${esc(t("이 상품의 다른 컬러"))}">${own}</optgroup>${others}`;
+    }
+
     const cards = productsRes.items
       .map((p) => {
         const colors = (p.colors || []).filter((c) => COLORS[c]);
@@ -353,6 +363,7 @@
         <div class="inv-bulk-qty">
           <input type="number" min="0" step="1" class="inv-bulk-qty-input" placeholder="0" title="${esc(t("지금 고른 컬러의 모든 사이즈에 이 수량을 한 번에 적용"))}">
           <button type="button" class="btn btn--sm btn--ghost inv-bulk-qty-apply">${esc(t("전체 적용"))}</button>
+          <select class="inv-copy-from" title="${esc(t("다른 컬러·상품의 사이즈별 수량을 지금 고른 컬러에 그대로 채웁니다(저장은 위 '변경사항 저장')"))}">${copyFromOptions(p)}</select>
         </div>
         <div class="inv-card-log" hidden></div>
       </div>`;
@@ -454,6 +465,35 @@
     updateSaveBtn();
 
     el("admin-inventory-body").addEventListener("change", (e) => {
+      const copySel = e.target.closest(".inv-copy-from");
+      if (copySel) {
+        const [srcId, srcColor] = copySel.value.split("|");
+        copySel.value = "";
+        if (!srcId) return;
+        const card = copySel.closest("[data-product]");
+        const productId = card.dataset.product;
+        const meta = productMeta.get(productId);
+        const src = productMeta.get(srcId);
+        const sizesBox = card.querySelector(".inv-card-sizes");
+        const color = sizesBox.dataset.activeColor;
+        if (!meta || !src) return;
+        if (srcId === productId && srcColor === color) { toast(t("지금 보고 있는 컬러입니다")); return; }
+        let n = 0;
+        meta.sizes.forEach((size) => {
+          if (!src.sizes.includes(size)) return;
+          const pend = pendingChanges.get(`${srcId}:${srcColor}:${size}`);
+          const qty = pend ? pend.qty : src.qtyByColorSize.get(`${srcColor}:${size}`) ?? 0;
+          pendingChanges.set(`${productId}:${color}:${size}`, { productId, color, size, qty });
+          n++;
+        });
+        sizesBox.innerHTML = invSizeRowHTML(meta.sizes, meta.qtyByColorSize, color, (size) => {
+          const pend = pendingChanges.get(`${productId}:${color}:${size}`);
+          return pend ? pend.qty : undefined;
+        });
+        updateSaveBtn();
+        toast(t("{n}개 사이즈 수량을 채웠습니다 — 확인 후 '변경사항 저장'을 누르세요", { n }));
+        return;
+      }
       const input = e.target.closest(".admin-inv-qty");
       if (!input) return;
       const card = input.closest("[data-product]");

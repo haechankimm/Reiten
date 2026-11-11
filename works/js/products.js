@@ -543,6 +543,21 @@
     el("product-form").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  /* 기존 상품을 그대로 복사해 새 상품 등록 폼에 채운다(2026-11-11) — 컬러·사이즈 표·가격·설명·사진을 다시 입력하지 않게.
+     상품 ID만 새로 정하면 되고, 재고·원가 구성은 각 화면의 "복사해 오기"로 가져온다. */
+  function duplicateIntoForm(p) {
+    fillProductForm(p);
+    pfEditingId = null;
+    el("product-form-title").textContent = t("새 상품 추가") + " — " + t("{name} 복사본", { name: t(p.nameKo) });
+    el("pf-id").value = "";
+    el("pf-id").disabled = false;
+    el("pf-nameko").value = (p.nameKo || "") + " " + t("(복사)");
+    el("pf-active").checked = false; // 실수로 바로 공개되지 않게
+    el("pf-view-live").hidden = true;
+    el("pf-id").focus();
+    toast(t("복사한 내용으로 새 상품 폼을 채웠습니다 — 상품 ID를 정하고 저장하세요(비공개로 시작)"));
+  }
+
   el("product-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = el("pf-id").value.trim();
@@ -632,6 +647,7 @@
         </div>
         <div class="grid-card-actions">
           <button type="button" class="btn btn--sm admin-product-edit">${esc(t("수정"))}</button>
+          <button type="button" class="btn btn--sm btn--ghost admin-product-duplicate" title="${esc(t("이 상품을 복사해 새 상품 만들기"))}">${esc(t("복사"))}</button>
           <button type="button" class="btn btn--sm btn--danger admin-product-delete">${esc(t("삭제"))}</button>
         </div>
       </div>`;
@@ -675,6 +691,12 @@
         const id = btn.closest("[data-id]").dataset.id;
         const p = productsState.items.find((x) => x.id === id);
         if (p) fillProductForm(p);
+      })
+    );
+    el("products-list").querySelectorAll(".admin-product-duplicate").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const p = productsState.items.find((x) => x.id === btn.closest("[data-id]").dataset.id);
+        if (p) duplicateIntoForm(p);
       })
     );
     el("products-list").querySelectorAll(".admin-product-delete").forEach((btn) =>

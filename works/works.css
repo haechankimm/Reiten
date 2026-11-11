@@ -706,3 +706,13 @@ details > summary::marker { color: var(--text-muted); }
 .agent-items { margin-top: 6px; }
 #agent-policy .exp-grid { align-items: center; }
 #agent-policy .exp-grid input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; padding: 0; justify-self: start; }
+/* 지표 이름 vs 상품 이름 구분(2026-11-11) — 색을 늘리지 않고 크기·굵기·명도로만 */
+.m-label { color: var(--text-muted); font-size: 11.5px; font-weight: 500; letter-spacing: .02em; }
+.m-name { color: var(--text-primary); font-weight: 600; }
+.margin-head { padding-bottom: 4px; }
+.m-parts { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; margin: -2px 0 6px; color: var(--text-secondary); }
+.m-part b { color: var(--text-primary); font-weight: 600; }
+.m-plus { color: var(--text-muted); }
+.inv-copy-from { margin-left: auto; height: 28px; max-width: 170px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-secondary); font-size: 12px; }
+.cost-copy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mini-form .cost-copy select { width: auto; max-width: 100%; min-width: 220px; }
