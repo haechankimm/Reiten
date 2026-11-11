@@ -81,6 +81,8 @@
   });
   el("sidebar-backdrop").addEventListener("click", closeSidebarDrawer);
   el("sidebar").querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", closeSidebarDrawer));
+  // 탭을 바꾸면 항상 맨 위부터 보이게 — 앞 탭에서 내려간 스크롤이 새 탭에 그대로 남던 것(2026-11-11)
+  el("sidebar").querySelectorAll(".nav-item[data-tab]").forEach((b) => b.addEventListener("click", () => window.scrollTo(0, 0)));
 
   el("admin-lang-switch").querySelectorAll("[data-admin-lang]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.adminLang === getLang() ? "true" : "false");
