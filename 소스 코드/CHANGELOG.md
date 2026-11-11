@@ -13,6 +13,12 @@
 
 # A. 작업 이력 (최신이 위)
 
+**2026-11-11 (14) — 구글 태그 이미지 요청이 보안 설정(CSP)에 막히던 것 해결.**
+- GA4(gtag.js)가 `googletagmanager.com/td`로 보내는 이미지 비콘이 `img-src`에 없어 콘솔 오류와 함께 막혔다(집계 일부 누락 가능).
+- `server/server.js` CSP `imgSrc`·`connectSrc`에 `https://www.googletagmanager.com`·`https://*.googletagmanager.com` 추가(구글 권장 목록).
+- 로컬 서버에서 홈·리뷰·상품·장바구니 콘솔 CSP 오류 0건, 응답 헤더 반영 확인. 테스트 335건.
+- 같은 날 PR #34(문서)·#35(화면 코드 정리) 머지·배포 확인, 사용자가 Works 탭 화면 이상 없음 확인.
+
 **2026-11-11 (13) — 화면 코드 정리 1~4단계(동작 변경 없음, 브랜치 `claude/frontend-split`).**
 - 1단계: 고객 HTML 19개의 인라인 스크립트를 파일로 — 공용 GA4·채널톡은 `assets/js/site-init.js`(주문완료 페이지의 결제 주소 숨김 처리 포함), 페이지 로직은 `assets/js/pages/<페이지>.js`. CSP `'unsafe-inline'`은 외부 결제 스크립트 확인 전이라 유지.
 - 2단계: Works `index.html` 1,357줄 → 약 170줄. 탭 마크업은 `works/tabs/`(21), 사이드바·로그인·사진 편집기는 `works/partials/`. 서버가 HTML을 보낼 때 `<!-- #include … -->`를 끼워 넣음(`lib/assetVersion.js` `expandIncludes`) — 합친 결과가 원본과 바이트 단위로 같음을 확인. `test/worksIncludes.test.js` 추가.

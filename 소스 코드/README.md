@@ -24,9 +24,9 @@
 ## 1. 현재 상태 (2026-11-11 확인)
 
 **코드·배포**
-- `main` = PR #33(`7ca7936`)까지 + 이 문서 재설계 커밋. main의 GitHub Actions `test`·`ui`·`health-check` 통과(7ca7936).
+- `main` = PR #35(`b6375c3`)까지 머지·배포됨(문서 재설계 #34, 화면 코드 정리 #35). 배포된 사이트에서 `pages/*.js` 로딩 확인. 작업 중: 브랜치 `claude/csp-gtag`(구글 태그 CSP 허용).
 - 서버 테스트 **331건 통과**(`cd server && npm test`, 약 4초).
-- 화면 코드 정리 완료(2026-11-11, 브랜치 `claude/frontend-split`): 고객 페이지 인라인 스크립트 분리, Works index 탭별 분리, 큰 Works JS·독일어 사전 분리. 테스트 335건.
+- 화면 코드 정리 완료(2026-11-11, #35): 고객 페이지 인라인 스크립트 분리, Works index 탭별 분리, 큰 Works JS·독일어 사전 분리. 사용자가 Works 로그인 뒤 탭 화면 이상 없음 확인. 테스트 335건.
 - 마이그레이션 **001~054 전부 실행됨**(029 번호는 없음). **다음 번호 = 055.** Works 정보 탭 "지금 점검하기"가 "최신(054)까지 적용됨"이면 정상.
 - 운영 확인(2026-11-11 실측): `/health` 200(`{"ok":true,"db":"ok"}`), `/README.md`·`/사용설명서.md` 404(정상 — `lib/staticGuard.js`), `/ep/naver.tsv` 200.
 - **열린 PR = Dependabot 7개(#5~#11, 2026-11-09 생성)** — 처리 방침은 §2-3.
@@ -77,6 +77,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 | #8 | express 4→5 (메이저) | **실패** | **닫기** — 라우트 문법·`_router` 내부 구조(`lib/routeShadowing.js`)가 바뀜. 별도 작업으로만 |
 
 ### 2-4. 다음 개발 후보 (하려면 먼저 추천·승인)
+- **배송 예정 시간 표시**(사용자 문의 2026-11-11): 스마트택배 응답의 `estimate`(예정 시간) 칸을 지금은 읽지 않는다(`lib/tracking.js` `parseTrackingResponse`). 하려면: 파싱 추가 → 주문에 저장(055 마이그레이션 또는 기존 `tracking_status` 옆 칸) → 고객 주문조회·마이페이지·Works 주문 상세에 표시. 키 발급 후 실제 응답으로 형식 확인 필요.
 - 발주 초안(입금 확인 주문만, 승인 지문·중복 방지·금액 상한) — AI 승인함 작업 종류로 추가하는 방식 권장.
 - AI 승인함 데이터가 쌓이면: 작업별 승인률·거절 사유 통계, 자동 승인 후보 추천.
 - 활동 로그·대시보드도 "한 화면 배치"로 정리.
@@ -184,5 +185,4 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 1. **CSP `'unsafe-inline'` 제거**(script-src) — 실결제(PC·휴대폰) 1회 때 브라우저 콘솔에 CSP 위반이 없는지 보고 `server/server.js` `scriptSrc`에서 뺀다. 그 전에 빼면 결제창이 조용히 막힐 위험.
 2. **고객 페이지 계산 로직 테스트** — `pages/cart.js`(610줄)·`pages/product.js`(476줄)의 가격·옵션 계산을 순수 함수로 뽑아 `server/test`에서 검사.
 3. 큰 파일(나눌 후보): `pages/cart.js` 610 · `pages/product.js` 476 · `works/js/expenses.js` 465 · `works/js/inventory.js` 432 · `i18n-de/_common.js`(665개 문구) · `lib/mailer.js` 631 · `routes/supplierShipments.js` 563 · `lib/orderFinalize.js` 522(카드 확정 실패 분기 테스트 부족).
-4. 기존 CSP가 구글 태그의 `googletagmanager.com/td` 이미지 요청을 막는다(`img-src`에 없음, 콘솔 오류 1줄) — GA 집계 일부가 빠질 수 있어 `imgSrc`에 추가 검토.
-5. `npm audit` 잔여 low/moderate(`exceljs`·`node-cron` 내부 `uuid`) — 실제 영향 경로 없음, Dependabot으로 추적.
+4. `npm audit` 잔여 low/moderate(`exceljs`·`node-cron` 내부 `uuid`) — 실제 영향 경로 없음, Dependabot으로 추적.
