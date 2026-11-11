@@ -478,4 +478,20 @@ router.patch("/api/admin/orders/:no", requireAdmin, serializeByOrder((req) => re
   res.json({ ok: true, cancel: cancelResult, uncancel: uncancelResult });
 }));
 
+/* 현금영수증 발급 표시(2026-11-11) — 실제 발급은 홈택스에서 하고, 여기서는 "발급했음/안 했음"만 기록한다.
+   customer.cashReceipt(주문서에서 고객이 신청한 것)가 있는 주문만. issued=false면 표시를 되돌린다. */
+router.post("/api/admin/orders/:no/cash-receipt", requireAdmin, serializeByOrder((req) => req.params.no, async (req, res) => {
+  const issued = !!(req.body && req.body.issued);
+  const { data: order, error } = await supabaseAdmin.from("orders").select("order_no, customer").eq("order_no", req.params.no).maybeSingle();
+  if (error) return res.status(500).json({ error: "주문을 불러오지 못했습니다." });
+  if (!order) return res.status(404).json({ error: "존재하지 않는 주문입니다." });
+  const cr = order.customer && order.customer.cashReceipt;
+  if (!cr) return res.status(400).json({ error: "현금영수증을 신청하지 않은 주문입니다." });
+  const nextCr = { ...cr, issuedAt: issued ? new Date().toISOString() : null };
+  const { error: upErr } = await supabaseAdmin.from("orders").update({ customer: { ...order.customer, cashReceipt: nextCr } }).eq("order_no", order.order_no);
+  if (upErr) return res.status(500).json({ error: "저장에 실패했습니다." });
+  logAdminAction(req, issued ? "order.cash_receipt_issued" : "order.cash_receipt_unissued", "order", order.order_no, { type: cr.type });
+  res.json({ ok: true, cashReceipt: nextCr });
+}));
+
 module.exports = router;

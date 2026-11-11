@@ -83,4 +83,12 @@ addDe({
   "누적 {n}": "Gesamt {n}",
   "배송비 차감": "Versandabzug",
   "직접 송금 필요": "Manuelle Überweisung nötig",
+  "현금영수증 발급 필요": "Barquittung ausstellen",
+  "소득공제용": "Für Einkommensteuerabzug",
+  "지출증빙용(사업자)": "Ausgabenbeleg (Unternehmen)",
+  "발급 완료": "Ausgestellt",
+  "발급 표시 취소": "Markierung aufheben",
+  "홈택스 발급 완료로 표시": "Als in Hometax ausgestellt markieren",
+  "현금영수증 발급 완료로 표시했습니다": "Barquittung als ausgestellt markiert",
+  "발급 표시를 취소했습니다": "Markierung aufgehoben",
 });

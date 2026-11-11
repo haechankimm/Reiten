@@ -1,6 +1,7 @@
 const { Resend } = require("resend");
 const { SITE, COURIERS } = require("../../소스 코드/assets/js/data.js");
 const { logSystemError } = require("./adminLog");
+const { maskCashReceiptNumber } = require("./cashReceipt");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 /* RESEND_FROM이 없으면 Resend 테스트 주소(onboarding@resend.dev)로 폴백하는데, 이 주소는 계정 소유자에게만
@@ -85,6 +86,7 @@ async function sendCustomerOrderReceived(order) {
         ${escHtml(SITE.order.bankName)} ${escHtml(SITE.order.accountNo)} · 예금주 ${escHtml(SITE.order.holder)}<br>
         입금자명 ${escHtml(order.customer.payer)}
       </p>
+      ${order.customer.cashReceipt ? `<p style="margin-top:12px"><b>현금영수증</b> ${order.customer.cashReceipt.type === "business" ? "지출증빙용" : "소득공제용"} ${escHtml(maskCashReceiptNumber(order.customer.cashReceipt.number))} — 입금 확인 후 발급해 드립니다.</p>` : ""}
       <p style="margin-top:16px;color:#666">입금 확인이 완료되면 다시 메일로 안내드립니다.</p>
     `,
   });

@@ -58,6 +58,30 @@
     return `<span class="status-chip st-overdue">${esc(t("{h}시간 경과", { h: PENDING_CANCEL_HOURS }))}</span>`;
   }
 
+  /* 현금영수증(2026-11-11) — 고객이 주문서에서 신청한 무통장입금 주문. 입금이 확인됐는데 아직 "발급 완료"를 안 눌렀으면 뱃지. */
+  const CASH_RECEIPT_TYPE_LABEL = { personal: "소득공제용", business: "지출증빙용(사업자)" };
+  function needsCashReceipt(o) {
+    const cr = o.customer && o.customer.cashReceipt;
+    return !!cr && !cr.issuedAt && ["입금확인", "배송중", "완료"].includes(o.status);
+  }
+  function orderCashReceiptBadge(o) {
+    return needsCashReceipt(o) ? `<span class="status-chip st-overdue">${esc(t("현금영수증 발급 필요"))}</span>` : "";
+  }
+  function orderCashReceiptHTML(o) {
+    const cr = o.customer && o.customer.cashReceipt;
+    if (!cr) return "";
+    const canEditOrder = hasAreaEdit("orders");
+    return `
+      <div class="detail-field" style="margin-top:8px">
+        <label>${esc(t("현금영수증"))}</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <span>${esc(t(CASH_RECEIPT_TYPE_LABEL[cr.type] || cr.type))} · <span class="tnum">${esc(cr.number)}</span></span>
+          ${cr.issuedAt ? `<span class="small" style="color:var(--text-muted)">${esc(t("발급 완료"))} ${esc(fmtDate(cr.issuedAt))}</span>` : ""}
+          ${canEditOrder ? `<button type="button" class="btn btn--sm btn--ghost" id="od-cash-receipt">${esc(t(cr.issuedAt ? "발급 표시 취소" : "홈택스 발급 완료로 표시"))}</button>` : ""}
+        </div>
+      </div>`;
+  }
+
   function orderListRowHTML(o) {
     return `
       <button type="button" class="prow ${o.no === selectedOrderNo ? "is-selected" : ""}" data-no="${esc(o.no)}">
@@ -68,7 +92,7 @@
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
           <div class="small" style="color:var(--text-muted);margin-top:2px">${esc(orderPaymentMethodLabel(o))}</div>
-          <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}</div>
+          <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end">${orderStatusChip(o.status)}${orderOverdueBadge(o)}${orderCashReceiptBadge(o)}</div>
         </span>
       </button>`;
   }
@@ -101,6 +125,7 @@
         <div class="detail-field"><label>${esc(t("결제"))}</label><div>${orderPaymentDetailHTML(o)}</div></div>
       </div>
       ${orderVirtualAccountHTML(o)}
+      ${orderCashReceiptHTML(o)}
       <div class="detail-items">
         ${o.items.map((it) => `<div class="detail-item"><span>${esc(t(it.name))}${it.options ? ` (${esc(it.options)})` : ""} × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
@@ -210,6 +235,18 @@
         panel.innerHTML = result.items.length
           ? result.items.map(orderHistoryRowHTML).join("")
           : `<p class="small" style="color:var(--text-muted)">${esc(t("변경 이력이 없습니다"))}</p>`;
+      });
+
+      el("od-cash-receipt")?.addEventListener("click", async () => {
+        const btn = el("od-cash-receipt");
+        const issued = !o.customer.cashReceipt.issuedAt;
+        btn.disabled = true;
+        const result = await adminFetch(`/api/admin/orders/${encodeURIComponent(o.no)}/cash-receipt`, { method: "POST", body: JSON.stringify({ issued }) });
+        btn.disabled = false;
+        if (!result) return;
+        o.customer.cashReceipt = result.cashReceipt;
+        toast(t(issued ? "현금영수증 발급 완료로 표시했습니다" : "발급 표시를 취소했습니다"));
+        paintAdminOrders(false, { keepSelection: true });
       });
 
       el("od-save").addEventListener("click", async () => {

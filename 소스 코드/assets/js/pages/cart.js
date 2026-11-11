@@ -157,6 +157,17 @@
   }
 
   /* ---------- 검증 & 제출 ---------- */
+  /* 현금영수증 종류를 고르면 번호 칸이 나오고 안내 문구가 바뀐다(2026-11-11) */
+  function syncCashReceiptField() {
+    const type = el("f-cr-type").value;
+    const input = el("f-cr-number");
+    input.hidden = type === "none";
+    input.placeholder = type === "business" ? t("사업자등록번호 10자리") : t("휴대폰 번호");
+    if (type === "personal" && !input.value) input.value = el("f-tel").value.trim();
+    if (type === "none") setErr(input, false);
+  }
+  el("f-cr-type").addEventListener("change", syncCashReceiptField);
+
   function setErr(input, on) {
     input.setAttribute("aria-invalid", String(on));
     const err = input.closest(".field").querySelector(".err");
@@ -185,6 +196,14 @@
     ];
     // 0원 주문은 입금할 돈이 없어 입금자명 칸을 숨긴다 — 숨긴 칸을 검사하면 제출이 막힌다(2026-10-28 정기 감사)
     if (payMethod() === "bank" && displayTotal() > 0) checks.push(["f-payer", v => v.trim().length >= 2]);
+    // 현금영수증(무통장입금, 2026-11-11) — 서버(lib/cashReceipt.js)와 같은 기준
+    if (payMethod() === "bank" && displayTotal() > 0 && el("f-cr-type").value !== "none") {
+      const business = el("f-cr-type").value === "business";
+      checks.push(["f-cr-number", v => {
+        const d = v.replace(/\D/g, "");
+        return business ? d.length === 10 : /^01\d{8,9}$/.test(d) || (d.length >= 13 && d.length <= 19);
+      }]);
+    }
     checks.forEach(([id, fn]) => {
       const input = el(id);
       const bad = !fn(input.value);
@@ -336,6 +355,7 @@
     const isCard = !zeroTotal && cardPaymentEnabled && method === "card";
     const isVbank = !zeroTotal && virtualAccountEnabled && method === "vbank";
     el("payer-field").hidden = zeroTotal || isCard || isVbank;
+    el("cash-receipt-field").hidden = zeroTotal || isCard || isVbank;
     el("bank-notice").hidden = zeroTotal || isCard || isVbank;
     el("card-notice").hidden = !isCard;
     el("vbank-notice").hidden = !isVbank;
@@ -377,6 +397,9 @@
       // 0원 주문은 입금자명 칸이 숨겨져 비어 있다 — 서버는 payer가 필수라 주문자 이름으로 채운다(2026-10-28 정기 감사)
       payer: (zeroTotal || isCard || isVbank) ? el("f-name").value.trim() : el("f-payer").value.trim(),
     };
+    if (!zeroTotal && !isCard && !isVbank && el("f-cr-type").value !== "none") {
+      customer.cashReceipt = { type: el("f-cr-type").value, number: el("f-cr-number").value.trim() };
+    }
 
     const btn = el("submit");
     btn.disabled = true;

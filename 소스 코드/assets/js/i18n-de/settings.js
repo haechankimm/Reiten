@@ -166,4 +166,6 @@ addDe({
   "변경 전": "Vorher",
   "합계": "Summe",
   "영문 이름": "Englischer Name",
+  "현금영수증 발급 완료 표시": "Barquittung als ausgestellt markiert",
+  "현금영수증 발급 표시 취소": "Barquittung-Markierung aufgehoben",
 });

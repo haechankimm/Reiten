@@ -118,7 +118,7 @@ router.post("/api/admin/refunds", requireAdmin, serializeByOrder((req) => String
 
   sendCustomerRefundIssued(order, refund).catch((err) => console.error("[mailer] 환불 안내 메일 발송 실패:", err.message));
   if (refund.refund_amount > 0 && order.customer) {
-    kakao.sendAlimtalk("REFUND_COMPLETED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no, amount: refund.refund_amount }).catch(() => {});
+    kakao.sendAlimtalk("REFUND_COMPLETED", order.customer.tel, { name: order.customer.name, orderNo: order.order_no, amount: `${Number(refund.refund_amount).toLocaleString("ko-KR")}원` }).catch(() => {});
   }
   logAdminAction(req, refundKind === "return" ? "order.return_refund" : "order.partial_cancel", "order", order.order_no, {
     amount: refund.refund_amount, method: refund.method, lines: refund.lines.map((l) => `${l.name}×${l.qty}`),

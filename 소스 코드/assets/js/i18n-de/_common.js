@@ -671,4 +671,6 @@ addDe({
   "GS Postbox 택배": "GS Postbox Paket",
   "경동택배": "Kyungdong Express",
   "대신택배": "Daesin Express",
+  "현금영수증": "Barquittung (Cash Receipt)",
+  "현금영수증 발급 대기": "Barquittungen auszustellen",
 });

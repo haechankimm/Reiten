@@ -494,6 +494,7 @@ function renderFooter() {
         ${esc(b.company)} · ${t("대표")}:${esc(b.ceo)}<br>
         ${t("사업자등록번호")} ${esc(b.regNo)} · ${t("통신판매업신고")} ${esc(b.mailOrderNo)}<br>
         ${esc(b.address)} · ${esc(b.tel)} · ${t("개인정보관리책임자")} ${esc(b.privacyOfficer)}<br>
+        ${b.escrow && b.escrow.provider ? `${t("구매안전서비스: 현금 결제 시 {provider}의 구매안전서비스를 이용하실 수 있습니다.", { provider: esc(b.escrow.provider) })}${b.escrow.url ? ` <a class="link-u" href="${esc(b.escrow.url)}" target="_blank" rel="noopener">${t("가입 사실 확인")}</a>` : ""}<br>` : ""}
         <a class="link-u" href="privacy.html">${t("개인정보처리방침")}</a> ·
         <a class="link-u" href="terms.html">${t("이용약관")}</a>
       </div>

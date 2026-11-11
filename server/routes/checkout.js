@@ -6,6 +6,9 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { optionalAuth } = require("../lib/auth");
 const { sendOrderNotification, sendCustomerOrderReceived } = require("../lib/mailer");
 const kakao = require("../lib/kakao");
+const { normalizeCashReceipt } = require("../lib/cashReceipt");
+const { SITE } = require("../../소스 코드/assets/js/data.js");
+const { PENDING_CANCEL_HOURS } = require("../lib/orderRules");
 const { orderNo } = require("../lib/pricing");
 const { claimCouponUsage, releaseCouponUsage } = require("../lib/coupons");
 const { claimPointsUsage, reversePointsForOrder } = require("../lib/loyaltyPoints");
@@ -175,6 +178,9 @@ router.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
   if (priced.error) return res.status(priced.error.status).json(priced.error.body);
   const { rawItems, items, subtotal, shipping, coupon, pointsUsed, total, device } = priced;
   const { customer } = req.body;
+  // 현금영수증 신청(2026-11-11) — 재고·쿠폰을 건드리기 전에 형식부터 확인한다. 0원 주문은 발급 대상이 아님.
+  const cashReceipt = normalizeCashReceipt(customer && customer.cashReceipt);
+  if (cashReceipt.error) return res.status(400).json({ error: cashReceipt.error });
 
   /* 쿠폰 사용 횟수 원자적 차감(032_coupon_usage_lock.sql) — 무통장입금은 아직 돈을 받기 전이라
      여기서 소진됐다고 판정되면 재고를 건드리기 전에 바로 실패시킨다(카드결제 쪽은 이미 결제가
@@ -232,6 +238,7 @@ router.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
     addr2: String(customer.addr2 || "").trim(),
     memo: String(customer.memo || "").trim(),
     payer: String(customer.payer).trim(),
+    ...(cashReceipt.value && total > 0 ? { cashReceipt: cashReceipt.value } : {}),
   };
 
   /* 반품 시 재고를 복원하려면 어떤 상품·사이즈·컬러를 얼마나 샀는지가 주문 레코드 자체에 남아있어야
@@ -290,7 +297,11 @@ router.post("/api/order", optionalAuth, orderLimiter, async (req, res) => {
   if (saved.status !== "입금확인") sendCustomerOrderReceived(saved).catch((err) => {
     console.error("[mailer] 주문 접수 확인 메일 발송 실패:", err.message);
   });
-  kakao.sendAlimtalk("ORDER_RECEIVED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no }).catch(() => {});
+  // 0원 주문(바로 입금확인)은 입금 안내가 필요 없다 — 입금 확인 알림톡은 notifyOrderStatusSideEffects가 보낸다
+  if (saved.status !== "입금확인") kakao.sendAlimtalk("ORDER_RECEIVED", saved.customer.tel, {
+    name: saved.customer.name, orderNo: saved.order_no, amount: `${Number(saved.total).toLocaleString("ko-KR")}원`,
+    account: `${SITE.order.bankName} ${SITE.order.accountNo} (예금주 ${SITE.order.holder})`, hours: PENDING_CANCEL_HOURS,
+  }).catch(() => {});
   sendPushToAdmins({ title: "새 주문 접수", body: `${saved.order_no} · 무통장입금 대기`, tab: "orders" }).catch((err) =>
     console.error("[push] 알림 발송 실패:", err.message)
   );

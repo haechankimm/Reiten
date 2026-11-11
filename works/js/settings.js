@@ -382,6 +382,8 @@
     "expense.settle": "동업자 정산 확정",
     "expense.settle_cancel": "동업자 정산 취소",
     "expense.unit_costs": "상품 원가 일괄 수정",
+    "order.cash_receipt_issued": "현금영수증 발급 완료 표시",
+    "order.cash_receipt_unissued": "현금영수증 발급 표시 취소",
   };
   function fmtDateTime(iso) {
     return new Date(iso).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR");

@@ -3,6 +3,7 @@
 const { supabaseAdmin } = require("./supabase");
 const { sendCustomerPaymentConfirmed, sendCustomerShipped } = require("./mailer");
 const kakao = require("./kakao");
+const { COURIERS } = require("../../소스 코드/assets/js/data.js");
 
 const { previewEarnedPoints, awardPoints } = require("./loyaltyPoints");
 const { confirmationEnabled } = require("./purchaseConfirm");
@@ -39,7 +40,10 @@ async function notifyOrderStatusSideEffects(prev, saved, patch) {
       console.error("[mailer] 배송 시작 메일 발송 실패:", err.message);
     });
     kakao
-      .sendAlimtalk("SHIPPED", saved.customer.tel, { name: saved.customer.name, orderNo: saved.order_no, trackingNo: saved.tracking_no })
+      .sendAlimtalk("SHIPPED", saved.customer.tel, {
+        name: saved.customer.name, orderNo: saved.order_no, trackingNo: saved.tracking_no,
+        courier: ((COURIERS.find((c) => c.key === saved.courier) || {}).label) || saved.courier || "택배",
+      })
       .catch(() => {});
   }
 }

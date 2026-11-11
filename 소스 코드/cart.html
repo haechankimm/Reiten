@@ -91,6 +91,19 @@
                 </div>
               </div>
 
+              <div class="field" id="cash-receipt-field">
+                <label for="f-cr-type" data-i18n="현금영수증">현금영수증</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <select id="f-cr-type" style="flex:1 1 180px">
+                    <option value="none" data-i18n="신청 안 함">신청 안 함</option>
+                    <option value="personal" data-i18n="소득공제용 (휴대폰 번호)">소득공제용 (휴대폰 번호)</option>
+                    <option value="business" data-i18n="지출증빙용 (사업자등록번호)">지출증빙용 (사업자등록번호)</option>
+                  </select>
+                  <input id="f-cr-number" inputmode="numeric" autocomplete="off" maxlength="20" style="flex:1 1 180px" hidden>
+                </div>
+                <p class="err" data-i18n="현금영수증 번호를 확인해 주세요.">현금영수증 번호를 확인해 주세요.</p>
+              </div>
+
               <div class="field">
                 <label for="f-addr" data-i18n-html data-i18n='주소 <span class="req">*</span>'>주소 <span class="req">*</span></label>
                 <input id="f-addr" name="addr" autocomplete="street-address" placeholder="위 '주소 검색' 버튼을 눌러주세요" data-i18n-attr="placeholder:위 '주소 검색' 버튼을 눌러주세요" required readonly>

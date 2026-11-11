@@ -24,9 +24,9 @@
 ## 1. 현재 상태 (2026-11-11 확인)
 
 **코드·배포**
-- `main` = PR #36(`7e3c7a5`)까지 머지·배포됨(#34 문서 재설계, #35 화면 코드 정리, #36 구글 태그 CSP 허용). 작업 중: 브랜치 `claude/audit-2026-11-11`(전반 감사 수정 3건 + Works 편의 개선: 상품 사진·이름 눌러 수정, 공지·일정 폰 푸시, CS 템플릿 줄바꿈, 활동 로그 정리 — CHANGELOG (15)(16)).
+- `main` = PR #37(`decd9d2`)까지 머지·배포됨(전반 감사 수정 + Works 편의 개선, CHANGELOG (15)(16)). 작업 중: 브랜치 `claude/cash-receipt-alimtalk`(현금영수증 신청·구매안전서비스 표시 자리·알림톡 솔라피 연결, CHANGELOG (17)).
 - 2026-11-11 전반 감사: 운영 사이트 고객 페이지 18개 휴대폰·데스크톱·영어 화면 점검, 장바구니 담기~주문서까지 실제 조작(제출·결제는 안 함), 서버 핵심 로직·Works 효율 검토. 결과는 CHANGELOG 2026-11-11 (15).
-- 서버 테스트 **340건 통과**(`cd server && npm test`, 약 4초).
+- 서버 테스트 **346건 통과**(`cd server && npm test`, 약 4초).
 - 화면 코드 정리 완료(2026-11-11, #35): 고객 페이지 인라인 스크립트 분리, Works index 탭별 분리, 큰 Works JS·독일어 사전 분리. 사용자가 Works 로그인 뒤 탭 화면 이상 없음 확인. 테스트 335건.
 - 마이그레이션 **001~054 전부 실행됨**(029 번호는 없음). **다음 번호 = 055.** Works 정보 탭 "지금 점검하기"가 "최신(054)까지 적용됨"이면 정상.
 - 운영 확인(2026-11-11 실측): `/health` 200(`{"ok":true,"db":"ok"}`), `/README.md`·`/사용설명서.md` 404(정상 — `lib/staticGuard.js`), `/ep/naver.tsv` 200.
@@ -45,7 +45,7 @@
 | Sentry | 연결됨(서버 오류 + 고객 화면 JS 오류). |
 | 결제 | 포트원 V2 + NHN KCP. 카드사 심사 완료. **실결제 테스트(PC·휴대폰·부분취소) 아직.** |
 | 배송조회 | 스마트택배 `SWEETTRACKER_API_KEY` **미발급**(런칭 직전 예정). 없으면 배송완료 자동 감지만 꺼짐. |
-| 알림 | Works 폰 푸시 동작. 텔레그램 **미연결**(`TELEGRAM_CHAT_ID` 없음). |
+| 알림 | Works 폰 푸시 동작. 텔레그램 **미연결**(`TELEGRAM_CHAT_ID` 없음). 카카오 알림톡 코드 연결됨(솔라피) — **가입·템플릿 심사 전이라 꺼져 있음**. |
 | UptimeRobot | 2026-08에 모니터 연결 기록 있음. **`/health` 5분 주기인지는 미확인** — Render가 잠들지 않게 하는 용도라 확인 필요. |
 | GA4·채널톡·네이버 서치어드바이저 | 연결됨. 네이버쇼핑 EP 등록은 아직. |
 
@@ -56,6 +56,9 @@
 ## 2. 남은 일
 
 ### 2-1. 사용자가 직접 할 일 (우선순위 순)
+0. 🔴 **구매안전서비스(에스크로)**: 무통장입금(현금 선결제)을 받으므로 전자상거래법상 에스크로 또는 소비자피해보상보험 가입·표시가 필요할 가능성이 높다 — KCP(또는 은행)에 무통장입금용 에스크로 가입 문의. 가입하면 `소스 코드/assets/js/data.js` `biz.escrow`에 `provider`(예: "NHN KCP")·`url`(가입사실 확인 링크)을 채우면 사이트 하단에 자동 표시(비어 있으면 안 보임). 법 해석은 KCP·세무사에 확인.
+0. 🟠 **Render Starter 전환 시점**: 광고·홍보 시작 **전에**(무료 플랜은 15분 무활동 시 잠들어 첫 손님이 30초+ 대기, 그 시각 크론도 건너뜀). 그 전까지 UptimeRobot 5분 주기 확인(아래 2번).
+0. 🟡 **카카오 알림톡 켜기**: 솔라피 가입 → 발신번호 등록 → 카카오 채널 연동(pfId) → `server/lib/kakao.js` `TEMPLATES` 문구 6개를 그대로 템플릿 등록·심사 → Render에 `SOLAPI_*`·`KAKAO_PF_ID`·`KAKAO_SENDER_PHONE`·승인된 `KAKAO_TPL_<코드>`. 승인된 것만 발송됨.
 1. 🟠 피클에게 최신 `pickle-handoff.md` 전달(AI 승인함 반영본). 피클이 "확인 필요"를 보고하면 은행 입금 알림 라벨·카드 뒤 4자리 대응표 챙기기.
 2. 🟠 UptimeRobot 모니터가 `https://reiten.kr/health` **5분 주기**인지 확인(아니면 추가).
 3. 🟠 Dependabot PR 정리(§2-3) + GitHub Settings → Advanced Security에서 **보안 알림(Dependabot alerts)** 켜기(버전 업데이트 PR은 이미 오고 있음).
@@ -139,7 +142,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 ### 3-6. 환경변수 (Render / `server/.env`, 템플릿 `server/.env.example`)
 필수: `SUPABASE_URL` `SUPABASE_ANON_KEY` `SUPABASE_SERVICE_ROLE_KEY` `RESEND_API_KEY` `RESEND_FROM` `ADMIN_NOTIFY_EMAIL` `CLOUDINARY_*`
 결제: `PORTONE_STORE_ID` `PORTONE_CHANNEL_KEY` `PORTONE_API_SECRET` `PORTONE_WEBHOOK_SECRET` `PORTONE_VIRTUAL_ACCOUNT_*`
-선택: `SENTRY_DSN` `REITEN_BOT_KEY`(피클, 32자+) `SWEETTRACKER_API_KEY` `TELEGRAM_BOT_TOKEN` `TELEGRAM_CHAT_ID` `VAPID_PUBLIC_KEY` `VAPID_PRIVATE_KEY` `KAKAO_ALIMTALK_*` `GA4_PROPERTY_ID` `GA4_SERVICE_ACCOUNT_JSON` `ADMIN_PIN_SECRET`(없으면 서비스 키에서 파생)
+선택: `SENTRY_DSN` `REITEN_BOT_KEY`(피클, 32자+) `SWEETTRACKER_API_KEY` `TELEGRAM_BOT_TOKEN` `TELEGRAM_CHAT_ID` `VAPID_PUBLIC_KEY` `VAPID_PRIVATE_KEY` `SOLAPI_API_KEY` `SOLAPI_API_SECRET` `KAKAO_PF_ID` `KAKAO_SENDER_PHONE` `KAKAO_TPL_<코드>`(알림톡, `.env.example` 참고) `GA4_PROPERTY_ID` `GA4_SERVICE_ACCOUNT_JSON` `ADMIN_PIN_SECRET`(없으면 서비스 키에서 파생)
 끄기 스위치: `BACKUP_EMAIL=off` `MORNING_BRIEFING=off` `ABANDONED_CART_EMAIL` `REVIEW_REQUEST_EMAIL` · 증설 시: `RATE_LIMIT_SHARED=on`
 (정확한 목록: `grep -rhoE "process\.env\.[A-Z_]+" server/lib server/routes server/server.js | sort -u`)
 

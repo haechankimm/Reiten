@@ -23,7 +23,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   const { ACTIONS } = require("../lib/agentActions");
   const agentTypes = [];
   for (const [k, a] of Object.entries(ACTIONS)) if (await hasAreaPermission(req, a.area, "edit")) agentTypes.push(k);
-  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending] = await Promise.all([
+  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending, cashReceipts] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
     activeIds.length
       ? supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0).in("product_id", activeIds)
@@ -37,6 +37,8 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     agentTypes.length
       ? supabaseAdmin.from("agent_actions").select("id", { count: "exact", head: true }).eq("status", "PENDING").gt("expires_at", new Date().toISOString()).in("action_type", agentTypes)
       : Promise.resolve({ count: 0 }),
+    // 현금영수증 신청했는데 입금 확인 후 아직 "발급 완료" 표시 안 한 주문(2026-11-11, customer jsonb — ->>는 JSON null도 SQL null로 본다)
+    supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).not("customer->>cashReceipt", "is", null).is("customer->cashReceipt->>issuedAt", null).in("status", ["입금확인", "배송중", "완료"]),
   ]);
 
   /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불
@@ -51,6 +53,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors", severity: "critical" },
     { key: "supplierAwaitingReceipt", label: "공급처 도착·입고 처리 대기", count: (!supplierDelivered.error && supplierDelivered.count) || 0, tab: "inventory", severity: "info" },
     { key: "agentPending", label: "AI 승인 대기", count: (!agentPending.error && agentPending.count) || 0, tab: "agent", severity: "warning" },
+    { key: "cashReceiptPending", label: "현금영수증 발급 대기", count: (!cashReceipts.error && cashReceipts.count) || 0, tab: "orders", severity: "warning" },
     { key: "invoicesPending", label: "확인 대기 지출", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "expenses", severity: "info" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
