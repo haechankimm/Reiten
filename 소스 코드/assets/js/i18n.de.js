@@ -1527,3 +1527,10 @@
   ["배송비처럼 묶음으로 드는 비용은 '몇 벌 기준'에 묶음 수량을 넣으세요. 합계가 1벌 원가가 됩니다.", "Für Kosten pro Bündel (z. B. Versand) die Bündelmenge bei „für Stückzahl“ eintragen. Die Summe ergibt die Stückkosten."],
   ["DB 마이그레이션 053이 아직 실행되지 않았습니다(상품 원가 구성 저장 불가 — 1벌 원가 한 칸만 사용)", "DB-Migration 053 wurde noch nicht ausgeführt (Kostenaufbau nicht speicherbar — nur ein Feld für Stückkosten)"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* ---------- 2026-11-11 (6): 긴 목록 접기 ---------- */
+[
+  ["접기", "Einklappen"],
+  ["{n}개 더 보기", "{n} weitere anzeigen"],
+  ["목록에서 찾기", "In der Liste suchen"],
+].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });

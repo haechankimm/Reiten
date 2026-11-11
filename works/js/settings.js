@@ -223,12 +223,15 @@
      완전 자동응답이 아니라 QnA 답변창에서 버튼 한 번으로 채워 넣는 문구 모음(023_qna_templates.sql).
      목록은 로그인 시 한 번 불러와 두고(qnaTemplates), QnA 카드를 다시 그릴 때마다 그 값을 그대로 쓴다 —
      템플릿을 추가·삭제하면 QnA 목록도 다시 그려서 드롭다운이 최신 상태를 반영하게 한다. */
+  /* 템플릿 한 줄 — 예전엔 3칸짜리 .best-row에 4칸을 넣어 "삭제" 버튼이 28px 칸으로 밀려 "삭/제"로 깨졌다(2026-11-11). 답변 앞부분도 한 줄 미리보기. */
   function qnaTemplateRowHTML(tpl) {
-    return `<div class="best-row" data-id="${esc(tpl.id)}">
-      <span></span>
-      <span>${esc(tpl.label)}${tpl.keywords && tpl.keywords.length ? `<div class="small" style="color:var(--text-muted)">${esc(tpl.keywords.join(", "))}</div>` : ""}</span>
-      <span></span>
-      ${hasAreaEdit("qna") ? `<button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>` : "<span></span>"}
+    return `<div class="list-row" data-id="${esc(tpl.id)}">
+      <div class="list-row-main">
+        <b>${esc(tpl.label)}</b>
+        ${tpl.keywords && tpl.keywords.length ? `<div class="small" style="color:var(--text-muted)">🔑 ${esc(tpl.keywords.join(", "))}</div>` : ""}
+        ${tpl.body ? `<div class="small list-row-preview">${esc(tpl.body)}</div>` : ""}
+      </div>
+      ${hasAreaEdit("qna") ? `<button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>` : ""}
     </div>`;
   }
 
