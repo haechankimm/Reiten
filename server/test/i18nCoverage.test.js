@@ -14,8 +14,10 @@ const SITE = path.join(ROOT, "소스 코드");
 const WORKS = path.join(ROOT, "works");
 
 function loadDictionary() {
-  // 고객용 사전 + Works 전용 독일어(i18n.de.js, 2026-11-09 분리)
-  const src = ["i18n.js", "i18n.de.js"].map((f) => fs.readFileSync(path.join(SITE, "assets", "js", f), "utf8")).join("\n");
+  // 고객용 사전 + Works 전용 독일어(i18n-de/ 탭별 파일, 2026-11-11 — _common.js가 addDe를 정의하므로 이름순 맨 앞)
+  const deDir = path.join(SITE, "assets", "js", "i18n-de");
+  const files = [path.join(SITE, "assets", "js", "i18n.js"), ...fs.readdirSync(deDir).sort().map((f) => path.join(deDir, f))];
+  const src = files.map((f) => fs.readFileSync(f, "utf8")).join("\n");
   const ctx = {
     document: { documentElement: { lang: "ko", setAttribute() {} }, addEventListener() {}, querySelectorAll() { return []; } },
     localStorage: { getItem() { return null; }, setItem() {} },
@@ -70,12 +72,18 @@ function missingFor(files, langs, dict) {
 
 test("고객 화면 문구는 모두 영어·일본어 번역이 있다", () => {
   const dict = loadDictionary();
-  const files = [...filesIn(SITE, [".html"], ["img"]), ...filesIn(path.join(SITE, "assets", "js"), [".js"], ["i18n.js", "i18n.de.js"])];
+  const files = [...filesIn(SITE, [".html"], ["img"]), ...filesIn(path.join(SITE, "assets", "js"), [".js"], ["i18n.js", "i18n-de"])];
   assert.deepEqual(missingFor(files, ["en", "ja"], dict), []);
 });
 
 test("Works 화면 문구는 모두 독일어 번역이 있다", () => {
   const dict = loadDictionary();
-  const files = [path.join(WORKS, "index.html"), ...filesIn(path.join(WORKS, "js"), [".js"])];
+  // index.html은 탭·조각 파일(tabs/·partials/)을 서버가 합쳐 내보낸다(2026-11-11, lib/assetVersion.js expandIncludes)
+  const files = [
+    path.join(WORKS, "index.html"),
+    ...filesIn(path.join(WORKS, "tabs"), [".html"]),
+    ...filesIn(path.join(WORKS, "partials"), [".html"]),
+    ...filesIn(path.join(WORKS, "js"), [".js"]),
+  ];
   assert.deepEqual(missingFor(files, ["de"], dict), []);
 });

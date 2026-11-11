@@ -1,0 +1,36 @@
+        <div id="admin-returns" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="반품·교환 신청">반품·교환 신청</div>
+              <div class="content-sub" id="returns-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="ret-q" data-i18n="주문번호·이름·연락처 검색">주문번호·이름·연락처 검색</label>
+                <input id="ret-q" placeholder="예: R260801, 홍길동, 010" data-i18n-attr="placeholder:예: R260801, 홍길동, 010">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-status" data-i18n="상태">상태</label>
+                <select id="ret-status"><option value="" data-i18n="전체">전체</option></select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-from" data-i18n="시작일">시작일</label>
+                <input id="ret-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="ret-to" data-i18n="종료일">종료일</label>
+                <input id="ret-to" type="date">
+              </div>
+              <label class="small" style="margin:0 0 8px;display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="ret-mine" style="width:auto"> <span data-i18n="내 담당만">내 담당만</span>
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="ret-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="ret-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-returns-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>

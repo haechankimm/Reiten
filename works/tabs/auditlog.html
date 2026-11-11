@@ -1,0 +1,36 @@
+        <div id="admin-auditlog" style="display:grid;gap:12px" hidden>
+          <div class="panel">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0">
+                <label for="al-admin" data-i18n="관리자 검색">관리자 검색</label>
+                <input id="al-admin" placeholder="예: 이메일 앞부분" data-i18n-attr="placeholder:예: 이메일 앞부분">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="al-action" data-i18n="작업 종류">작업 종류</label>
+                <select id="al-action"><option value="" data-i18n="전체">전체</option></select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="al-from" data-i18n="시작일">시작일</label>
+                <input id="al-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="al-to" data-i18n="종료일">종료일</label>
+                <input id="al-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button type="button" class="btn btn--sm" id="al-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="al-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div class="plist">
+            <div class="logrow logrow-head">
+              <span data-i18n="시간">시간</span>
+              <span data-i18n="관리자">관리자</span>
+              <span data-i18n="작업">작업</span>
+              <span data-i18n="대상">대상</span>
+            </div>
+            <div id="auditlog-rows"></div>
+          </div>
+          <div id="auditlog-more-wrap"></div>
+        </div>

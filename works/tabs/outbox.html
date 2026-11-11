@@ -1,0 +1,14 @@
+        <div id="admin-outbox" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="발송 실패 아웃박스">발송 실패 아웃박스</div>
+              <div class="content-sub" id="outbox-summary"></div>
+            </div>
+          </div>
+          <p class="small" style="margin-bottom:14px;color:var(--text-muted)" data-i18n="이메일·브라우저 알림 발송이 실패한 건만 모아 보여줍니다. 확인 후 처리하면 목록에서 빠집니다.">이메일·브라우저 알림 발송이 실패한 건만 모아 보여줍니다. 확인 후 처리하면 목록에서 빠집니다.</p>
+          <div class="chips" id="outbox-tabs" style="margin-bottom:14px">
+            <button type="button" class="chip" data-resolved="false" aria-pressed="true" data-i18n="미처리">미처리</button>
+            <button type="button" class="chip" data-resolved="true" aria-pressed="false" data-i18n="처리됨">처리됨</button>
+          </div>
+          <div id="admin-outbox-list" style="display:grid;gap:8px"></div>
+        </div>

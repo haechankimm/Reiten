@@ -7,9 +7,10 @@ const path = require("path");
 const vm = require("vm");
 
 function loadDictionary() {
-  // 고객용 사전 + Works 전용 독일어(i18n.de.js, 2026-11-09 분리)
+  // 고객용 사전 + Works 전용 독일어(i18n-de/ 탭별 파일, 2026-11-11 — _common.js가 이름순 맨 앞)
   const dir = path.join(__dirname, "..", "..", "소스 코드", "assets", "js");
-  const src = ["i18n.js", "i18n.de.js"].map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const deFiles = fs.readdirSync(path.join(dir, "i18n-de")).sort().map((f) => path.join("i18n-de", f));
+  const src = ["i18n.js", ...deFiles].map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
   const ctx = {
     document: { documentElement: { lang: "ko", setAttribute() {} }, addEventListener() {}, querySelectorAll() { return []; } },
     localStorage: { getItem() { return null; }, setItem() {} },

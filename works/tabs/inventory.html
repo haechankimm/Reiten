@@ -1,0 +1,36 @@
+        <div id="admin-inventory" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="재고">재고</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="button" class="btn btn--sm btn--ghost" id="inv-go-products" data-i18n="상품 등록·수정·삭제">상품 등록·수정·삭제</button>
+              <button type="button" class="btn btn--sm" id="inv-save-btn" disabled data-i18n="변경사항 저장">변경사항 저장</button>
+              <div style="position:relative">
+                <button type="button" class="btn btn--sm btn--ghost" id="inv-export" data-i18n="내보내기">내보내기</button>
+                <div id="inv-export-menu" hidden style="position:absolute;top:calc(100% + 6px);right:0;z-index:5;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:0 6px 20px rgba(0,0,0,.15)">
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="csv" style="justify-content:flex-start" data-i18n="스프레드시트 (CSV)">스프레드시트 (CSV)</button>
+                  <button type="button" class="btn btn--sm btn--ghost" data-format="xlsx" style="justify-content:flex-start" data-i18n="엑셀 (XLSX)">엑셀 (XLSX)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 공급처 입고·배송(2026-11-10, 마이그레이션 048) — 비서 에이전트가 출고 메일에서 기록한 송장. js/supplierShipments.js -->
+          <div class="panel" id="supplier-shipments-panel" style="margin-bottom:16px">
+            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px">
+              <div><b data-i18n="공급처 입고·배송">공급처 입고·배송</b> <span id="supplier-tracking-usage" class="small" style="color:var(--text-muted);margin-left:6px"></span></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn btn--sm btn--ghost" id="supplier-shipments-new" data-i18n="+ 직접 등록">+ 직접 등록</button>
+              <select id="supplier-shipments-supplier"><option value="" data-i18n="모든 공급처">모든 공급처</option></select>
+              <select id="supplier-shipments-filter">
+                <option value="open" data-i18n="진행 중">진행 중</option>
+                <option value="RECEIVED" data-i18n="입고 완료">입고 완료</option>
+                <option value="all" data-i18n="전체">전체</option>
+              </select>
+              </div>
+            </div>
+            <div id="supplier-shipments-newform" class="small"></div>
+            <div id="supplier-shipments-list" class="small"></div>
+          </div>
+          <div id="admin-inventory-body"></div>
+        </div>

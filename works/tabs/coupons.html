@@ -1,0 +1,63 @@
+        <div id="admin-coupons" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="쿠폰">쿠폰</div>
+              <div class="content-sub" data-i18n="할인율·할인적용상품·기간·사용횟수를 자유롭게 설정할 수 있습니다.">할인율·할인적용상품·기간·사용횟수를 자유롭게 설정할 수 있습니다.</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <b id="coupon-form-title" data-i18n="새 쿠폰">새 쿠폰</b>
+            <form id="coupon-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px 16px;align-items:end">
+              <div class="field">
+                <label for="cp-code" data-i18n="쿠폰 코드">쿠폰 코드</label>
+                <input id="cp-code" required pattern="[A-Za-z0-9_-]{3,40}" placeholder="예: WELCOME10" data-i18n-attr="placeholder:예: WELCOME10">
+              </div>
+              <div class="field">
+                <label for="cp-discount-type" data-i18n="할인 방식">할인 방식</label>
+                <select id="cp-discount-type">
+                  <option value="percent" data-i18n="정률(%)">정률(%)</option>
+                  <option value="amount" data-i18n="정액(원)">정액(원)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cp-discount-value" data-i18n="할인 값">할인 값</label>
+                <input id="cp-discount-value" type="number" min="1" required>
+              </div>
+              <div class="field">
+                <label for="cp-scope" data-i18n="적용 범위">적용 범위</label>
+                <select id="cp-scope">
+                  <option value="all" data-i18n="전체 상품">전체 상품</option>
+                  <option value="products" data-i18n="지정 상품만">지정 상품만</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cp-min-subtotal" data-i18n="최소 주문금액">최소 주문금액</label>
+                <input id="cp-min-subtotal" type="number" min="0" value="0">
+              </div>
+              <div class="field">
+                <label for="cp-usage-limit" data-i18n="사용 한도(전체)">사용 한도(전체)</label>
+                <input id="cp-usage-limit" type="number" min="1" placeholder="비워두면 무제한" data-i18n-attr="placeholder:비워두면 무제한">
+              </div>
+              <div class="field">
+                <label for="cp-starts" data-i18n="시작일(선택)">시작일(선택)</label>
+                <input id="cp-starts" type="date">
+              </div>
+              <div class="field">
+                <label for="cp-ends" data-i18n="종료일(선택)">종료일(선택)</label>
+                <input id="cp-ends" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label class="checkbox"><input type="checkbox" id="cp-active" checked><span data-i18n="활성화">활성화</span></label>
+              </div>
+              <div class="field" id="cp-products-field" style="grid-column:1/-1" hidden>
+                <label data-i18n="적용 상품 선택">적용 상품 선택</label>
+                <div class="chips" id="cp-products"></div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button type="submit" class="btn btn--sm" id="cp-save" data-i18n="저장">저장</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="cp-cancel" hidden data-i18n="편집 취소">편집 취소</button>
+              </div>
+            </form>
+          </div>
+          <div id="admin-coupons-list" style="display:grid;gap:10px" data-compact="10" data-compact-search="10"></div>
+        </div>

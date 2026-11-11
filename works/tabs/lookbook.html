@@ -1,0 +1,63 @@
+        <div id="admin-lookbook" class="split-rev" hidden>
+          <div class="panel">
+            <b data-i18n="실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)">실제 배치 미리보기 (칸을 클릭하면 그 칸을 수정합니다)</b>
+            <div id="lookbook-visual" class="look-grid" style="margin-top:14px"></div>
+          </div>
+
+          <div class="panel">
+            <b id="lookbook-form-title" data-i18n="새 룩북 칸 추가">새 룩북 칸 추가</b>
+            <form id="lookbook-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px 14px;align-items:end">
+              <div class="field">
+                <label for="lf-label" data-i18n="라벨">라벨</label>
+                <input id="lf-label" required>
+              </div>
+              <div class="field">
+                <label for="lf-note" data-i18n="설명 (선택)">설명 (선택)</label>
+                <input id="lf-note">
+              </div>
+              <div class="field">
+                <label for="lf-span" data-i18n="가로 크기">가로 크기</label>
+                <select id="lf-span">
+                  <option value="w4">w4 (1/3)</option>
+                  <option value="w6">w6 (1/2)</option>
+                  <option value="w8">w8 (2/3)</option>
+                  <option value="w12" data-i18n="w12 (전체)">w12 (전체)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="lf-ratio" data-i18n="가로세로 비율">가로세로 비율</label>
+                <select id="lf-ratio-select">
+                  <option value="1/1" data-i18n="1 / 1 (정사각형)">1 / 1 (정사각형)</option>
+                  <option value="4/5" data-i18n="4 / 5 (세로)">4 / 5 (세로)</option>
+                  <option value="3/4" data-i18n="3 / 4 (세로)">3 / 4 (세로)</option>
+                  <option value="2/3" data-i18n="2 / 3 (세로, 긴 편)">2 / 3 (세로, 긴 편)</option>
+                  <option value="16/10" selected data-i18n="16 / 10 (기본)">16 / 10 (기본)</option>
+                  <option value="16/9" data-i18n="16 / 9 (와이드)">16 / 9 (와이드)</option>
+                  <option value="__custom__" data-i18n="직접 입력">직접 입력</option>
+                </select>
+                <input id="lf-ratio" style="margin-top:8px" hidden placeholder="16/10" required>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label class="checkbox"><input type="checkbox" id="lf-active" checked><span data-i18n="공개 (체크 해제 시 숨김)">공개 (체크 해제 시 숨김)</span></label>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="사진">사진</label>
+                <div id="lf-photo" style="max-width:220px"></div>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="미리보기">미리보기</label>
+                <div class="look" style="max-width:360px;margin-top:4px">
+                  <figure id="lf-preview-figure" class="w6">
+                    <div id="lf-preview-media"></div>
+                    <figcaption><span id="lf-preview-label"></span><span id="lf-preview-note"></span></figcaption>
+                  </figure>
+                </div>
+              </div>
+              <div style="grid-column:1/-1;display:flex;gap:8px">
+                <button class="btn" type="submit" id="lf-submit" data-i18n="저장">저장</button>
+                <button class="btn btn--ghost" type="button" id="lf-cancel" hidden data-i18n="편집 취소">취소</button>
+                <button class="btn btn--danger" type="button" id="lf-delete" hidden data-i18n="삭제">삭제</button>
+              </div>
+            </form>
+          </div>
+        </div>

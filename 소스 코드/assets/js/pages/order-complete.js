@@ -1,0 +1,216 @@
+/* order-complete.html 전용 스크립트 — 예전엔 HTML 안 인라인 <script>였다(2026-11-11 분리, 동작 동일). */
+  applyI18n();
+  renderHeader("");
+
+  const root = document.getElementById("root");
+
+  /* 휴대폰에서는 포트원 결제창이 "페이지 이동(리디렉션)" 방식으로 열려서, cart.html의 결제 이후 코드
+     (주문 확인 요청 → 장바구니 비우기 → 이 페이지로 이동)가 실행되지 못한다. 그래서 결제창에
+     redirectUrl로 이 페이지를 넘겨두고, 포트원이 ?paymentId=...(실패 시 &code=...&message=...)를 붙여
+     돌려보내면 여기서 직접 주문을 확정한다(2026-10-02). PC는 예전처럼 cart.html에서 처리된다. */
+  const returnParams = new URLSearchParams(location.search);
+  /* orderItemName()·orderItemOptions()가 관리자 패널(DB)에만 있는 상품·색상도 찾아 지금 언어로 보여주도록 목록을
+     먼저 받아온다 — 실패해도(정적 배포 등) data.js 목록으로 그대로 그린다(2026-10-28 정기 감사). */
+  Promise.all([
+    typeof loadProducts === "function" ? loadProducts().catch(() => false) : false,
+    typeof loadColors === "function" ? loadColors().catch(() => {}) : null,
+  ]).then(() => {
+    if (returnParams.get("paymentId")) {
+      confirmReturnedPayment(returnParams);
+    } else {
+      renderOrder(readLastOrder());
+    }
+  });
+
+  function readLastOrder() {
+    try { return JSON.parse(localStorage.getItem("reiten_last_order")); } catch (e) { return null; }
+  }
+
+  async function confirmReturnedPayment(params) {
+    const paymentId = params.get("paymentId");
+    if (params.get("code")) {
+      // 고객이 결제를 취소했거나 카드사 승인이 거절된 경우 — 장바구니는 그대로 두고 돌아갈 길을 안내한다.
+      // 포트원 message는 한국어 원문이라 ko가 아니면 사전 문구로 바꾼다(app.js paymentFailText, 2026-10-28 정기 감사)
+      root.innerHTML = `
+        <div class="empty">
+          <p class="lede">${esc(paymentFailText({ code: params.get("code"), message: params.get("message"), pgCode: params.get("pgCode") }, false))}</p>
+          <p style="margin-top:20px"><a class="btn" href="cart.html">${t("장바구니로 돌아가기")}</a></p>
+        </div>`;
+      return;
+    }
+    root.innerHTML = `<div class="empty"><p class="lede">${t("결제를 확인하고 있어요…")}</p></div>`;
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (typeof getAccessToken === "function") {
+        const token = await getAccessToken().catch(() => null);
+        if (token) headers.Authorization = "Bearer " + token;
+      }
+      const res = await fetch("/api/order", { method: "POST", headers, body: JSON.stringify({ paymentId }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = body.error === "OUT_OF_STOCK"
+          ? t("{name} {size} 사이즈 재고가 부족해 결제가 자동 취소되었습니다", { name: orderItemName(body), size: body.size })
+          : apiErrorText(body, t("결제 확인에 실패했습니다"));
+        root.innerHTML = `
+          <div class="empty">
+            <p class="lede">${esc(msg)}</p>
+            <p class="small" style="margin-top:12px">${t("결제가 이미 끝났다면 주문 조회에서 접수 여부를 확인해 주세요.")}</p>
+            <p style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <a class="btn" href="order-lookup.html">${t("주문 조회")}</a>
+              <a class="btn btn--ghost" href="cart.html">${t("장바구니로 돌아가기")}</a>
+            </p>
+          </div>`;
+        return;
+      }
+      try { localStorage.setItem("reiten_last_order", JSON.stringify(body)); } catch (e) {}
+      Cart.clear();
+      // 새로고침해도 결제 확인을 다시 보내지 않도록 주소에서 paymentId를 지운다(주문은 위에서 저장됨).
+      history.replaceState(null, "", "order-complete.html");
+      renderOrder(body);
+    } catch (e) {
+      root.innerHTML = `
+        <div class="empty">
+          <p class="lede">${t("연결이 불안정해 주문 결과를 확인하지 못했습니다. 주문 조회 또는 메일함에서 접수 여부를 확인한 뒤 다시 시도해 주세요.")}</p>
+          <p style="margin-top:20px"><a class="btn" href="order-lookup.html">${t("주문 조회")}</a></p>
+        </div>`;
+    }
+  }
+
+  // 일본어 문장 끝에 반각 "."이 붙어 어색했다 — 언어별 마침표를 쓴다(2026-10-28 정기 감사)
+  function leadTimeSentence() {
+    return esc(t(SITE.shipping.leadTime)) + (getLang() === "ja" ? "。" : ".");
+  }
+
+  function renderOrder(order) {
+  if (!order) {
+    root.innerHTML = `
+      <div class="empty">
+        <p class="lede">${t("표시할 주문 내역이 없습니다.")}</p>
+        <p style="margin-top:20px"><a class="btn" href="shop.html">${t("컬렉션 보러 가기")}</a></p>
+      </div>`;
+  } else {
+    const o = SITE.order;
+    const c = order.customer;
+
+    const sheet = [
+      `[REITEN 주문서]`,
+      `주문번호 : ${order.no}`,
+      `주문일시 : ${new Date(order.at).toLocaleString("ko-KR")}`,
+      ``,
+      `— 주문 내역 —`,
+      ...order.items.map(i => `· ${i.name} (${i.options}) x${i.qty} = ${i.sum.toLocaleString("ko-KR")}원`),
+      ``,
+      `상품 합계 : ${order.subtotal.toLocaleString("ko-KR")}원`,
+      ...(order.discount ? [`쿠폰 할인 (${order.couponCode}) : -${order.discount.toLocaleString("ko-KR")}원`] : []),
+      ...(order.pointsUsed ? [`적립금 사용 : -${order.pointsUsed.toLocaleString("ko-KR")}원`] : []),
+      `배송비 : ${order.shipping === 0 ? "무료" : order.shipping.toLocaleString("ko-KR") + "원"}`,
+      `총 결제금액 : ${order.total.toLocaleString("ko-KR")}원`,
+      ``,
+      `— 받는 분 —`,
+      `이름 : ${c.name}`,
+      `연락처 : ${c.tel}`,
+      `이메일 : ${c.email}`,
+      `주소 : (${c.zip}) ${c.addr} ${c.addr2}`,
+      `배송메모 : ${c.memo || "-"}`,
+      `입금자명 : ${c.payer}`,
+    ].join("\n");
+
+    root.innerHTML = `
+      <p class="eyebrow">Order received</p>
+      <h1 class="h-xl" style="margin-top:12px">${t("주문이 접수되었습니다")}</h1>
+      <p class="lede" style="margin-top:16px">
+        ${t("주문번호")} <b class="tnum">${esc(order.no)}</b> · ${t("{name}님", { name: esc(c.name) })}
+      </p>
+
+      ${order.paid && order.paymentMethod === "bank_transfer" ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("주문 확정")}</b><br>
+        ${t("쿠폰·적립금으로 결제할 금액 없이 주문이 확정되었습니다.")}<br>
+        <span class="small">${leadTimeSentence()}</span>
+      </div>` : order.paymentMethod === "card" || (order.paymentMethod === "virtual_account" && order.status === "입금확인") ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("결제 완료")}</b><br>
+        ${t("결제금액")} <b class="tnum">${money(order.total)}</b><br>
+        <span class="small">${leadTimeSentence()}</span>
+      </div>` : order.paymentMethod === "virtual_account" && order.virtualAccount ? `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("가상계좌 발급 완료")}</b><br>
+        ${esc(t(order.virtualAccount.bank || ""))} ${esc(order.virtualAccount.accountNumber || "")}<br>
+        ${t("입금액")} <b class="tnum">${money(order.total)}</b>
+        ${order.virtualAccount.dueAt ? `· ${t("입금기한")} <b>${new Date(order.virtualAccount.dueAt).toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US")}</b>` : ""}<br>
+        <span class="small">${t("이 계좌로 입금하시면 확인 절차 없이 자동으로 결제완료 처리됩니다.")}</span>
+      </div>` : `
+      <div class="notice" style="margin-top:28px">
+        <b>${t("입금 안내")}</b><br>
+        ${esc(o.bankName)} ${esc(o.accountNo)} · ${t("예금주")} ${esc(o.holder)}<br>
+        ${t("입금액")} <b class="tnum">${money(order.total)}</b> · ${t("입금자명")} <b>${esc(c.payer)}</b><br>
+        <span class="small">${t("24시간 내 미입금 시 주문은 자동 취소됩니다. {leadTime}.", { leadTime: esc(t(SITE.shipping.leadTime)) })}</span>
+      </div>`}
+
+      ${order.sent ? `
+      <div class="notice" style="margin-top:14px">
+        ${t("주문서가 정상적으로 전송되었습니다. 확인 후 개별 연락드리겠습니다.")}
+        <span class="small" style="display:block;margin-top:6px">${t("{email}로 주문 접수 확인 메일을 보내드렸습니다.", { email: esc(c.email) })}</span>
+      </div>` : `
+      <div class="notice" style="margin-top:14px">
+        <b>${t("주문서를 보내주세요")}</b><br>
+        ${t("아래 주문서를 복사해 이메일 또는 카카오톡으로 보내주시면 접수가 완료됩니다.")}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button class="btn btn--sm" type="button" id="copy">${t("주문서 복사")}</button>
+          <a class="btn btn--line btn--sm" id="mail" href="#">${t("이메일로 열기")}</a>
+        </div>
+      </div>`}
+
+      <h2 class="h-md" style="margin-top:44px;margin-bottom:14px">${t("주문 내역")}</h2>
+      <table class="spec">
+        <thead><tr><th>${t("상품")}</th><th>${t("옵션")}</th><th>${t("수량")}</th><th>${t("금액")}</th></tr></thead>
+        <tbody>
+          ${order.items.map(i => `
+            <tr>
+              <td>${esc(orderItemName(i))}</td>
+              <td style="text-align:left;color:var(--muted)">${esc(orderItemOptions(i))}</td>
+              <td>${i.qty}</td>
+              <td>${money(i.sum)}</td>
+            </tr>`).join("")}
+          <tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("상품 합계")}</td><td>${money(order.subtotal)}</td></tr>
+          ${order.discount ? `<tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("쿠폰 할인")} (${esc(order.couponCode)})</td><td>−${money(order.discount)}</td></tr>` : ""}
+          ${order.pointsUsed ? `<tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("적립금 사용")}</td><td>−${money(order.pointsUsed)}</td></tr>` : ""}
+          <tr><td colspan="3" style="text-align:right;color:var(--muted)">${t("배송비")}</td><td>${order.shipping === 0 ? t("무료") : money(order.shipping)}</td></tr>
+          <tr><td colspan="3" style="text-align:right;font-weight:650">${t("총 결제금액")}</td><td style="font-weight:650">${money(order.total)}</td></tr>
+        </tbody>
+      </table>
+
+      <details style="margin-top:24px">
+        <summary class="small" style="cursor:pointer">${t("주문서 원문 보기")}</summary>
+        <pre id="sheet" class="small" style="white-space:pre-wrap;background:var(--paper-2);border:1px solid var(--line);padding:16px;margin-top:12px;border-radius:2px">${esc(sheet)}</pre>
+      </details>
+
+      <div style="display:flex;gap:10px;margin-top:34px;flex-wrap:wrap">
+        <a class="btn" href="shop.html">${t("쇼핑 계속하기")}</a>
+        <a class="btn btn--ghost" href="index.html">${t("홈으로")}</a>
+      </div>`;
+
+    const copyBtn = document.getElementById("copy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(sheet);
+          toast(t("주문서를 복사했습니다"));
+        } catch (e) {
+          const pre = document.getElementById("sheet");
+          const r = document.createRange();
+          r.selectNodeContents(pre);
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+          toast(t("주문서를 선택했습니다. 복사해 주세요"));
+        }
+      });
+      document.getElementById("mail").href =
+        "mailto:" + encodeURIComponent(SITE.order.email) +
+        "?subject=" + encodeURIComponent(`[REITEN 주문] ${order.no} ${c.name}`) +
+        "&body=" + encodeURIComponent(sheet);
+    }
+  }
+  }
+
+  renderFooter();

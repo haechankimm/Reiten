@@ -1,0 +1,26 @@
+        <div id="admin-notices" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="공지">공지</div>
+              <div class="content-sub" id="notices-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <b id="notice-form-title" data-i18n="새 공지 작성">새 공지 작성</b>
+            <form id="notice-form" novalidate style="margin-top:14px;display:grid;gap:12px">
+              <div class="field">
+                <label for="nt-title" data-i18n="제목">제목</label>
+                <input id="nt-title" required maxlength="100">
+              </div>
+              <div class="field">
+                <label for="nt-body" data-i18n="내용">내용</label>
+                <textarea id="nt-body" required rows="4"></textarea>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button type="submit" class="btn btn--sm" id="nt-submit" data-i18n="등록">등록</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="nt-cancel" hidden data-i18n="편집 취소">편집 취소</button>
+              </div>
+            </form>
+          </div>
+          <div id="admin-notices-list" style="display:grid;gap:10px"></div>
+        </div>

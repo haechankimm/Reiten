@@ -1,0 +1,45 @@
+        <div id="admin-reviews" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="리뷰">리뷰</div>
+              <div class="content-sub" id="reviews-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="rv-q" data-i18n="작성자·리뷰 내용·상품ID 검색">작성자·리뷰 내용·상품ID 검색</label>
+                <input id="rv-q">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-status" data-i18n="상태">상태</label>
+                <select id="rv-status">
+                  <option value="" data-i18n="전체">전체</option>
+                  <option value="approved" data-i18n="게시중">게시중</option>
+                  <option value="pending" data-i18n="승인 대기">승인 대기</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-from" data-i18n="시작일">시작일</label>
+                <input id="rv-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="rv-to" data-i18n="종료일">종료일</label>
+                <input id="rv-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="rv-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="rv-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel" id="reviews-bulk-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <label class="checkbox"><input type="checkbox" id="reviews-select-all"><span data-i18n="전체 선택">전체 선택</span></label>
+            <span class="small" id="reviews-selected-count" style="color:var(--text-muted)"></span>
+            <div id="reviews-bulk-actions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+              <button type="button" class="btn btn--sm" id="reviews-bulk-approve" data-i18n="일괄 승인">일괄 승인</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="reviews-bulk-hide" data-i18n="일괄 숨기기">일괄 숨기기</button>
+            </div>
+          </div>
+          <div id="admin-reviews-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>

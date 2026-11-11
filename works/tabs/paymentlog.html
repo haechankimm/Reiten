@@ -1,0 +1,41 @@
+        <div id="admin-paymentlog" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="결제 트랜잭션">결제 트랜잭션</div>
+              <div class="content-sub" id="paymentlog-summary"></div>
+            </div>
+          </div>
+          <p class="small" style="margin-bottom:14px;color:var(--text-muted)" data-i18n="orders에 안 남는(=주문이 안 된) 결제 시도까지 전부 기록됩니다. 실패·불일치·조회 오류 건을 확인할 때 참고하세요.">orders에 안 남는(=주문이 안 된) 결제 시도까지 전부 기록됩니다. 실패·불일치·조회 오류 건을 확인할 때 참고하세요.</p>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="pl-q" data-i18n="결제ID·주문번호 검색">결제ID·주문번호 검색</label>
+                <input id="pl-q">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="pl-status" data-i18n="상태">상태</label>
+                <select id="pl-status">
+                  <option value="" data-i18n="전체">전체</option>
+                  <option value="paid" data-i18n="성공">성공</option>
+                  <option value="failed" data-i18n="실패">실패</option>
+                  <option value="mismatch" data-i18n="불일치">불일치</option>
+                  <option value="error" data-i18n="조회 오류">조회 오류</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="pl-from" data-i18n="시작일">시작일</label>
+                <input id="pl-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="pl-to" data-i18n="종료일">종료일</label>
+                <input id="pl-to" type="date">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="pl-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="pl-reset" data-i18n="초기화">초기화</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="pl-export" data-i18n="CSV 내보내기">CSV 내보내기</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-paymentlog-list" style="display:grid;gap:8px"></div>
+        </div>

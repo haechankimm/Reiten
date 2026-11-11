@@ -1,0 +1,368 @@
+/* account.html 전용 스크립트 — 예전엔 HTML 안 인라인 <script>였다(2026-11-11 분리, 동작 동일). */
+  // 주문 상품명을 지금 언어로 보여주려고 상품 목록을 미리 불러온다(2026-10-28)
+  if (typeof loadProducts === "function") loadProducts().catch(() => {});
+  applyI18n();
+  renderHeader("");
+
+  const el = (id) => document.getElementById(id);
+  /* supabase-js가 client 생성 시점에 OAuth 콜백 해시를 자동으로 읽고 지워버리므로,
+     그보다 먼저(동기적으로) 원본 해시를 스냅샷해둔다 — 에러 메시지 표시용. */
+  const initialHash = location.hash;
+
+  /* Supabase Auth 에러는 항상 영어 원문(error.message)이라 자주 나오는 것만 번역해 보여주고,
+     모르는 메시지는 원문을 그대로 보여준다(안 보여주는 것보다는 낫다). */
+  function authErrorMessage(error) {
+    const msg = String((error && error.message) || "");
+    if (/already registered|already exists/i.test(msg)) return t("이미 가입된 이메일입니다.");
+    if (/password.*(least|weak)/i.test(msg)) return t("비밀번호는 6자 이상이어야 합니다.");
+    if (/invalid.*email/i.test(msg)) return t("이메일 형식이 올바르지 않습니다.");
+    /* Supabase Auth가 상황에 따라 문구를 다르게 준다 — 이메일 발송 자체가 막히면
+       "email rate limit exceeded"(code: over_email_send_rate_limit), 짧은 시간에 요청이
+       몰리면 "Too many requests. Please try again shortly." 처럼 다른 문구가 온다(둘 다
+       429). "rate limit"만 걸러내던 정규식이 두 번째 문구를 못 잡아 영문 원문이 그대로
+       노출되던 것을 2026-09-01에 발견해 수정 — 실제 회원가입 요청으로 두 문구 다 재현해
+       확인함. */
+    if (/rate limit|too many requests/i.test(msg) || error?.code === "over_email_send_rate_limit") {
+      return t("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+    }
+    /* 로그인 실패 사유를 확인 안 하고 무조건 "이메일 또는 비밀번호가 올바르지 않습니다"로
+       띄우던 버그(2026-09-01 발견) — 이메일 인증을 아직 안 한 계정으로 로그인하면 Supabase가
+       완전히 다른 에러("Email not confirmed", code: email_not_confirmed)를 주는데 이것도
+       똑같이 "비밀번호가 틀렸다"고 나와서, 실제로는 가입 메일의 인증 링크를 눌러야 하는
+       사람이 계속 비밀번호만 의심하게 만들고 있었다. 실제 계정으로 재현해 에러 코드 확인함. */
+    if (error?.code === "email_not_confirmed" || /email not confirmed/i.test(msg)) {
+      return t("이메일 인증이 필요합니다. 가입하신 이메일함에서 인증 링크를 확인해 주세요.");
+    }
+    if (/invalid login credentials/i.test(msg)) return t("이메일 또는 비밀번호가 올바르지 않습니다.");
+    return msg;
+  }
+
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US");
+  }
+
+  function trackingLine(o) {
+    const courier = COURIERS.find((c) => c.key === o.courier);
+    if (!courier || !o.trackingNo) return "";
+    const url = courier.urlTemplate.replace("{tracking}", encodeURIComponent(o.trackingNo));
+    return `<p class="small" style="margin-top:8px">
+      <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t("배송 조회"))} · ${esc(t(courier.label))} ${esc(o.trackingNo)}</a>
+    </p>`;
+  }
+
+  function orderCard(o) {
+    const itemsLine = o.items.map((it) => `${esc(orderItemName(it))} × ${it.qty}`).join(", ");
+    // 쿠폰·적립금 할인과 환불액을 같이 보여줘야 "상품 합계와 결제 금액이 왜 다른지"가 보인다(2026-10-02).
+    const adjustments = [
+      o.discount ? `${t("쿠폰 할인")} −${money(o.discount)}` : "",
+      o.pointsUsed ? `${t("적립금 사용")} −${money(o.pointsUsed)}` : "",
+      o.refundedAmount ? `${t("환불된 금액")} −${money(o.refundedAmount)}` : "",
+    ].filter(Boolean).join(" · ");
+    return `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+          <b class="tnum">${esc(o.no)}</b>
+          <span class="small tnum">${fmtDate(o.at)}</span>
+        </div>
+        <p class="small" style="margin-top:8px">${itemsLine}</p>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-top:10px">
+          <span class="small">${esc(t(o.status || "입금대기"))}</span>
+          <b class="tnum">${money(o.total)}</b>
+        </div>
+        ${adjustments ? `<p class="small tnum" style="margin-top:4px;color:var(--muted);text-align:right">${esc(adjustments)}</p>` : ""}
+        ${trackingLine(o)}
+        ${orderPaymentGuideHTML(o)}
+        ${orderConfirmHTML(o)}
+      </div>`;
+  }
+
+  async function paintMyOrders() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/my/orders", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const orders = await res.json();
+      el("my-orders").innerHTML = orders.map(orderCard).join("");
+      bindOrderConfirmButtons(el("my-orders"), null, () => { paintMyOrders(); paintPointsBalance(); });
+      el("my-orders-empty").hidden = orders.length > 0;
+    } catch (e) {}
+  }
+
+  async function paintPointsBalance() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/points/balance", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const { balance } = await res.json();
+      el("me-points").textContent = t("보유 적립금 {balance}", { balance: money(balance) });
+    } catch (e) {}
+  }
+
+  /* 관리자 로그인 시각 표시(배지 · 초록 테마 · 말 애니메이션) 확인용 — 실제 관리자 CRUD 기능은
+     전부 별도 관리자 전용 사이트(works.reiten.kr, Reiten Works)로 옮겨졌다. 이 계정 페이지에
+     남아있던 옛 관리자 패널(주문/반품/재고/Q&A/상품/리뷰/룩북 관리 폼)은 works와 중복 유지되며
+     수정이 한쪽에만 반영되는 사고 위험이 있어 제거했다. */
+  async function adminFetch(path, opts) {
+    const token = await getAccessToken();
+    if (!token) {
+      toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
+      return null;
+    }
+    const res = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, ...(opts && opts.headers) },
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        toast(t("로그인이 만료되었습니다. 다시 로그인해 주세요."));
+      } else {
+        let message = "";
+        try { message = apiErrorText(await res.json(), ""); } catch (e) {}
+        toast(message || t("요청이 실패했습니다") + ` (${res.status})`);
+      }
+      return null;
+    }
+    return res.json();
+  }
+
+  /* 관리자 로그인을 시각적으로 티나게: 배지 + 인사말 접두어 + 초록(grass) 테마 + 로밍 말 애니메이션.
+     profile.role만으로 판단하지 않고, /api/admin/orders 호출에 실제로 성공했을 때(=서버가
+     관리자로 인정했을 때)만 실행한다 — role 필드만 보고 켜면 서버 판단과 어긋날 수 있다.
+     특정 계정이 아니라 role=admin인 모든 사용자에게 동일하게 적용된다. */
+  function activateAdminExperience(profile) {
+    document.documentElement.setAttribute("data-admin-theme", "grass");
+    el("admin-badge").hidden = false;
+    el("me-greeting").textContent =
+      "(Admin) " + t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el("admin-horse-scene").hidden = false;
+    }
+  }
+
+  async function tryShowAdminPanel(profile) {
+    const orders = await adminFetch("/api/admin/orders");
+    if (!orders) return; // 관리자가 아니거나 서버가 이를 거부함
+    activateAdminExperience(profile);
+  }
+
+  /* ---------- 부팅 ---------- */
+  (async () => {
+    const client = await getSupabaseClient();
+    if (!client) {
+      el("no-server-notice").hidden = false;
+      return;
+    }
+
+    /* 비밀번호 재설정 이메일의 링크를 타고 들어오면 URL 해시에 type=recovery가 붙어서 온다.
+       이 경우 로그인 세션이 이미 잡혀 있어도 내 계정 화면 대신 새 비밀번호 설정 폼을 먼저 보여준다.
+       Works에서 새 관리자를 초대(inviteUserByEmail)했을 때 오는 링크는 type=invite인데, 이것도
+       "아직 비밀번호가 없으니 지금 정해야 하는" 같은 상황이라 recovery와 동일하게 처리한다. */
+    const isRecovery = /type=(recovery|invite)/.test(location.hash);
+    const profile = isRecovery ? null : await getCurrentProfile();
+
+    /* 카카오 등 OAuth 로그인이 실패하면(예: provider 설정 누락) Supabase가 콜백 URL 해시에
+       error/error_description을 담아 이 페이지로 돌려보낸다. 원문 그대로라도 보여주는 게
+       아무 반응 없는 것보다 낫다. */
+    const oauthErrorMatch = /[#&]error_description=([^&]+)/.exec(initialHash);
+    if (oauthErrorMatch) {
+      toast(decodeURIComponent(oauthErrorMatch[1].replace(/\+/g, " ")));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
+    /* 가입 확인 메일의 링크를 누르면 Supabase가 세션 토큰과 함께 이 페이지로 돌려보내는데
+       (#access_token=...&type=signup), supabase-js가 그 해시를 조용히 읽어 세션만 만들고
+       끝이라 사용자 입장에선 "내가 방금 인증한 게 맞는지, 그냥 버그로 여기 온 건지" 알 방법이
+       없다는 피드백(2026-09-01) — initialHash(해시가 지워지기 전 원본 스냅샷, 위 참고)로
+       감지해서 명시적으로 알려준다. */
+    const isSignupConfirm = /type=signup/.test(initialHash);
+    if (isSignupConfirm) {
+      el("auth-notice").textContent = profile
+        ? t("이메일 인증이 완료됐습니다! 자동으로 로그인되었습니다.")
+        : t("이메일 인증이 완료됐습니다. 로그인해 주세요.");
+      el("auth-notice").hidden = false;
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
+    const savedEmail = localStorage.getItem("reiten_saved_email");
+    if (savedEmail) {
+      el("li-email").value = savedEmail;
+      el("li-remember").checked = true;
+    }
+
+    if (isRecovery) {
+      el("auth-view").hidden = false;
+      el("auth-tabs").hidden = true;
+      el("login-form").hidden = true;
+      el("signup-form").hidden = true;
+      el("reset-confirm-form").hidden = false;
+    } else if (!profile) {
+      el("auth-view").hidden = false;
+    } else {
+      el("me-view").hidden = false;
+      el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
+      paintMyOrders();
+      paintPointsBalance();
+      if (profile.role === "admin") tryShowAdminPanel(profile);
+    }
+
+    el("auth-tabs")?.querySelectorAll(".chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        el("auth-tabs").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        el("login-form").hidden = b.dataset.tab !== "login";
+        el("signup-form").hidden = b.dataset.tab !== "signup";
+      })
+    );
+
+    el("login-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("li-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signInWithPassword({
+        email: el("li-email").value.trim(),
+        password: el("li-pw").value,
+      });
+      if (error) {
+        el("li-err").textContent = authErrorMessage(error);
+        el("li-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      if (el("li-remember").checked) localStorage.setItem("reiten_saved_email", el("li-email").value.trim());
+      else localStorage.removeItem("reiten_saved_email");
+      location.reload();
+    });
+
+    el("forgot-pw-link")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      el("login-form").hidden = true;
+      el("signup-form").hidden = true;
+      el("auth-tabs").hidden = true;
+      el("reset-request-form").hidden = false;
+    });
+
+    el("rq-cancel")?.addEventListener("click", () => {
+      el("reset-request-form").hidden = true;
+      el("auth-tabs").hidden = false;
+      el("login-form").hidden = false;
+    });
+
+    el("kakao-login")?.addEventListener("click", async () => {
+      const btn = el("kakao-login");
+      btn.disabled = true;
+      const { error } = await client.auth.signInWithOAuth({
+        provider: "kakao",
+        options: { redirectTo: location.origin + "/account.html" },
+      });
+      if (error) {
+        toast(authErrorMessage(error));
+        btn.disabled = false;
+      }
+      /* 성공 시엔 카카오 로그인 화면으로 브라우저가 이동하므로 별도 처리 불필요 */
+    });
+
+    el("reset-request-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("rq-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.resetPasswordForEmail(el("rq-email").value.trim(), {
+        redirectTo: location.origin + "/account.html",
+      });
+      btn.disabled = false;
+      if (error) {
+        el("rq-err").textContent = authErrorMessage(error);
+        el("rq-err").classList.add("on");
+        return;
+      }
+      toast(t("재설정 링크를 이메일로 보내드렸습니다."));
+      el("reset-request-form").hidden = true;
+      el("auth-tabs").hidden = false;
+      el("login-form").hidden = false;
+    });
+
+    el("reset-confirm-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pw1 = el("rc-pw").value;
+      const pw2 = el("rc-pw2").value;
+      if (pw1.length < 6) {
+        el("rc-err").textContent = t("비밀번호는 6자 이상이어야 합니다.");
+        el("rc-err").classList.add("on");
+        return;
+      }
+      if (pw1 !== pw2) {
+        el("rc-err").textContent = t("비밀번호가 일치하지 않습니다.");
+        el("rc-err").classList.add("on");
+        return;
+      }
+      const btn = el("rc-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.updateUser({ password: pw1 });
+      btn.disabled = false;
+      if (error) {
+        el("rc-err").textContent = authErrorMessage(error);
+        el("rc-err").classList.add("on");
+        return;
+      }
+      toast(t("비밀번호가 변경되었습니다. 다시 로그인해 주세요."));
+      await client.auth.signOut();
+      location.href = "account.html";
+    });
+
+    el("signup-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = el("su-submit");
+      btn.disabled = true;
+      const { error } = await client.auth.signUp({
+        email: el("su-email").value.trim(),
+        password: el("su-pw").value,
+        options: { data: { name: el("su-name").value.trim() } },
+      });
+      if (error) {
+        el("su-err").textContent = authErrorMessage(error);
+        el("su-err").classList.add("on");
+        btn.disabled = false;
+        return;
+      }
+      /* "가입이 완료되었습니다, 로그인해 주세요"는 이메일 인증이 먼저 필요하다는 걸 안 알려줘서,
+         처음 가입하는 사람이 곧장 로그인부터 시도했다가 "이메일 또는 비밀번호가 틀렸다"는 것처럼
+         보이는 email_not_confirmed 에러만 보게 되는 문제가 있었다(2026-09-01, 실제 신규 가입
+         재현으로 확인) — 지금 할 일이 "로그인"이 아니라 "메일함 확인"이라는 걸 명확히 안내한다. */
+      const signupEmail = el("su-email").value.trim();
+      el("auth-notice").textContent = t("가입 신청이 완료되었습니다. {email}로 보내드린 인증 메일의 링크를 눌러야 로그인할 수 있어요(스팸함도 확인해 주세요).", { email: signupEmail });
+      el("auth-notice").hidden = false;
+      el("signup-form").reset();
+      el("auth-tabs").querySelector('[data-tab="login"]')?.click();
+      btn.disabled = false;
+    });
+
+    el("logout")?.addEventListener("click", async () => {
+      await client.auth.signOut();
+      location.reload();
+    });
+
+    /* 영어·일본어 손님에게 한국어 "탈퇴"를 치라고 하면 입력할 방법이 마땅치 않다 — 언어별 확인 단어(DELETE·削除)를
+       보여주고 받되, 한국어 "탈퇴"도 그대로 받는다. 서버(routes/account.js)는 "탈퇴"만 확인하므로 확인을 마친 뒤
+       서버에는 항상 "탈퇴"를 보낸다(2026-10-28 정기 감사). */
+    const wdWord = { en: "DELETE", ja: "削除" }[getLang()] || "탈퇴";
+    if (el("wd-confirm-label")) el("wd-confirm-label").textContent = t("확인을 위해 '{word}'를 입력해 주세요", { word: wdWord });
+    el("wd-submit")?.addEventListener("click", async () => {
+      const typed = el("wd-confirm").value.trim();
+      if (typed !== "탈퇴" && typed.toUpperCase() !== wdWord.toUpperCase()) {
+        toast(t("확인 문구로 '{word}'를 정확히 입력해 주세요.", { word: wdWord }));
+        return;
+      }
+      if (!confirm(t("정말 탈퇴할까요? 계정과 적립금이 삭제되며 되돌릴 수 없습니다."))) return;
+      const btn = el("wd-submit");
+      btn.disabled = true;
+      const result = await adminFetch("/api/my/account", { method: "DELETE", body: JSON.stringify({ confirm: "탈퇴" }) });
+      btn.disabled = false;
+      if (!result) return;
+      await client.auth.signOut();
+      alert(t("탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다."));
+      location.href = "index.html";
+    });
+  })();
+
+  renderFooter();

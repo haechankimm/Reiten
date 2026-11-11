@@ -1,0 +1,33 @@
+        <div id="admin-home">
+          <div class="content-head">
+            <div>
+              <div class="content-title" id="home-greeting"></div>
+              <div class="content-sub" id="home-subline"></div>
+            </div>
+          </div>
+          <div id="home-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px">
+            <div class="panel" style="flex:2 1 320px;min-width:0">
+              <b data-i18n="최근 14일 매출">최근 14일 매출</b>
+              <div id="home-revenue-chart" class="chart-bars"></div>
+            </div>
+            <div class="panel" style="flex:1 1 240px;min-width:0">
+              <b data-i18n="베스트셀러 TOP3">베스트셀러 TOP3</b>
+              <div id="home-bestsellers" style="margin-top:10px"></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 10px">
+            <b data-i18n="자주 쓰는 기능">자주 쓰는 기능</b>
+            <span class="small" style="color:var(--text-muted)" data-i18n="화면 제목 옆 ☆를 누르면 여기와 사이드바 맨 위에 고정됩니다">화면 제목 옆 ☆를 누르면 여기와 사이드바 맨 위에 고정됩니다</span>
+          </div>
+          <div id="home-shortcuts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"></div>
+          <div class="panel" style="margin-top:16px">
+            <b data-i18n="인수인계 노트">인수인계 노트</b>
+            <p class="small" style="color:var(--text-muted);margin-top:2px" data-i18n="오늘 특이사항을 다음 확인자에게 남겨두세요.">오늘 특이사항을 다음 확인자에게 남겨두세요.</p>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <input type="text" id="handoff-input" maxlength="500" style="flex:1;min-width:0" data-i18n-attr="placeholder:예: 3번 주문 고객이 색상 변경 요청, 계좌 확인 중" placeholder="예: 3번 주문 고객이 색상 변경 요청, 계좌 확인 중">
+              <button type="button" class="btn btn--sm" id="handoff-submit" data-i18n="남기기">남기기</button>
+            </div>
+            <div id="handoff-list" style="margin-top:12px;display:grid;gap:8px" data-compact="5" data-compact-search="10"></div>
+          </div>
+        </div>

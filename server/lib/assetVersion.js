@@ -41,6 +41,26 @@ function versionHtml(html, lookupDirs) {
   });
 }
 
+/* `<!-- #include tabs/orders.html -->` 한 줄을 그 파일 내용으로 바꾼다(2026-11-11 — Works index.html을 탭별 파일로 나눔).
+   빌드 단계 없이 서버가 HTML을 내보낼 때 합치므로 브라우저가 받는 HTML은 나누기 전과 글자 하나까지 같다.
+   경로는 그 HTML이 있는 폴더 기준, 폴더 밖은 거부. 조각 안의 include는 한 단계 더까지만 펼친다.
+   파일이 없으면 서버를 멈추지 않고 그 자리에 주석만 남긴다(test/worksIncludes.test.js가 빠진 조각을 잡는다). */
+const INCLUDE_RE = /^[ \t]*<!-- #include ([\w./-]+\.html) -->/gm;
+function expandIncludes(html, baseDir, depth = 0) {
+  return html.replace(INCLUDE_RE, (m, rel) => {
+    const abs = path.join(baseDir, rel);
+    if (!abs.startsWith(baseDir + path.sep)) return `<!-- include 거부: ${rel} -->`;
+    let part;
+    try {
+      part = fs.readFileSync(abs, "utf8").replace(/\n$/, "");
+    } catch (e) {
+      console.error(`[assetVersion] include 파일 없음: ${rel}`);
+      return `<!-- include 없음: ${rel} -->`;
+    }
+    return depth < 1 ? expandIncludes(part, baseDir, depth + 1) : part;
+  });
+}
+
 /* GET /, /xxx.html을 지문 붙인 HTML로 내보낸다. 파일이 없으면 다음(정적 핸들러·404)으로 넘긴다. */
 function htmlWithVersions(lookupDirs) {
   const root = lookupDirs[0];
@@ -56,7 +76,7 @@ function htmlWithVersions(lookupDirs) {
     let html = htmlCache.get(abs);
     if (html === undefined) {
       try {
-        html = versionHtml(fs.readFileSync(abs, "utf8"), lookupDirs);
+        html = versionHtml(expandIncludes(fs.readFileSync(abs, "utf8"), path.dirname(abs)), lookupDirs);
       } catch (e) {
         html = null;
       }
@@ -92,4 +112,4 @@ function __resetForTests() {
   htmlCache.clear();
 }
 
-module.exports = { versionHtml, htmlWithVersions, immutableAssets, fileHash, __resetForTests };
+module.exports = { versionHtml, htmlWithVersions, immutableAssets, fileHash, __resetForTests, expandIncludes };
