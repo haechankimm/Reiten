@@ -162,3 +162,29 @@ test("AI 지출 기록 — /api/bot/expenses로도 받고, 분류·결제수단�
   assert.strictEqual(r.body.invoice.category, "software");
   assert.strictEqual(r.body.invoice.status, "RECORDED");
 });
+
+test("상품 원가 구성 — 항목별(묶음 배송은 몇 벌 기준으로 나눔) 합계가 1벌 원가, 마진·합계에 반영", async () => {
+  supabaseAdmin.__reset({
+    profiles: [{ id: "a1", role: "admin" }], admin_audit_log: [], product_cost_items: [],
+    products: [{ id: "hoodie", name_ko: "후디", unit_cost: null, active: true }, { id: "tee", name_ko: "티", unit_cost: null, active: true }],
+    orders: [{ status: "입금확인", created_at: "2026-11-04T05:00:00Z", items: [{ productId: "hoodie", qty: 2, sum: 118000 }, { productId: "tee", qty: 1, sum: 30000 }] }],
+    supplier_invoices: [{ id: "l1", product_id: "hoodie", total_amount: 5000, status: "CONFIRMED", issued_on: "2026-11-02" }],
+  });
+  const put = await request(app()).put("/api/admin/expenses/cost-items/hoodie").set(AUTH).send({ items: [
+    { name: "후디 본체", kind: "body", amount: 18000 },
+    { name: "실크 인쇄", kind: "print", amount: 4000 },
+    { name: "택배(10벌 묶음)", kind: "shipping", amount: 3000, perQty: 10, basis: "30벌 이상 무료" },
+  ] });
+  assert.strictEqual(put.status, 200);
+  assert.strictEqual(put.body.unitCost, 22300);
+  const m = await request(app()).get("/api/admin/expenses/margin?month=2026-11").set(AUTH);
+  const h = m.body.items.find((i) => i.productId === "hoodie");
+  assert.strictEqual(h.components.length, 3);
+  assert.strictEqual(h.components[2].perPiece, 300);
+  assert.strictEqual(h.margin, 118000 - 44600);
+  assert.strictEqual(h.linkedExpenses, 5000);
+  assert.strictEqual(m.body.totals.missingCost, 1); // 티셔츠는 팔렸는데 원가 없음
+  assert.strictEqual(m.body.totals.margin, 118000 - 44600);
+  assert.strictEqual((await request(app()).put("/api/admin/expenses/cost-items/hoodie").set(AUTH).send({ items: [{ name: "", amount: 1 }] })).status, 400);
+  assert.strictEqual((await request(app()).put("/api/admin/expenses/cost-items/nope").set(AUTH).send({ items: [] })).status, 404);
+});

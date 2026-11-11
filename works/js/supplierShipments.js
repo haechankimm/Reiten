@@ -38,8 +38,8 @@
     const draft = s.receiptItems && s.receiptItems.length ? s.receiptItems : [{ qty: 1 }];
     const form = document.createElement("div");
     form.className = "receipt-form";
-    form.style.cssText = "flex-basis:100%;margin-top:8px;padding:10px;border:1px dashed var(--border);border-radius:8px";
-    form.innerHTML = `
+    form.style.cssText = "flex-basis:100%;margin-top:8px;padding:10px;border:1px dashed var(--border);border-radius:8px;position:relative";
+    form.innerHTML = `<button type="button" class="form-x receipt-cancel" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
       <div>${esc(t("받은 품목을 확인하세요. 재고에 더하고 입고 완료를 누르면 재고 수량이 늘어납니다."))}</div>
       <div class="receipt-rows">${draft.map((it) => receiptRowHTML(it, products)).join("")}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
@@ -109,6 +109,8 @@
     const date = (iso) => (iso ? new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10) : "");
     return `
       <div class="shipment-form mini-form">
+        <div class="form-head">${esc(t(isEdit ? "송장 수정" : "새 공급처 송장"))}</div>
+        <button type="button" class="form-x sf-cancel" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
         <label>${esc(t("공급처 이름"))}<input class="sf-supplier-label" value="${esc(v.supplierLabel || "")}" placeholder="${esc(t("예: 프린트캔버스"))}"></label>
         <label>${esc(t("공급처 식별자(영문)"))}<input class="sf-supplier-name" value="${esc(v.supplierName || "")}" placeholder="printcanvas" ${isEdit ? "" : "required"}></label>
         <label>${esc(t("택배사"))}<select class="sf-carrier">
@@ -235,7 +237,10 @@
       return;
     }
     if (e.target.closest(".supplier-edit")) {
-      if (!row.querySelector(".shipment-form")) row.insertAdjacentHTML("beforeend", shipmentFormHTML(supplierState.items.get(id)));
+      const open = row.querySelector(".shipment-form");
+      if (open) { open.remove(); setDisclosure(row.querySelector(".supplier-edit"), false); return; }
+      row.insertAdjacentHTML("beforeend", shipmentFormHTML(supplierState.items.get(id)));
+      setDisclosure(row.querySelector(".supplier-edit"), true);
       return;
     }
     if (e.target.closest(".supplier-receive-undo")) {
@@ -254,7 +259,7 @@
       return;
     }
     const sform = row.querySelector(".shipment-form");
-    if (sform && e.target.closest(".sf-cancel")) { sform.remove(); return; }
+    if (sform && e.target.closest(".sf-cancel")) { sform.remove(); setDisclosure(row.querySelector(".supplier-edit"), false); return; }
     if (sform && e.target.closest(".sf-save")) {
       const btn = e.target.closest(".sf-save");
       btn.disabled = true;
@@ -292,12 +297,15 @@
       return;
     }
     if (e.target.closest(".supplier-receive")) {
-      openReceiveForm(row, supplierState.items.get(id) || {});
+      const open = row.querySelector(".receipt-form");
+      if (open) { open.remove(); setDisclosure(row.querySelector(".supplier-receive"), false); return; }
+      await openReceiveForm(row, supplierState.items.get(id) || {});
+      setDisclosure(row.querySelector(".supplier-receive"), true);
       return;
     }
     const form = row.querySelector(".receipt-form");
     if (!form) return;
-    if (e.target.closest(".receipt-cancel")) { form.remove(); return; }
+    if (e.target.closest(".receipt-cancel")) { form.remove(); setDisclosure(row.querySelector(".supplier-receive"), false); return; }
     if (e.target.closest(".receipt-remove")) { e.target.closest(".receipt-row").remove(); return; }
     if (e.target.closest(".receipt-add")) {
       form.querySelector(".receipt-rows").insertAdjacentHTML("beforeend", receiptRowHTML({ qty: 1 }, await supplierProducts()));
@@ -325,14 +333,15 @@
   /* "+ 직접 등록" — 목록 위에 빈 폼을 연다 */
   el("supplier-shipments-new")?.addEventListener("click", () => {
     const box = el("supplier-shipments-newform");
-    if (box.innerHTML.trim()) { box.innerHTML = ""; return; }
-    box.innerHTML = shipmentFormHTML(null);
+    const opening = !box.innerHTML.trim();
+    box.innerHTML = opening ? shipmentFormHTML(null) : "";
+    setDisclosure(el("supplier-shipments-new"), opening);
   });
   el("supplier-shipments-newform")?.addEventListener("click", async (e) => {
     const box = el("supplier-shipments-newform");
     const form = box.querySelector(".shipment-form");
     if (!form) return;
-    if (e.target.closest(".sf-cancel")) { box.innerHTML = ""; return; }
+    if (e.target.closest(".sf-cancel")) { box.innerHTML = ""; setDisclosure(el("supplier-shipments-new"), false); return; }
     const btn = e.target.closest(".sf-save");
     if (!btn) return;
     const body = readShipmentForm(form);
@@ -342,6 +351,7 @@
     btn.disabled = false;
     if (!r) return;
     box.innerHTML = "";
+    setDisclosure(el("supplier-shipments-new"), false);
     toast(t("등록했습니다"));
     paintSupplierShipments();
   });

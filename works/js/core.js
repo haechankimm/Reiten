@@ -47,6 +47,23 @@
     toastTimer = setTimeout(() => box.classList.remove("on"), undo ? 6000 : 2600);
   }
 
+  /* ---------- 펼침·접힘 버튼 공통(2026-11-11) ----------
+     "예산 설정"·"+ 지출 입력"처럼 누르면 아래에 창이 펼쳐지는 버튼은, 펼친 뒤 다시 누르면 접힌다는 걸 누구나 알 수 있게
+     ① 글자를 "… 닫기 ▴"로 바꾸고 ② 강조 테두리(is-open)·aria-expanded를 단다. 접히면 원래 글자(+ ▾)로.
+     처음 부를 때 원래 문구(사전 키)를 data-disc-key에 보관한다 — 언어를 바꿔도 같은 키로 다시 번역. */
+  function setDisclosure(btn, open) {
+    if (!btn) return;
+    if (!btn.dataset.discKey) {
+      btn.dataset.discKey = btn.getAttribute("data-i18n") || btn.textContent.replace(/[▾▴]/g, "").trim();
+      btn.removeAttribute("data-i18n"); // 화면 번역(applyI18n)이 화살표를 지우지 않게
+    }
+    const key = btn.dataset.discKey;
+    const plain = t(key).replace(/^\+\s*/, "");
+    btn.textContent = open ? `${plain} ${t("닫기")} ▴` : /^\+/.test(key) ? t(key) : `${t(key)} ▾`;
+    btn.classList.toggle("is-open", !!open);
+    btn.setAttribute("aria-expanded", String(!!open));
+  }
+
   /* 라이트/다크는 기본적으로 OS 설정을 따르고, 한 번 수동으로 바꾸면 그 이후로는
      기기와 무관하게 그 선택을 기억한다(로컬에만 저장, 서버에는 안 감). */
   const savedTheme = localStorage.getItem("works_theme");

@@ -650,3 +650,37 @@
 .exp-grid { display: grid; gap: 6px 8px; align-items: center; }
 .exp-grid > * { min-width: 0; overflow-wrap: anywhere; }
 .exp-grid input { width: 100%; min-width: 0; box-sizing: border-box; height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: inherit; font: inherit; font-size: 12.5px; }
+
+/* ---------- 입력칸 대비(2026-11-11) ----------
+   입력칸이 패널 배경과 거의 같은 색이라(라이트: 연회색 위 연회색, 다크: 어두운 회색 위 어두운 회색) 잘 안 보였다.
+   라이트는 흰 칸 + 조금 진한 테두리, 다크는 패널보다 한 단계 어두운 칸 + 보이는 테두리로 — 디자인은 그대로, 칸만 또렷하게. */
+:root { --input-bg: #ffffff; --input-border: #c5cbd4; --input-border-hover: #a9b0bc; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --input-bg: #1e1f22; --input-border: #565961; --input-border-hover: #6d717a; } }
+:root[data-theme="dark"] { --input-bg: #1e1f22; --input-border: #565961; --input-border-hover: #6d717a; }
+:root[data-theme="light"] { --input-bg: #ffffff; --input-border: #c5cbd4; --input-border-hover: #a9b0bc; }
+.shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+.shell select, .shell textarea,
+.shell .field input:not([type="checkbox"]):not([type="radio"]), .shell .field select, .shell .field textarea {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+}
+.shell input:not([type="checkbox"]):not([type="radio"]):hover, .shell select:hover, .shell textarea:hover { border-color: var(--input-border-hover); }
+.shell input:not([type="checkbox"]):not([type="radio"]):focus, .shell select:focus, .shell textarea:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft, rgba(90,110,220,.2));
+}
+.shell input::placeholder, .shell textarea::placeholder { color: var(--text-muted); opacity: .85; }
+.shell input:disabled, .shell select:disabled, .shell textarea:disabled { opacity: .6; }
+
+/* 펼침 버튼이 열린 상태(2026-11-11) — "… 닫기 ▴"와 함께 강조 테두리로 "지금 펼쳐져 있음"을 보여준다 */
+.btn.is-open { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+/* 펼쳐진 입력 창 오른쪽 위 ✕ 닫기 */
+.mini-form { position: relative; }
+.form-x { position: absolute; top: 6px; right: 8px; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 16px; line-height: 28px; cursor: pointer; }
+.form-x:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+.mini-form > label:first-of-type { margin-right: 0; }
+.form-head { grid-column: 1 / -1; font-weight: 700; font-size: 13px; padding-right: 36px; }
+details > summary { cursor: pointer; user-select: none; }
+details > summary::marker { color: var(--text-muted); }
+.btn[aria-haspopup="menu"]::after { content: " ▾"; }
+.btn[aria-haspopup="menu"][aria-expanded="true"]::after { content: " ▴"; }

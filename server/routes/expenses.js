@@ -289,34 +289,101 @@ router.put("/api/admin/expenses/unit-costs", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-/* 상품별 마진 — 그 달 주문(취소 제외)의 상품별 판매액·수량 − 원가×수량 */
+/* ---------- 상품 원가 구성(053) ----------
+   항목마다 "금액 ÷ 몇 벌 기준" = 1벌당 원가. 합계를 products.unit_cost에 저장해 마진 계산에 쓴다.
+   배송비처럼 수량·거래처에 따라 달라지는 비용은 "몇 벌 기준"과 메모(조건)로 적는다. */
+const COST_KINDS = { body: "본체·원단", material: "부자재", print: "인쇄·나염", labor: "봉제·가공", packaging: "포장", shipping: "배송", other: "기타" };
+const perPiece = (it) => (Number(it.amount) || 0) / Math.max(1, Number(it.per_qty) || 1);
+
+async function loadCostItems() {
+  const { data, error } = await supabaseAdmin.from("product_cost_items").select("*").order("sort", { ascending: true });
+  return error ? { error } : { items: data || [] };
+}
+
+router.put("/api/admin/expenses/cost-items/:productId", requireAdmin, async (req, res) => {
+  const productId = String(req.params.productId || "").slice(0, 100);
+  const list = Array.isArray((req.body || {}).items) ? req.body.items : null;
+  if (!list || list.length > 30) return res.status(400).json({ error: "원가 항목은 30개 이하로 입력해 주세요." });
+  const { data: product } = await supabaseAdmin.from("products").select("id").eq("id", productId).maybeSingle();
+  if (!product) return res.status(404).json({ error: "상품을 찾을 수 없습니다." });
+  const rows = [];
+  for (let i = 0; i < list.length; i++) {
+    const it = list[i] || {};
+    const name = String(it.name || "").trim().slice(0, 60);
+    const amount = Math.round(Number(it.amount));
+    const perQty = Math.max(1, Math.round(Number(it.perQty) || 1));
+    if (!name || !Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: `${i + 1}번째 항목의 이름·금액을 확인해 주세요.` });
+    if (it.kind && !COST_KINDS[it.kind]) return res.status(400).json({ error: "원가 종류가 올바르지 않습니다." });
+    rows.push({ product_id: productId, name, kind: it.kind || "other", amount, per_qty: perQty, basis: String(it.basis || "").trim().slice(0, 120) || null, sort: i });
+  }
+  const { data: before, error: bErr } = await supabaseAdmin.from("product_cost_items").select("*").eq("product_id", productId);
+  if (bErr) return res.status(missing(bErr) ? 503 : 500).json({ error: missing(bErr) ? "원가 구성 표가 아직 없습니다(마이그레이션 053 미실행)" : "불러오지 못했습니다." });
+  // 통째로 바꾼다(항목 순서·삭제 포함) — 이전 값은 활동 로그에
+  const { error: dErr } = await supabaseAdmin.from("product_cost_items").delete().eq("product_id", productId);
+  if (dErr) return res.status(500).json({ error: "저장에 실패했습니다." });
+  if (rows.length) {
+    const { error: iErr } = await supabaseAdmin.from("product_cost_items").insert(rows);
+    if (iErr) {
+      if ((before || []).length) await supabaseAdmin.from("product_cost_items").insert(before.map(({ id, created_at, ...r }) => r));
+      return res.status(500).json({ error: "저장에 실패해 이전 원가 구성으로 되돌렸습니다." });
+    }
+  }
+  const unitCost = rows.length ? Math.round(rows.reduce((n, r) => n + perPiece(r), 0)) : null;
+  if (rows.length) await supabaseAdmin.from("products").update({ unit_cost: unitCost }).eq("id", productId);
+  logAdminAction(req, "expense.cost_items", "products", productId, { before: (before || []).map((r) => ({ name: r.name, amount: r.amount, per_qty: r.per_qty })), after: rows.map((r) => ({ name: r.name, amount: r.amount, per_qty: r.per_qty })), unitCost });
+  res.json({ ok: true, unitCost });
+});
+
+/* 상품별 마진 — 그 달 주문(취소 제외)의 상품별 판매액·수량 − 원가×수량 + 원가 구성 + 그 상품에 연결된 이번 달 지출 */
 router.get("/api/admin/expenses/margin", requireAdmin, async (req, res) => {
   const monthKey = monthParam(req.query.month);
   const mb = ex.monthBounds(monthKey);
-  const [{ data: orders }, { data: products, error: pErr }] = await Promise.all([
+  const [{ data: orders }, { data: products, error: pErr }, costs, { data: linked }] = await Promise.all([
     supabaseAdmin.from("orders").select("items, status").gte("created_at", `${mb.first}T00:00:00+09:00`).lt("created_at", `${mb.next}T00:00:00+09:00`),
-    supabaseAdmin.from("products").select("id, name_ko, unit_cost"),
+    supabaseAdmin.from("products").select("id, name_ko, unit_cost, active"),
+    loadCostItems(),
+    supabaseAdmin.from(TABLE).select("product_id, total_amount, status").gte("issued_on", mb.first).lt("issued_on", mb.next).not("product_id", "is", null),
   ]);
   if (pErr) return res.json({ month: monthKey, items: [], migrationMissing: missing(pErr) });
-  const byId = new Map((products || []).map((p) => [p.id, p]));
   const agg = new Map();
   for (const o of orders || []) {
     if (o.status === "취소") continue;
     for (const it of o.items || []) {
       if (!it || !it.productId || String(it.productId).startsWith("charm-")) continue;
-      const cur = agg.get(it.productId) || { productId: it.productId, qty: 0, revenue: 0 };
+      const cur = agg.get(it.productId) || { qty: 0, revenue: 0 };
       cur.qty += Number(it.qty) || 0;
       cur.revenue += Number(it.sum) || 0;
       agg.set(it.productId, cur);
     }
   }
-  const items = [...agg.values()].map((a) => {
-    const p = byId.get(a.productId) || {};
-    const unitCost = p.unit_cost ?? null;
+  const costByProduct = new Map();
+  for (const c of costs.items || []) {
+    if (!costByProduct.has(c.product_id)) costByProduct.set(c.product_id, []);
+    costByProduct.get(c.product_id).push({ id: c.id, name: c.name, kind: c.kind, kindLabel: COST_KINDS[c.kind] || c.kind, amount: c.amount, perQty: c.per_qty, perPiece: Math.round(perPiece(c)), basis: c.basis || null });
+  }
+  const linkedBy = new Map();
+  for (const l of linked || []) if (l.status === "CONFIRMED") linkedBy.set(l.product_id, (linkedBy.get(l.product_id) || 0) + (l.total_amount || 0));
+  const items = (products || []).filter((p) => p.active !== false || agg.has(p.id)).map((p) => {
+    const a = agg.get(p.id) || { qty: 0, revenue: 0 };
+    const components = costByProduct.get(p.id) || [];
+    const unitCost = components.length ? Math.round(components.reduce((n, c) => n + perPiece({ amount: c.amount, per_qty: c.perQty }), 0)) : p.unit_cost ?? null;
     const cost = unitCost == null ? null : unitCost * a.qty;
-    return { ...a, name: p.name_ko || a.productId, unitCost, cost, margin: cost == null ? null : a.revenue - cost, marginRate: cost == null || !a.revenue ? null : (a.revenue - cost) / a.revenue };
-  }).sort((x, y) => y.revenue - x.revenue);
-  res.json({ month: monthKey, items });
+    return {
+      productId: p.id, name: p.name_ko || p.id, qty: a.qty, revenue: a.revenue, unitCost, cost, components,
+      margin: cost == null ? null : a.revenue - cost, marginRate: cost == null || !a.revenue ? null : (a.revenue - cost) / a.revenue,
+      linkedExpenses: linkedBy.get(p.id) || 0,
+    };
+  }).sort((x, y) => y.revenue - x.revenue || String(x.name).localeCompare(String(y.name)));
+  const withCost = items.filter((i) => i.cost != null);
+  const totals = {
+    revenue: items.reduce((n, i) => n + i.revenue, 0),
+    cost: withCost.reduce((n, i) => n + i.cost, 0),
+    revenueWithCost: withCost.reduce((n, i) => n + i.revenue, 0),
+    missingCost: items.filter((i) => i.cost == null && i.qty > 0).length,
+  };
+  totals.margin = totals.revenueWithCost - totals.cost;
+  totals.marginRate = totals.revenueWithCost ? totals.margin / totals.revenueWithCost : null;
+  res.json({ month: monthKey, items, totals, kinds: COST_KINDS, costItemsMissing: !!costs.error });
 });
 
 /* ---------- ④ CSV 가져오기·내보내기·AI 요약 ---------- */

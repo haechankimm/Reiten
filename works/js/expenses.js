@@ -46,6 +46,8 @@
     const defaultFunded = v.fundedBy || (meta && meta.myPartnerId) || "business";
     return `
       <div class="exp-form mini-form">
+        <div class="form-head">${esc(t(isEdit ? "지출 수정" : "새 지출"))}</div>
+        <button type="button" class="form-x ef-cancel" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
         <label>${esc(t("거래처"))}<input class="ef-supplier" value="${esc(v.supplierLabel || v.supplierName || "")}" placeholder="${esc(t("예: 프린트캔버스, 쿠팡, Meta 광고"))}"></label>
         <label>${esc(t("날짜"))}<input type="date" class="ef-date" value="${esc(v.issuedOn || today)}"></label>
         <label>${esc(t("합계(원)"))}<input type="number" min="0" class="ef-total" value="${esc(v.totalAmount ?? "")}"></label>
@@ -59,6 +61,7 @@
         <label>${esc(t("공급가액(선택)"))}<input type="number" min="0" class="ef-supply" value="${esc(v.supplyAmount ?? "")}"></label>
         <label>${esc(t("부가세(선택)"))}<input type="number" min="0" class="ef-vat" value="${esc(v.vatAmount ?? "")}"></label>
         <label class="mini-form-wide">${esc(t("적요(품목)"))}<input class="ef-items" value="${esc(v.itemsSummary || "")}"></label>
+        <label>${esc(t("어느 상품 원가인가(선택)"))}<select class="ef-product"><option value="">${esc(t("상품과 무관"))}</option>${((expState.margin && expState.margin.items) || []).map((m) => `<option value="${esc(m.productId)}" ${m.productId === v.productId ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
         <label class="mini-form-wide">${esc(t("메모"))}<input class="ef-memo" value="${esc(v.memo || "")}"></label>
         <div class="mini-form-actions">
           <button type="button" class="btn btn--sm ef-save">${esc(t(isEdit ? "저장" : "등록"))}</button>
@@ -90,6 +93,7 @@
       vatAmount: num(".ef-vat"),
       itemsSummary: val(".ef-items"),
       memo: val(".ef-memo"),
+      productId: val(".ef-product"),
     };
   }
 
@@ -170,12 +174,16 @@
     if (!row) return;
     const id = row.dataset.id;
     const before = expState.items.get(id) || {};
+    const editBtn = row.querySelector(".exp-edit");
     if (e.target.closest(".exp-edit")) {
-      if (!row.querySelector(".exp-form")) row.insertAdjacentHTML("beforeend", expenseFormHTML(before));
+      const open = row.querySelector(".exp-form");
+      if (open) { open.remove(); setDisclosure(editBtn, false); return; }
+      row.insertAdjacentHTML("beforeend", expenseFormHTML(before));
+      setDisclosure(editBtn, true);
       return;
     }
     const form = row.querySelector(".exp-form");
-    if (form && e.target.closest(".ef-cancel")) { form.remove(); return; }
+    if (form && e.target.closest(".ef-cancel")) { form.remove(); setDisclosure(editBtn, false); return; }
     if (form && e.target.closest(".ef-save")) {
       const body = readExpenseForm(form);
       if (before.settlementId) { delete body.totalAmount; delete body.fundedBy; delete body.shared; }
@@ -194,19 +202,22 @@
   el("exp-new")?.addEventListener("click", () => {
     const box = el("exp-newform");
     if (!expState.meta) return;
-    box.innerHTML = box.innerHTML.trim() ? "" : expenseFormHTML(null);
+    const opening = !box.querySelector(".exp-form");
+    box.innerHTML = opening ? expenseFormHTML(null) : "";
+    setDisclosure(el("exp-new"), opening);
   });
   el("exp-newform")?.addEventListener("click", async (e) => {
     const box = el("exp-newform");
     const form = box.querySelector(".exp-form");
     if (!form) return;
-    if (e.target.closest(".ef-cancel")) { box.innerHTML = ""; return; }
+    if (e.target.closest(".ef-cancel")) { box.innerHTML = ""; setDisclosure(el("exp-new"), false); return; }
     if (!e.target.closest(".ef-save")) return;
     const body = readExpenseForm(form);
     if (!body.supplierName || body.totalAmount === "" || !body.issuedOn) { toast(t("거래처·날짜·합계는 꼭 입력해 주세요")); return; }
     const r = await adminFetch("/api/admin/supplier-invoices", { method: "POST", body: JSON.stringify(body) });
     if (!r) return;
     box.innerHTML = "";
+    setDisclosure(el("exp-new"), false);
     paintExpenses();
     toast(t("등록했습니다"), {
       undo: async () => {
@@ -255,13 +266,20 @@
     if (!meta) return;
     const current = Object.fromEntries((meta.budgets || []).map((b) => [b.category, b.monthly_amount]));
     const box = el("exp-categories");
-    if (box.querySelector(".exp-budget-form")) { paintExpenses(); return; }
-    box.innerHTML = `<div class="exp-budget-form mini-form">${Object.keys(meta.categories).map((k) => `<label>${esc(catLabel(k))}<input type="number" min="0" data-cat="${esc(k)}" value="${esc(current[k] ?? "")}" placeholder="${esc(t("예산 없음"))}"></label>`).join("")}
-      <div class="mini-form-actions"><button type="button" class="btn btn--sm exp-budget-save">${esc(t("예산 저장"))}</button><span class="small" style="color:var(--text-muted)">${esc(t("80%를 넘으면 표시와 AI 아침 브리핑에 알립니다. 0 또는 빈칸은 예산 없음."))}</span></div></div>`;
+    if (box.querySelector(".exp-budget-form")) {
+      // 닫을 때 서버를 다시 부르지 않고 이미 받아 둔 통계로 바로 그린다(예전엔 탭 전체를 다시 불러 늦게 닫혔다)
+      if (expState.lastStats) paintStats(expState.lastStats); else box.innerHTML = "";
+      setDisclosure(el("exp-budget-edit"), false);
+      return;
+    }
+    setDisclosure(el("exp-budget-edit"), true);
+    box.innerHTML = `<div class="exp-budget-form mini-form"><div class="form-head">${esc(t("분류별 월 예산"))}</div><button type="button" class="form-x exp-budget-close" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>${Object.keys(meta.categories).map((k) => `<label>${esc(catLabel(k))}<input type="number" min="0" data-cat="${esc(k)}" value="${esc(current[k] ?? "")}" placeholder="${esc(t("예산 없음"))}"></label>`).join("")}
+      <div class="mini-form-actions"><button type="button" class="btn btn--sm exp-budget-save">${esc(t("예산 저장"))}</button><button type="button" class="btn btn--sm btn--ghost exp-budget-close">${esc(t("닫기"))}</button><span class="small" style="color:var(--text-muted)">${esc(t("80%를 넘으면 표시와 AI 아침 브리핑에 알립니다. 0 또는 빈칸은 예산 없음."))}</span></div></div>`;
+    box.querySelectorAll(".exp-budget-close").forEach((b) => b.addEventListener("click", () => el("exp-budget-edit").click()));
     box.querySelector(".exp-budget-save").addEventListener("click", async () => {
       const budgets = {};
       box.querySelectorAll("[data-cat]").forEach((i) => { budgets[i.dataset.cat] = i.value === "" ? 0 : Number(i.value); });
-      if (await adminFetch("/api/admin/expenses/budgets", { method: "PUT", body: JSON.stringify({ budgets }) })) { toast(t("예산을 저장했습니다")); paintExpenses(); }
+      if (await adminFetch("/api/admin/expenses/budgets", { method: "PUT", body: JSON.stringify({ budgets }) })) { toast(t("예산을 저장했습니다")); setDisclosure(el("exp-budget-edit"), false); paintExpenses(); }
     });
   });
 
@@ -320,7 +338,7 @@
   /* ---------- 정기 지출 ---------- */
   function recurringFormHTML() {
     const meta = expState.meta;
-    return `<div class="exp-rec-form mini-form">
+    return `<div class="exp-rec-form mini-form"><div class="form-head">${esc(t("새 정기 지출"))}</div><button type="button" class="form-x rf-cancel" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
       <label>${esc(t("이름"))}<input class="rf-name" placeholder="${esc(t("예: Render 서버"))}"></label>
       <label>${esc(t("금액(원)"))}<input type="number" min="1" class="rf-amount"></label>
       <label>${esc(t("매달 결제일"))}<input type="number" min="1" max="28" class="rf-day" value="1"></label>
@@ -341,12 +359,15 @@
   }
   el("exp-rec-new")?.addEventListener("click", () => {
     const box = el("exp-recurring");
-    if (box.querySelector(".exp-rec-form") || !expState.meta) return;
+    if (!expState.meta) return;
+    const open = box.querySelector(".exp-rec-form");
+    if (open) { open.remove(); setDisclosure(el("exp-rec-new"), false); return; }
     box.insertAdjacentHTML("afterbegin", recurringFormHTML());
+    setDisclosure(el("exp-rec-new"), true);
   });
   el("exp-recurring")?.addEventListener("click", async (e) => {
     const form = el("exp-recurring").querySelector(".exp-rec-form");
-    if (form && e.target.closest(".rf-cancel")) { form.remove(); return; }
+    if (form && e.target.closest(".rf-cancel")) { form.remove(); setDisclosure(el("exp-rec-new"), false); return; }
     if (form && e.target.closest(".rf-save")) {
       const body = {
         name: form.querySelector(".rf-name").value.trim(), supplierName: form.querySelector(".rf-name").value.trim(),
@@ -354,7 +375,7 @@
         category: form.querySelector(".rf-category").value, paymentMethod: form.querySelector(".rf-method").value, fundedBy: form.querySelector(".rf-funded").value,
         evidenceType: /card$|^biz_/.test(form.querySelector(".rf-method").value) ? "card" : "",
       };
-      if (await adminFetch("/api/admin/expenses/recurring", { method: "POST", body: JSON.stringify(body) })) { toast(t("등록했습니다")); paintExpenses(); }
+      if (await adminFetch("/api/admin/expenses/recurring", { method: "POST", body: JSON.stringify(body) })) { toast(t("등록했습니다")); setDisclosure(el("exp-rec-new"), false); paintExpenses(); }
       return;
     }
     const tog = e.target.closest(".exp-rec-toggle");
@@ -365,27 +386,119 @@
     }
   });
 
-  /* ---------- 상품별 마진·원가 ---------- */
-  function paintMargin(costs, margin) {
-    const byId = new Map((margin.items || []).map((m) => [m.productId, m]));
-    const rows = (costs.items || []).filter((p) => p.active !== false || byId.has(p.id));
-    el("exp-margin").innerHTML = rows.length
-      ? `<div class="exp-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,.5fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr)">
-          <b>${esc(t("상품"))}</b><b>${esc(t("판매"))}</b><b>${esc(t("판매액"))}</b><b>${esc(t("1벌 원가"))}</b><b>${esc(t("마진"))}</b>
-          ${rows.map((p) => {
-            const m = byId.get(p.id) || { qty: 0, revenue: 0 };
-            const margin = p.unitCost == null ? null : m.revenue - p.unitCost * m.qty;
-            return `<span>${esc(p.name || p.id)}</span><span class="tnum">${m.qty}</span><span class="tnum">${esc(expWon(m.revenue))}</span>
-              <input type="number" min="0" class="exp-cost-input" data-pid="${esc(p.id)}" value="${esc(p.unitCost ?? "")}">
-              <span class="tnum">${margin == null ? "—" : `${esc(expWon(margin))}${m.revenue ? ` (${Math.round((margin / m.revenue) * 100)}%)` : ""}`}</span>`;
-          }).join("")}
-        </div>`
-      : `<p style="color:var(--text-muted)">${esc(t("상품이 없습니다"))}</p>`;
+  /* ---------- 상품별 마진·원가 구성(2026-11-11, 053) ----------
+     상품마다 "원가 구성 ▾"을 펼쳐 본체·인쇄·포장·배송 등 항목을 적는다. 항목마다 "금액 ÷ 몇 벌 기준" = 1벌당 원가
+     (예: 택배비 3,000원을 10벌 묶음으로 보냈으면 10벌 기준 → 1벌 300원). 항목 합계가 1벌 원가가 된다.
+     항목이 없으면 1벌 원가 한 칸에 직접 적는다. 지출 입력 때 "어느 상품 원가"를 고르면 그 달 연결 지출로 보인다. */
+  const COST_KIND_ORDER = ["body", "material", "print", "labor", "packaging", "shipping", "other"];
+  function costRowHTML(c, kinds) {
+    return `<div class="cost-row exp-grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,1.6fr) auto">
+      <input class="cr-name" value="${esc(c.name || "")}" placeholder="${esc(t("예: 후디 본체(무지)"))}">
+      <select class="cr-kind">${COST_KIND_ORDER.map((k) => `<option value="${k}" ${k === (c.kind || "other") ? "selected" : ""}>${esc(t(kinds[k] || k))}</option>`).join("")}</select>
+      <input class="cr-amount" type="number" min="0" value="${esc(c.amount ?? "")}" placeholder="${esc(t("금액"))}">
+      <input class="cr-per" type="number" min="1" value="${esc(c.perQty || 1)}" title="${esc(t("몇 벌 기준"))}">
+      <input class="cr-basis" value="${esc(c.basis || "")}" placeholder="${esc(t("거래처·조건(예: 30벌 이상 무료배송)"))}">
+      <button type="button" class="btn btn--sm btn--ghost cr-remove" aria-label="${esc(t("삭제"))}">✕</button>
+    </div>`;
   }
+  function costEditorHTML(m, kinds) {
+    const rows = m.components.length ? m.components : [{ kind: "body", perQty: 1 }];
+    return `<div class="cost-editor mini-form" style="grid-template-columns:1fr">
+      <div class="form-head">${esc(t("{name} 1벌 원가 구성", { name: m.name }))}</div>
+      <button type="button" class="form-x cost-close" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
+      <div class="exp-grid small" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,1.6fr) auto;color:var(--text-muted)">
+        <span>${esc(t("항목"))}</span><span>${esc(t("종류"))}</span><span>${esc(t("금액(원)"))}</span><span>${esc(t("몇 벌 기준"))}</span><span>${esc(t("메모(거래처·조건)"))}</span><span></span>
+      </div>
+      <div class="cost-rows">${rows.map((c) => costRowHTML(c, kinds)).join("")}</div>
+      <div class="cost-sum small"></div>
+      <div class="mini-form-actions">
+        <button type="button" class="btn btn--sm btn--ghost cost-add">${esc(t("+ 항목"))}</button>
+        <button type="button" class="btn btn--sm cost-save">${esc(t("원가 구성 저장"))}</button>
+        <button type="button" class="btn btn--sm btn--ghost cost-close">${esc(t("닫기"))}</button>
+        <span class="small" style="color:var(--text-muted)">${esc(t("배송비처럼 묶음으로 드는 비용은 '몇 벌 기준'에 묶음 수량을 넣으세요. 합계가 1벌 원가가 됩니다."))}</span>
+      </div>
+    </div>`;
+  }
+  function updateCostSum(editor) {
+    let sum = 0;
+    editor.querySelectorAll(".cost-row").forEach((r) => {
+      const amt = Number(r.querySelector(".cr-amount").value) || 0;
+      const per = Math.max(1, Number(r.querySelector(".cr-per").value) || 1);
+      sum += amt / per;
+    });
+    editor.querySelector(".cost-sum").innerHTML = `<b>${esc(t("1벌 원가 합계"))} ${esc(expWon(sum))}</b>`;
+  }
+  function paintMargin(margin) {
+    if (!margin) return;
+    expState.margin = margin;
+    const kinds = margin.kinds || {};
+    const tt = margin.totals || {};
+    const editable = expEditable();
+    const summary = `<div class="tnum" style="margin-bottom:8px">${esc(t("이번 달 판매액"))} <b>${esc(expWon(tt.revenue))}</b> · ${esc(t("원가"))} <b>${esc(expWon(tt.cost))}</b> · ${esc(t("마진"))} <b>${esc(expWon(tt.margin))}</b>${tt.marginRate != null ? ` (${Math.round(tt.marginRate * 100)}%)` : ""}
+      ${tt.missingCost ? `<div style="color:var(--status-pending-ink)">${esc(t("팔렸는데 원가가 없는 상품 {n}개 — 마진 합계에서 빠졌습니다", { n: tt.missingCost }))}</div>` : ""}</div>`;
+    el("exp-margin").innerHTML = summary + ((margin.items || []).length
+      ? `<div class="exp-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,.4fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) auto">
+          <b>${esc(t("상품"))}</b><b>${esc(t("판매"))}</b><b>${esc(t("판매액"))}</b><b>${esc(t("1벌 원가"))}</b><b>${esc(t("마진"))}</b><span></span>
+        </div>
+        ${margin.items.map((m) => `<div class="margin-row" data-pid="${esc(m.productId)}">
+          <div class="exp-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,.4fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) auto;padding:4px 0;border-top:1px solid var(--border)">
+            <span>${esc(m.name)}${m.linkedExpenses ? `<div class="small" style="color:var(--text-muted)">${esc(t("이번 달 연결 지출 {v}", { v: expWon(m.linkedExpenses) }))}</div>` : ""}</span>
+            <span class="tnum">${m.qty}</span>
+            <span class="tnum">${esc(expWon(m.revenue))}</span>
+            ${m.components.length
+              ? `<span class="tnum">${esc(expWon(m.unitCost))}</span>`
+              : `<input type="number" min="0" class="exp-cost-input" data-pid="${esc(m.productId)}" value="${esc(m.unitCost ?? "")}" placeholder="${esc(t("직접 입력"))}">`}
+            <span class="tnum">${m.margin == null ? "—" : `${esc(expWon(m.margin))}${m.revenue ? ` (${Math.round(m.marginRate * 100)}%)` : ""}`}</span>
+            ${editable && !margin.costItemsMissing ? `<button type="button" class="btn btn--sm btn--ghost cost-toggle" data-i18n="원가 구성">원가 구성</button>` : "<span></span>"}
+          </div>
+          ${m.components.length ? `<div class="small tnum" style="color:var(--text-muted);margin:-2px 0 4px">${esc(t("1벌 원가"))}: ${esc(m.components.map((c) => `${c.name} ${expWon(c.perPiece)}`).join(" + "))}</div>` : ""}
+        </div>`).join("")}`
+      : `<p style="color:var(--text-muted)">${esc(t("상품이 없습니다"))}</p>`);
+    el("exp-margin").querySelectorAll(".cost-toggle").forEach((b) => setDisclosure(b, false));
+  }
+  el("exp-margin")?.addEventListener("click", async (e) => {
+    const row = e.target.closest(".margin-row");
+    if (!row) return;
+    const toggle = row.querySelector(".cost-toggle");
+    const editor = row.querySelector(".cost-editor");
+    const m = (expState.margin.items || []).find((x) => x.productId === row.dataset.pid);
+    if (e.target.closest(".cost-toggle") || e.target.closest(".cost-close")) {
+      if (editor) { editor.remove(); setDisclosure(toggle, false); return; }
+      row.insertAdjacentHTML("beforeend", costEditorHTML(m, expState.margin.kinds || {}));
+      updateCostSum(row.querySelector(".cost-editor"));
+      setDisclosure(toggle, true);
+      return;
+    }
+    if (!editor) return;
+    if (e.target.closest(".cost-add")) { editor.querySelector(".cost-rows").insertAdjacentHTML("beforeend", costRowHTML({ kind: "other", perQty: 1 }, expState.margin.kinds || {})); updateCostSum(editor); return; }
+    if (e.target.closest(".cr-remove")) { e.target.closest(".cost-row").remove(); updateCostSum(editor); return; }
+    if (e.target.closest(".cost-save")) {
+      const items = [...editor.querySelectorAll(".cost-row")].map((r) => ({
+        name: r.querySelector(".cr-name").value.trim(), kind: r.querySelector(".cr-kind").value,
+        amount: Number(r.querySelector(".cr-amount").value), perQty: Number(r.querySelector(".cr-per").value) || 1, basis: r.querySelector(".cr-basis").value.trim(),
+      })).filter((x) => x.name || x.amount);
+      const before = m.components.map((c) => ({ name: c.name, kind: c.kind, amount: c.amount, perQty: c.perQty, basis: c.basis }));
+      const r = await adminFetch(`/api/admin/expenses/cost-items/${encodeURIComponent(m.productId)}`, { method: "PUT", body: JSON.stringify({ items }) });
+      if (!r) return;
+      paintMargin(await adminFetch(`/api/admin/expenses/margin?month=${expMonth()}`));
+      toast(t("원가 구성을 저장했습니다"), {
+        undo: async () => {
+          const x = await adminFetch(`/api/admin/expenses/cost-items/${encodeURIComponent(m.productId)}`, { method: "PUT", body: JSON.stringify({ items: before }) });
+          paintMargin(await adminFetch(`/api/admin/expenses/margin?month=${expMonth()}`));
+          return !!x;
+        },
+      });
+    }
+  });
+  el("exp-margin")?.addEventListener("input", (e) => {
+    const editor = e.target.closest(".cost-editor");
+    if (editor && (e.target.matches(".cr-amount") || e.target.matches(".cr-per"))) updateCostSum(editor);
+  });
   el("exp-cost-save")?.addEventListener("click", async () => {
     const costs = {};
     el("exp-margin").querySelectorAll(".exp-cost-input").forEach((i) => { costs[i.dataset.pid] = i.value === "" ? null : Number(i.value); });
-    if (await adminFetch("/api/admin/expenses/unit-costs", { method: "PUT", body: JSON.stringify({ costs }) })) { toast(t("원가를 저장했습니다")); paintExpenses(); }
+    if (!Object.keys(costs).length) { toast(t("직접 입력할 원가 칸이 없습니다(원가 구성으로 관리 중)")); return; }
+    if (await adminFetch("/api/admin/expenses/unit-costs", { method: "PUT", body: JSON.stringify({ costs }) })) { toast(t("원가를 저장했습니다")); paintMargin(await adminFetch(`/api/admin/expenses/margin?month=${expMonth()}`)); }
   });
 
   /* ---------- 동업자 설정 ---------- */
@@ -445,7 +558,7 @@
   }
   function importPanelHTML() {
     const meta = expState.meta;
-    return `<b>${esc(t("카드사·은행 거래내역 CSV 가져오기"))}</b>
+    return `<div style="position:relative"><button type="button" class="form-x exp-import-close" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button></div><b>${esc(t("카드사·은행 거래내역 CSV 가져오기"))}</b>
       <p class="small" style="color:var(--text-muted);margin:4px 0 8px">${esc(t("카드사·은행 사이트에서 기간 이용내역을 CSV로 받아 올리세요(엑셀 파일은 엑셀에서 CSV로 저장). 같은 거래는 다시 들어가지 않고, 분류를 확인하도록 확인 대기로 들어옵니다. 취소(마이너스) 줄은 건너뜁니다."))}</p>
       <div class="mini-form">
         <label>${esc(t("파일"))}<input type="file" id="exp-csv-file" accept=".csv,.txt,text/csv"></label>
@@ -462,6 +575,7 @@
     if (!expState.meta) return;
     box.hidden = !box.hidden;
     if (!box.hidden && !box.innerHTML.trim()) box.innerHTML = importPanelHTML();
+    setDisclosure(el("exp-import-toggle"), !box.hidden);
   });
   el("exp-import")?.addEventListener("change", async (e) => {
     if (e.target.id === "exp-csv-file" || e.target.id === "exp-csv-enc") {
@@ -498,6 +612,7 @@
       ${ok.slice(0, 5).map((r) => `<div class="tnum" style="color:var(--text-muted)">${esc(r.date)} · ${esc(r.merchant)} · ${esc(expWon(r.amount))}</div>`).join("")}`;
   }
   el("exp-import")?.addEventListener("click", async (e) => {
+    if (e.target.closest(".exp-import-close")) { el("exp-import").hidden = true; setDisclosure(el("exp-import-toggle"), false); return; }
     if (e.target.id !== "exp-csv-go") return;
     const rows = csvRows().filter((r) => r.date && r.merchant && r.amount > 0);
     if (!rows.length) { toast(t("가져올 줄이 없습니다")); return; }
@@ -511,6 +626,7 @@
     toast(t("{c}건 가져옴 · 중복 {d}건 건너뜀", { c: r.created, d: r.duplicates }));
     el("exp-import").hidden = true;
     el("exp-import").innerHTML = "";
+    setDisclosure(el("exp-import-toggle"), false);
     el("exp-f-status").value = "RECORDED";
     paintExpenses();
   });
@@ -538,13 +654,12 @@
   /* ---------- 전체 그리기 ---------- */
   async function paintExpenses({ keepForms = false } = {}) {
     const month = expMonth();
-    const [meta, stats, pv, hist, rec, costs, margin] = await Promise.all([
+    const [meta, stats, pv, hist, rec, margin] = await Promise.all([
       adminFetch("/api/admin/expenses/meta"),
       adminFetch(`/api/admin/expenses/stats?month=${month}`),
       adminFetch("/api/admin/expenses/settlement/preview"),
       adminFetch("/api/admin/expenses/settlements"),
       adminFetch("/api/admin/expenses/recurring"),
-      adminFetch("/api/admin/expenses/unit-costs"),
       adminFetch(`/api/admin/expenses/margin?month=${month}`),
     ]);
     if (!meta) return;
@@ -557,13 +672,14 @@
     fc.innerHTML = `<option value="">${esc(t("모든 분류"))}</option>` + Object.keys(meta.categories).map((k) => `<option value="${esc(k)}">${esc(catLabel(k))}</option>`).join("");
     ff.innerHTML = `<option value="">${esc(t("낸 사람 전체"))}</option><option value="business">${esc(t("사업자"))}</option>` + meta.partners.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
     [fc.value, ff.value] = keep;
-    if (stats && !stats.migrationMissing) paintStats(stats);
+    if (stats && !stats.migrationMissing) { expState.lastStats = stats; paintStats(stats); setDisclosure(el("exp-budget-edit"), false); }
     paintSettlement(pv);
     paintSettlementHistory(hist && hist.items);
     paintRecurring(rec && rec.items);
-    if (costs && margin) paintMargin(costs, margin);
+    if (margin) paintMargin(margin);
     paintPartners(meta.partners);
-    if (!keepForms) el("exp-newform").innerHTML = "";
+    if (!keepForms) { el("exp-newform").innerHTML = ""; setDisclosure(el("exp-new"), false); }
+    setDisclosure(el("exp-rec-new"), false);
     await paintExpenseList();
   }
 

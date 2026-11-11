@@ -60,6 +60,7 @@ const MIGRATION_CHECKS = [
   // 051부터는 DB 버전 함수(reiten_schema_version)로 확인 — 제약 변경처럼 조회로 알 수 없는 것도 잡힌다. 새 마이그레이션은 그 숫자를 올리고 아래에 한 줄.
   { no: "051", probe: schemaVersionAtLeast(51), missing: "DB 마이그레이션 051이 아직 실행되지 않았습니다(입고 취소 때 재고 이력이 남지 않음)" },
   { no: "052", probe: schemaVersionAtLeast(52), missing: "DB 마이그레이션 052가 아직 실행되지 않았습니다(지출 장부·동업자 정산·정기 지출·예산이 꺼져 있음)" },
+  { no: "053", probe: schemaVersionAtLeast(53), missing: "DB 마이그레이션 053이 아직 실행되지 않았습니다(상품 원가 구성 저장 불가 — 1벌 원가 한 칸만 사용)" },
 ];
 
 async function migrationChecks(db = supabaseAdmin) {
