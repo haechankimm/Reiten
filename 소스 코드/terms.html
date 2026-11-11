@@ -4,17 +4,7 @@
 <meta charset="utf-8">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-0GKE5QTQ31');
-</script>
-<!-- Channel Talk -->
-<script>
-(function(){var w=window;if(w.ChannelIO){return w.console.error("ChannelIO script included twice.");}var ch=function(){ch.c(arguments);};ch.q=[];ch.c=function(args){ch.q.push(args);};w.ChannelIO=ch;function l(){if(w.ChannelIOInitialized){return;}w.ChannelIOInitialized=true;var s=document.createElement("script");s.type="text/javascript";s.async=true;s.src="https://cdn.channel.io/plugin/ch-plugin-web.js";var x=document.getElementsByTagName("script")[0];if(x.parentNode){x.parentNode.insertBefore(s,x);}}if(document.readyState==="complete"){l();}else{w.addEventListener("DOMContentLoaded",l);w.addEventListener("load",l);}})();
-ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
-</script>
+<script src="assets/js/site-init.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>이용약관 — REITEN</title>
 <meta name="robots" content="noindex">
@@ -186,15 +176,6 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="assets/js/data.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
-<script>
-  applyI18n();
-  renderHeader("");
-  if (getLang() !== "ko") document.getElementById("legal-lang-notice").hidden = false;
-  document.getElementById("t-purpose").textContent =
-    `본 약관은 ${SITE.biz.company}(이하 "회사")가 운영하는 온라인 사이트(이하 "사이트")를 ` +
-    `통해 재화를 거래함에 있어 회사와 이용자의 권리·의무 및 책임사항, 이용 조건 및 절차를 ` +
-    `규정함을 목적으로 합니다.`;
-  renderFooter();
-</script>
+<script src="assets/js/pages/terms.js"></script>
 </body>
 </html>

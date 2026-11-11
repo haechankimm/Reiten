@@ -1,0 +1,19 @@
+        <div id="admin-agent" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="AI 승인함">AI 승인함</div>
+              <div class="content-sub" data-i18n="실시간 에이전트 AI가 제안한 작업입니다. 승인한 것만 서버가 승인한 사람의 권한으로 실행하고, 모두 활동 로그에 남습니다. 결정하지 않으면 24시간 뒤 만료됩니다.">실시간 에이전트 AI가 제안한 작업입니다. 승인한 것만 서버가 승인한 사람의 권한으로 실행하고, 모두 활동 로그에 남습니다. 결정하지 않으면 24시간 뒤 만료됩니다.</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <div class="seg" id="agent-view">
+                <button type="button" data-view="pending" aria-pressed="true" data-i18n="대기 중">대기 중</button>
+                <button type="button" data-view="history" aria-pressed="false" data-i18n="처리 기록">처리 기록</button>
+              </div>
+              <button type="button" class="btn btn--sm btn--ghost" id="agent-policy-toggle" hidden data-i18n="AI 권한 설정">AI 권한 설정</button>
+            </div>
+          </div>
+          <div id="agent-migration-note" class="notice" hidden data-i18n="DB 마이그레이션 054를 실행하면 AI 승인함을 쓸 수 있습니다.">DB 마이그레이션 054를 실행하면 AI 승인함을 쓸 수 있습니다.</div>
+          <div id="agent-off-note" class="notice" hidden></div>
+          <div id="agent-policy" class="panel" hidden style="margin-bottom:16px"></div>
+          <div id="agent-list"></div>
+        </div>

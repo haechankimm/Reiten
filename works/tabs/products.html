@@ -1,0 +1,129 @@
+        <div id="admin-products" style="display:grid;gap:24px" hidden>
+          <div class="panel">
+            <b id="product-form-title" data-i18n="새 상품 추가">새 상품 추가</b>
+            <form id="product-form" novalidate style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:end">
+              <div class="field">
+                <label for="pf-id" data-i18n="상품 ID">상품 ID</label>
+                <input id="pf-id" required pattern="[a-z0-9-]{2,60}" placeholder="영문 소문자·숫자·하이픈" data-i18n-attr="placeholder:영문 소문자·숫자·하이픈">
+              </div>
+              <div class="field">
+                <label for="pf-name" data-i18n="영문명">영문명</label>
+                <input id="pf-name" required>
+              </div>
+              <div class="field">
+                <label for="pf-nameko" data-i18n="한글명">한글명</label>
+                <input id="pf-nameko" required>
+              </div>
+              <div class="field">
+                <label for="pf-type" data-i18n="타입">타입</label>
+                <select id="pf-type" required>
+                  <!-- 타입 이름도 독일어로 보이게 data-i18n(2026-10-28 정기 감사) — 저장 값(value)은 그대로 -->
+                  <option value="hoodie" data-i18n="후드티">후드티</option>
+                  <option value="zip" data-i18n="후드집업">후드집업</option>
+                  <option value="crop" data-i18n="크롭 후드티">크롭 후드티</option>
+                  <option value="tshirt" data-i18n="티셔츠">티셔츠</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pf-category" data-i18n="카테고리">카테고리</label>
+                <select id="pf-category" required></select>
+                <input id="pf-category-custom" style="margin-top:8px" hidden placeholder="새 카테고리 이름" data-i18n-attr="placeholder:새 카테고리 이름">
+              </div>
+              <div class="field">
+                <label for="pf-price" data-i18n="가격">가격</label>
+                <input id="pf-price" type="number" min="0" required>
+              </div>
+              <div class="field">
+                <label for="pf-badge" data-i18n="배지 (선택)">배지 (선택)</label>
+                <input id="pf-badge">
+              </div>
+              <div class="field">
+                <label for="pf-short" data-i18n="한 줄 설명">한 줄 설명</label>
+                <input id="pf-short">
+              </div>
+              <div class="field">
+                <label for="pf-sizetable" data-i18n="사이즈표">사이즈표</label>
+                <select id="pf-sizetable">
+                  <option value="hoodie">hoodie</option>
+                  <option value="crop">crop</option>
+                  <option value="tshirt">tshirt</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="checkbox"><input type="checkbox" id="pf-charmready"><span data-i18n="지퍼 참 커스텀 가능">지퍼 참 커스텀 가능</span></label>
+              </div>
+              <div class="field">
+                <label class="checkbox"><input type="checkbox" id="pf-active" checked><span data-i18n="공개 (체크 해제 시 매장에서 숨김)">공개 (체크 해제 시 매장에서 숨김)</span></label>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label for="pf-desc" data-i18n="상세 설명">상세 설명</label>
+                <textarea id="pf-desc"></textarea>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label for="pf-details" data-i18n="상세 정보 (한 줄에 하나씩)">상세 정보 (한 줄에 하나씩)</label>
+                <textarea id="pf-details"></textarea>
+              </div>
+              <!-- 영어·일본어 상품 문구(선택, 2026-10-28) — 비우면 한국어(또는 사전 번역)가 그대로 나온다. DB 마이그레이션 044 필요 -->
+              <details class="field" style="grid-column:1/-1" id="pf-translations">
+                <summary data-i18n="영어·일본어 상품명·설명 (선택)">영어·일본어 상품명·설명 (선택)</summary>
+                <p class="small" style="color:var(--text-muted);margin:6px 0" data-i18n="비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.">비워 두면 영어·일본어 화면에도 한국어 설명이 나옵니다.</p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+                  <div>
+                    <b>English</b>
+                    <input id="pf-en-name" placeholder="Name" style="margin-top:6px">
+                    <input id="pf-en-short" placeholder="Short description" style="margin-top:6px">
+                    <textarea id="pf-en-desc" placeholder="Description" style="margin-top:6px"></textarea>
+                    <textarea id="pf-en-details" placeholder="Details (one per line)" style="margin-top:6px"></textarea>
+                  </div>
+                  <div>
+                    <b>日本語</b>
+                    <input id="pf-ja-name" placeholder="商品名" style="margin-top:6px">
+                    <input id="pf-ja-short" placeholder="一言説明" style="margin-top:6px">
+                    <textarea id="pf-ja-desc" placeholder="商品説明" style="margin-top:6px"></textarea>
+                    <textarea id="pf-ja-details" placeholder="詳細(1行に1つ)" style="margin-top:6px"></textarea>
+                  </div>
+                </div>
+              </details>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="컬러">컬러</label>
+                <div class="chips" id="pf-colors"></div>
+                <div id="pf-color-manage" style="margin-top:10px"></div>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label for="pf-modelinfo" data-i18n="모델 정보 (선택)">모델 정보 (선택)</label>
+                <input id="pf-modelinfo" maxlength="120" placeholder="예: 178cm · 70kg / L 착용" data-i18n-attr="placeholder:예: 178cm · 70kg / L 착용">
+                <p class="small" style="margin-top:6px;color:var(--text-muted)" data-i18n="품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).">품절은 '재고' 탭 수량으로 자동 표시됩니다(컬러·사이즈별 0개 = 품절).</p>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label data-i18n="사진 · 상세 콘텐츠 (컬러별)">사진 · 상세 콘텐츠 (컬러별)</label>
+                <div id="pf-photos"></div>
+              </div>
+              <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button class="btn" type="submit" id="pf-submit" data-i18n="상품 저장">상품 저장</button>
+                <button class="btn btn--ghost" type="button" id="pf-cancel" hidden data-i18n="편집 취소">취소</button>
+                <a class="btn btn--sm btn--ghost" id="pf-view-live" href="#" target="_blank" rel="noopener" hidden data-i18n="실제 페이지에서 보기">실제 페이지에서 보기</a>
+              </div>
+            </form>
+          </div>
+
+          <div class="panel" id="products-bulk-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <label class="checkbox"><input type="checkbox" id="products-select-all"><span data-i18n="전체 선택">전체 선택</span></label>
+            <span class="small" id="products-selected-count" style="color:var(--text-muted)"></span>
+            <div id="products-bulk-actions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+              <button type="button" class="btn btn--sm" id="products-bulk-active" data-i18n="공개 처리">공개 처리</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="products-bulk-inactive" data-i18n="비공개 처리">비공개 처리</button>
+              <select id="products-bulk-color-select" style="height:30px;border-radius:6px;border:1px solid var(--border);background:var(--field);color:var(--text-primary);font-size:12.5px;padding:0 6px"></select>
+              <button type="button" class="btn btn--sm btn--ghost" id="products-bulk-color-add" data-i18n="컬러 추가">컬러 추가</button>
+              <select id="products-bulk-price-mode" style="height:30px;border-radius:6px;border:1px solid var(--border);background:var(--field);color:var(--text-primary);font-size:12.5px;padding:0 6px">
+                <option value="percent" data-i18n="현재가 대비 %">현재가 대비 %</option>
+                <option value="fixed" data-i18n="현재가에 원 더하기/빼기">현재가에 원 더하기/빼기</option>
+                <option value="set" data-i18n="이 가격으로 지정">이 가격으로 지정</option>
+              </select>
+              <input type="number" id="products-bulk-price-value" placeholder="예: 10, -2000, 15000" data-i18n-attr="placeholder:예: 10, -2000, 15000" style="width:120px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--field);color:var(--text-primary);font-size:12.5px;padding:0 8px">
+              <button type="button" class="btn btn--sm btn--ghost" id="products-bulk-price-apply" data-i18n="가격 일괄 적용">가격 일괄 적용</button>
+              <button type="button" class="btn btn--sm btn--danger" id="products-bulk-delete" data-i18n="선택 삭제">선택 삭제</button>
+            </div>
+          </div>
+
+          <div id="products-list" class="grid-list"></div>
+        </div>

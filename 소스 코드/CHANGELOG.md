@@ -13,6 +13,13 @@
 
 # A. 작업 이력 (최신이 위)
 
+**2026-11-11 (13) — 화면 코드 정리 1~4단계(동작 변경 없음, 브랜치 `claude/frontend-split`).**
+- 1단계: 고객 HTML 19개의 인라인 스크립트를 파일로 — 공용 GA4·채널톡은 `assets/js/site-init.js`(주문완료 페이지의 결제 주소 숨김 처리 포함), 페이지 로직은 `assets/js/pages/<페이지>.js`. CSP `'unsafe-inline'`은 외부 결제 스크립트 확인 전이라 유지.
+- 2단계: Works `index.html` 1,357줄 → 약 170줄. 탭 마크업은 `works/tabs/`(21), 사이드바·로그인·사진 편집기는 `works/partials/`. 서버가 HTML을 보낼 때 `<!-- #include … -->`를 끼워 넣음(`lib/assetVersion.js` `expandIncludes`) — 합친 결과가 원본과 바이트 단위로 같음을 확인. `test/worksIncludes.test.js` 추가.
+- 3단계: `returns-inventory.js` → `returns.js`·`inventory.js`, `products.js` → `photo-editor`·`product-colors`·`product-media`·`products`, `expenses.js` → `expenses`·`expense-margin`·`expense-import`. 줄 누락·중복 0 확인. 상품 파일은 불러오는 순서가 중요(README §3-8).
+- 4단계: `i18n.de.js`(1,658줄) → `assets/js/i18n-de/` 탭별 20개. 문구를 실제 쓰는 탭 기준으로 배치, 두 탭 이상은 `_common.js`. 최종 사전 값 1,561개가 기존과 같음을 확인. 번역 검사 테스트 2개를 새 구조로 수정.
+- 검증: 서버 테스트 335건, 로컬 서버에서 고객 페이지 18개·Works 첫 화면 콘솔 오류 없음(로그인 뒤 탭 화면은 계정이 없어 미확인).
+
 **2026-11-11 (12) — 인수인계 문서 재설계: README(현재)·CHANGELOG(과거)·CLAUDE.md(규칙) 분리, 사본 폴더 정리.**
 - 3,181줄 README를 둘로 나눔: `소스 코드/README.md` = 현재 상태·구조·함정만(AI 인수인계용), 과거 이력·옛 참고 절은 이 파일(A~F부)로 원문 그대로 이동.
 - 영구 규칙 11개 + 운영 규칙 1~3을 저장소 루트 `CLAUDE.md`로 이동(새 세션이 자동으로 읽음). README에는 규칙을 두지 않는다.

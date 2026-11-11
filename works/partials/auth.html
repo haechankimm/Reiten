@@ -1,0 +1,47 @@
+      <div id="auth-view" hidden class="auth-wrap">
+        <div class="auth-card">
+          <form id="login-form" novalidate>
+            <div class="field">
+              <label for="li-email" data-i18n="이메일">이메일</label>
+              <input id="li-email" type="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="li-pw" data-i18n="비밀번호">비밀번호</label>
+              <input id="li-pw" type="password" autocomplete="current-password" required>
+              <p class="err" id="li-err"></p>
+            </div>
+            <div class="remember-row">
+              <label class="checkbox"><input type="checkbox" id="li-remember"><span data-i18n="이메일 저장">이메일 저장</span></label>
+            </div>
+            <button class="btn btn--full" type="submit" id="li-submit" data-i18n="로그인">로그인</button>
+            <p class="small" style="margin-top:10px">
+              <a href="#" id="forgot-pw-link" data-i18n="비밀번호를 잊으셨나요?">비밀번호를 잊으셨나요?</a>
+            </p>
+          </form>
+
+          <form id="reset-request-form" novalidate style="margin-top:24px" hidden>
+            <p class="small" data-i18n="가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.">가입하신 이메일로 비밀번호 재설정 링크를 보내드립니다.</p>
+            <div class="field">
+              <label for="rq-email" data-i18n="이메일">이메일</label>
+              <input id="rq-email" type="email" autocomplete="email" required>
+              <p class="err" id="rq-err"></p>
+            </div>
+            <button class="btn btn--full" type="submit" id="rq-submit" data-i18n="재설정 링크 보내기">재설정 링크 보내기</button>
+            <button class="btn btn--ghost btn--full" type="button" id="rq-cancel" style="margin-top:8px" data-i18n="편집 취소">취소</button>
+          </form>
+
+          <form id="reset-confirm-form" novalidate style="margin-top:24px" hidden>
+            <p class="small" data-i18n="새 비밀번호를 입력해 주세요.">새 비밀번호를 입력해 주세요.</p>
+            <div class="field">
+              <label for="rc-pw" data-i18n="새 비밀번호">새 비밀번호</label>
+              <input id="rc-pw" type="password" autocomplete="new-password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="rc-pw2" data-i18n="새 비밀번호 확인">새 비밀번호 확인</label>
+              <input id="rc-pw2" type="password" autocomplete="new-password" minlength="6" required>
+              <p class="err" id="rc-err"></p>
+            </div>
+            <button class="btn btn--full" type="submit" id="rc-submit" data-i18n="비밀번호 변경">비밀번호 변경</button>
+          </form>
+        </div>
+      </div>

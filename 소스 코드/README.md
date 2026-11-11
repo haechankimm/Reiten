@@ -26,6 +26,7 @@
 **코드·배포**
 - `main` = PR #33(`7ca7936`)까지 + 이 문서 재설계 커밋. main의 GitHub Actions `test`·`ui`·`health-check` 통과(7ca7936).
 - 서버 테스트 **331건 통과**(`cd server && npm test`, 약 4초).
+- 화면 코드 정리 완료(2026-11-11, 브랜치 `claude/frontend-split`): 고객 페이지 인라인 스크립트 분리, Works index 탭별 분리, 큰 Works JS·독일어 사전 분리. 테스트 335건.
 - 마이그레이션 **001~054 전부 실행됨**(029 번호는 없음). **다음 번호 = 055.** Works 정보 탭 "지금 점검하기"가 "최신(054)까지 적용됨"이면 정상.
 - 운영 확인(2026-11-11 실측): `/health` 200(`{"ok":true,"db":"ok"}`), `/README.md`·`/사용설명서.md` 404(정상 — `lib/staticGuard.js`), `/ep/naver.tsv` 200.
 - **열린 PR = Dependabot 7개(#5~#11, 2026-11-09 생성)** — 처리 방침은 §2-3.
@@ -79,7 +80,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 - 발주 초안(입금 확인 주문만, 승인 지문·중복 방지·금액 상한) — AI 승인함 작업 종류로 추가하는 방식 권장.
 - AI 승인함 데이터가 쌓이면: 작업별 승인률·거절 사유 통계, 자동 승인 후보 추천.
 - 활동 로그·대시보드도 "한 화면 배치"로 정리.
-- 화면 코드 정리(§5-2의 계획).
+- 화면 코드 정리 후속(§5-2): CSP `'unsafe-inline'` 제거(실결제 확인 후), 장바구니·상품 계산 테스트.
 
 ### 2-5. 실계정으로 아직 확인 안 된 것 (가짜 데이터로만 검증)
 직원 로그인→PIN→권한 제한 / PIN 6회 잠금→마스터 해제 / 고객 셀프 탈퇴 / 리뷰 요청 메일 / 컬러별 사진·영상 업로드 / 반품 환불 1건 / 사진 리뷰 승인→적립금 / 사이즈 추천 정확도 / 결제창 CSP 위반 여부.
@@ -104,8 +105,8 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 | 경로 | 내용 |
 |---|---|
 | `CLAUDE.md` | 규칙 |
-| `소스 코드/` | 고객 사이트. HTML 20개 + `assets/`. 이 문서·CHANGELOG·사용설명서도 여기(웹으로는 안 나감) |
-| `works/` | 관리자 사이트. `index.html`(탭 약 21개 마크업) + `js/`(탭별 28개) + `works.css` + `sw.js`(푸시) |
+| `소스 코드/` | 고객 사이트. HTML 20개 + `assets/`(`js/pages/` 페이지별 로직, `js/i18n-de/` Works 독일어). 이 문서·CHANGELOG·사용설명서도 여기(웹으로는 안 나감) |
+| `works/` | 관리자 사이트. `index.html`(뼈대) + `tabs/`(탭 마크업 21) + `partials/`(사이드바·로그인·사진 편집기·독일어 목록) + `js/`(기능별 34) + `works.css` + `sw.js`(푸시) |
 | `server/` | Node(Express) 서버. `server.js`(연결만, 333줄) · `lib/`(공용 로직 67) · `routes/`(API 41) · `migrations/`(001~054) · `test/`(53파일) · `test-helpers/fakeSupabase.js` · `scripts/uiLayoutCheck.js`(CI `ui` 작업) |
 | `.github/` | `workflows/test.yml`(test·ui), `post-deploy-health-check.yml`, `dependabot.yml` |
 | `레퍼런스/` | 원본 참고 이미지(건드리지 않음) |
@@ -138,13 +139,14 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 (정확한 목록: `grep -rhoE "process\.env\.[A-Z_]+" server/lib server/routes server/server.js | sort -u`)
 
 ### 3-7. 고객 사이트 `소스 코드/`
-- 빌드 도구 없음. 각 HTML이 `assets/js/data.js`(상품 정적 폴백·사업자 정보·택배사) → `i18n.js`(ko/en/ja) → `app.js`(헤더·푸터·장바구니 공용) 순으로 불러오고, **페이지 고유 로직은 HTML 안 `<script>`에 있다**(cart 621줄·product 487줄·account 379줄 등).
+- 빌드 도구 없음. 각 HTML은 `<head>`에서 `assets/js/site-init.js`(GA4 설정·채널톡, 전 페이지 공용)를 먼저, 본문 끝에서 `data.js`(상품 정적 폴백·사업자 정보·택배사) → `i18n.js`(ko/en/ja) → `app.js`(헤더·푸터·장바구니 공용) → **`assets/js/pages/<페이지>.js`(그 페이지 전용 로직)** 순으로 불러온다. HTML 안에 실행 스크립트는 없다(2026-11-11 분리, 상품 정보 JSON-LD만 서버가 넣음). 404·500은 어느 주소에서든 뜨므로 `/assets/...` 절대 경로.
 - 서버가 있으면 상품·재고·리뷰는 API에서, 없으면 `data.js` 폴백.
-- 정적 파일은 `lib/assetVersion.js`가 버전 붙여 캐시. CSP는 `'unsafe-inline'` 허용(인라인 스크립트 때문).
+- 정적 파일은 `lib/assetVersion.js`가 버전(`?v=`) 붙여 1년 캐시. CSP `script-src`의 `'unsafe-inline'`은 **아직 남겨 둠** — 우리 페이지에는 인라인 스크립트가 없지만, 결제창(포트원·KCP)·채널톡·우편번호 같은 외부 스크립트가 인라인을 쓰는지 실결제로 확인한 뒤 뺀다(§5-2).
 
 ### 3-8. 관리자 사이트 `works/`
-- `index.html`에 탭 약 21개 마크업, 탭마다 `js/<탭>.js`. 순서: `core.js`(API·공용) → `nav.js`(탭 전환·검색·상품명 번역 등록) → `pin.js`(PIN·권한 `READONLY_RULES`·`permLevelForTab`) → 탭 파일들 → `boot.js`.
-- 문구는 한국어 원문 + 독일어 사전 `소스 코드/assets/js/i18n.de.js`(`test/i18nCoverage.test.js`가 누락 검사).
+- `index.html`(약 170줄)은 뼈대만. 탭 마크업은 `works/tabs/<탭>.html`(21개), 사이드바·로그인·사진 편집기·독일어 목록은 `works/partials/`. index의 `<!-- #include tabs/x.html -->` 줄을 **서버가 HTML을 보낼 때 그 파일 내용으로 바꿔 끼운다**(`lib/assetVersion.js` `expandIncludes`) — 브라우저가 받는 HTML은 나누기 전과 같다. 그래서 Works는 반드시 서버(`works.localhost:3000`)로 열어야 한다. 새 탭을 만들면 `tabs/`에 파일 + index에 include 한 줄(`test/worksIncludes.test.js`가 빠진 것을 잡는다).
+- 탭 JS는 `js/<기능>.js`. 순서: `core.js`(API·공용) → `nav.js`(탭 전환·검색·상품명 번역 등록) → `pin.js`(PIN·권한 `READONLY_RULES`·`permLevelForTab`) → 탭 파일들 → `boot.js`. 상품은 `photo-editor` → `product-colors` → `product-media` → `products` 순서가 필요(products.js가 불러오자마자 사진 목록을 그림). 반품 `returns.js`·재고 `inventory.js`, 지출 `expenses.js` → `expense-margin.js`·`expense-import.js`.
+- 문구는 한국어 원문 + 독일어 사전 `소스 코드/assets/js/i18n-de/<탭>.js`(그 탭에서만 쓰는 문구) · `_common.js`(두 탭 이상·메뉴·서버 응답 문구, `addDe` 정의). 새 사전 파일은 `works/partials/i18n-de.html`에 한 줄. `test/i18nCoverage.test.js`가 누락 검사.
 - 권한 없는 메뉴·버튼은 숨김(서버도 같은 기준으로 거름).
 
 ---
@@ -155,10 +157,10 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 |---|---|
 | DB 변경 | `server/migrations/055_*.sql`(여러 번 실행해도 안전) + `lib/opsCheck.js` `MIGRATION_CHECKS` 맨 아래 한 줄 + `reiten_schema_version()` 숫자 + `test/opsBackup.test.js` 가짜 버전 + 이 문서 §1 "다음 번호". |
 | 새 API | 같은 도메인의 `routes/*.js`에 추가(없으면 새 파일 + `server.js` 연결). 공용 로직은 `lib/`에서 먼저 찾기. 테스트는 `test-helpers/fakeSupabase.js`로. 리터럴 경로는 `/:id`보다 먼저 등록(어기면 서버가 안 뜸). |
-| Works 화면·문구 | `works/index.html` 마크업 + `works/js/<탭>.js` + 독일어를 `i18n.de.js`에. 권한 숨김은 `pin.js`. |
+| Works 화면·문구 | 마크업 `works/tabs/<탭>.html` + 동작 `works/js/<기능>.js` + 독일어 `소스 코드/assets/js/i18n-de/<탭>.js`(여러 탭이면 `_common.js`). 권한 숨김은 `pin.js`. |
 | AI 승인함 작업 추가 | `lib/agentActions.js`에 prepare(검증·전후 미리보기)·execute(기존 관리자 API 호출)만. DB 직접 쓰기 금지. `pickle-handoff.md` 갱신. |
 | 상품·가격·재고 | 운영 데이터는 Works에서(즉시 반영). `data.js`는 서버 없을 때 폴백 + 사업자 정보. |
-| 고객 화면 | 해당 HTML 안 `<script>` 또는 `assets/js/app.js`·`style.css`. 수정 후 `node server/scripts/uiLayoutCheck.js`(Playwright 필요). |
+| 고객 화면 | 마크업은 HTML, 동작은 `assets/js/pages/<페이지>.js`(공용은 `app.js`), 모양은 `style.css`. HTML에 인라인 `<script>`를 다시 넣지 말 것. 수정 후 `node server/scripts/uiLayoutCheck.js`(Playwright 필요, CI `ui`도 같은 검사). |
 
 로컬 실행: `.claude/launch.json`의 `reiten-server`(npm --prefix server start, :3000, Works는 `http://works.localhost:3000`) 또는 `reiten-static`(정적만, :8777).
 
@@ -177,10 +179,10 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 - **결제 금액은 서버가 상품 ID로 다시 계산**(`lib/orderPricing.js`). 브라우저 금액을 믿지 말 것.
 - **푸시 불가**: 로컬 터미널은 GitHub 인증이 없다 → 사용자에게 GitHub Desktop으로 push 요청.
 
-### 5-2. 구조적 약점 (개선 계획)
-1. **고객 페이지 로직이 HTML 인라인 스크립트**(약 3,000줄) → 테스트 불가, CSP `'unsafe-inline'` 필요. 계획: 페이지별 `assets/js/pages/<page>.js`로 옮기기(동작 변경 없이), 순수 계산은 `server/test`에서 테스트, 다 옮기면 CSP에서 `'unsafe-inline'` 제거.
-2. **Works `index.html` 1,357줄**(탭 약 21개 마크업이 한 파일) → 탭 마크업을 `works/js/<탭>.js`가 그리게 하거나 `works/tabs/<탭>.html`을 처음 열 때 불러오기. 한 번에 한 탭씩.
-3. **`works/js` 큰 파일**: `products.js` 797 · `expenses.js` 718 · `returns-inventory.js` 640(두 기능이 한 파일) → 기능 단위로 나누기.
-4. **`i18n.de.js` 1,658줄 단일 사전** → 탭별 파일로 나누면 충돌·누락 관리 쉬움(커버리지 테스트는 유지).
-5. 큰 서버 파일: `lib/mailer.js` 631 · `routes/supplierShipments.js` 563 · `lib/orderFinalize.js` 522(카드 확정 실패 분기 테스트 부족).
-6. `npm audit` 잔여 low/moderate(`exceljs`·`node-cron` 내부 `uuid`) — 실제 영향 경로 없음, Dependabot으로 추적.
+### 5-2. 구조적 약점 (남은 개선 계획)
+2026-11-11에 끝낸 것: 고객 페이지 인라인 스크립트 → `pages/*.js`, Works index → `tabs/`·`partials/`, 큰 Works JS 3개 → 기능별 9개, 독일어 사전 → 탭별 20개(CHANGELOG 2026-11-11 (13)).
+1. **CSP `'unsafe-inline'` 제거**(script-src) — 실결제(PC·휴대폰) 1회 때 브라우저 콘솔에 CSP 위반이 없는지 보고 `server/server.js` `scriptSrc`에서 뺀다. 그 전에 빼면 결제창이 조용히 막힐 위험.
+2. **고객 페이지 계산 로직 테스트** — `pages/cart.js`(610줄)·`pages/product.js`(476줄)의 가격·옵션 계산을 순수 함수로 뽑아 `server/test`에서 검사.
+3. 큰 파일(나눌 후보): `pages/cart.js` 610 · `pages/product.js` 476 · `works/js/expenses.js` 465 · `works/js/inventory.js` 432 · `i18n-de/_common.js`(665개 문구) · `lib/mailer.js` 631 · `routes/supplierShipments.js` 563 · `lib/orderFinalize.js` 522(카드 확정 실패 분기 테스트 부족).
+4. 기존 CSP가 구글 태그의 `googletagmanager.com/td` 이미지 요청을 막는다(`img-src`에 없음, 콘솔 오류 1줄) — GA 집계 일부가 빠질 수 있어 `imgSrc`에 추가 검토.
+5. `npm audit` 잔여 low/moderate(`exceljs`·`node-cron` 내부 `uuid`) — 실제 영향 경로 없음, Dependabot으로 추적.

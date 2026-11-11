@@ -1,0 +1,26 @@
+<div id="photo-editor" class="pe-overlay" hidden>
+  <div class="pe-panel">
+    <b data-i18n="사진 편집">사진 편집</b>
+    <p class="small" style="margin-top:4px;color:var(--text-muted)" data-i18n="드래그해서 위치를 옮기고, 슬라이더로 확대·축소하세요">드래그해서 위치를 옮기고, 슬라이더로 확대·축소하세요</p>
+    <div class="pe-stage-wrap">
+      <div class="pe-stage" id="pe-stage">
+        <canvas id="pe-canvas"></canvas>
+      </div>
+    </div>
+    <div class="pe-controls">
+      <div class="pe-row">
+        <button type="button" class="icon-btn" id="pe-rotate-left" aria-label="Rotate left" data-i18n-attr="aria-label:왼쪽으로 회전">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 1 1-6.5 9.7"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="pe-rotate-right" aria-label="Rotate right" data-i18n-attr="aria-label:오른쪽으로 회전">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 1 0 6.5 9.7"/></svg>
+        </button>
+        <input type="range" id="pe-zoom" min="40" max="300" value="100" step="1" aria-label="Zoom" data-i18n-attr="aria-label:확대">
+      </div>
+      <div class="pe-row" style="justify-content:flex-end">
+        <button type="button" class="btn btn--ghost" id="pe-cancel" data-i18n="닫기">닫기</button>
+        <button type="button" class="btn" id="pe-apply" data-i18n="적용">적용</button>
+      </div>
+    </div>
+  </div>
+</div>

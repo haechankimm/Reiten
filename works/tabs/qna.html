@@ -1,0 +1,40 @@
+        <div id="admin-qna" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title">Q&amp;A</div>
+              <div class="content-sub" id="qna-summary"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="qna-q" data-i18n="작성자·문의 내용·상품ID 검색">작성자·문의 내용·상품ID 검색</label>
+                <input id="qna-q">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-status" data-i18n="상태">상태</label>
+                <select id="qna-status">
+                  <option value="" data-i18n="전체">전체</option>
+                  <option value="답변대기" data-i18n="답변대기">답변대기</option>
+                  <option value="답변완료" data-i18n="답변완료">답변완료</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-from" data-i18n="시작일">시작일</label>
+                <input id="qna-from" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="qna-to" data-i18n="종료일">종료일</label>
+                <input id="qna-to" type="date">
+              </div>
+              <label class="small" style="margin:0 0 8px;display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="qna-mine" style="width:auto"> <span data-i18n="내 담당만">내 담당만</span>
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn--sm" id="qna-search" data-i18n="검색">검색</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="qna-reset" data-i18n="초기화">초기화</button>
+              </div>
+            </div>
+          </div>
+          <div id="admin-qna-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
+        </div>

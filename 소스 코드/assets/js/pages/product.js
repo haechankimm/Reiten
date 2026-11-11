@@ -1,0 +1,476 @@
+/* product.html 전용 스크립트 — 예전엔 HTML 안 인라인 <script>였다(2026-11-11 분리, 동작 동일). */
+  applyI18n();
+  renderHeader("shop.html");
+
+  (async () => {
+  await Promise.all([loadProducts(), loadColors()]);
+
+  const p = getProduct(qs("id"));
+  /* 판매 종료(비공개)되거나 없는 상품 링크로 들어오면, 예전엔 첫 번째 상품을 대신 보여줘서
+     카톡·인스타로 공유된 옛 링크가 엉뚱한 상품으로 열렸다 — 안내 문구와 쇼핑 링크로 대체한다. */
+  if (!p) {
+    document.title = t("상품을 찾을 수 없습니다") + " — REITEN";
+    document.getElementById("main").innerHTML = `
+      <section class="sec"><div class="wrap" style="text-align:center;padding:60px 0">
+        <p class="eyebrow">Not available</p>
+        <h1 class="h-xl" style="margin-top:12px">${esc(t("판매가 종료되었거나 없는 상품입니다"))}</h1>
+        <p class="lede" style="margin:14px auto 0;max-width:44ch">${esc(t("지금 판매 중인 상품을 확인해 주세요."))}</p>
+        <a class="btn" style="margin-top:22px" href="shop.html">${esc(t("상품 보러 가기"))}</a>
+      </div></section>`;
+    return;
+  }
+  document.title = productName(p) + " — REITEN";
+
+  /* soldOut(상품.sizes 전체, 관리자가 손으로 체크)과 별개로, outOfStockByColor는 실제 재고(컬러별)가
+     0인 사이즈를 서버가 계산해 붙여준다(server.js withRealSoldOut). 지금 고른 컬러 기준으로만
+     사이즈를 막아야 하므로 항상 이 함수를 통해 조회한다. */
+  function outSizesForColor(color) {
+    return (p.outOfStockByColor && p.outOfStockByColor[color]) || [];
+  }
+
+  /* 사진·상세 콘텐츠(media) — 고른 컬러의 항목 + 공통(컬러 없음) 항목만 보여준다. 서버가 없거나 예전 상품이면
+     images(+imageColors)로 갤러리를 만든다. */
+  const MEDIA = (p.media && p.media.length)
+    ? p.media
+    : p.images.filter(Boolean).map((src, i) => ({ kind: "gallery", src, color: (p.imageColors || [])[i] || null }));
+  const forColor = (m, color) => !m.color || m.color === color;
+  function galleryFor(color) {
+    const all = MEDIA.filter((m) => m.kind === "gallery");
+    const mine = all.filter((m) => forColor(m, color));
+    return mine.length ? mine : all; // 그 컬러 사진이 아직 하나도 없으면 빈 화면 대신 전체를 보여준다
+  }
+  function detailFor(color) {
+    return MEDIA.filter((m) => m.kind !== "gallery" && forColor(m, color));
+  }
+
+  /* 상품에 등록된 컬러가 팔레트(COLORS)에 하나도 없으면(관리자가 팔레트에서 삭제 등) 예전엔
+     팔레트의 첫 컬러로 대신 채워서, 이 상품에 없는 컬러로 장바구니에 담겼다. 이제는 컬러 없음(null)으로
+     두고 담기·바로 주문을 막는다(2026-10-28 정기 감사). */
+  const initialColor = p.colors.find(c => COLORS[c]) || null;
+  let state = {
+    color: initialColor,
+    size: p.sizes.find(s => !p.soldOut.includes(s) && !outSizesForColor(initialColor).includes(s)) || p.sizes[0],
+    qty: 1,
+    img: 0,
+  };
+
+  const root = document.getElementById("root");
+
+  const GALLERY_IMG_WIDTHS = [500, 900, 1400, 1800];
+
+  function mediaHTML(src, alt) {
+    const srcset = cloudinarySrcset(src, GALLERY_IMG_WIDTHS);
+    return src
+      ? `<div class="shot shot--contain" style="aspect-ratio:4/5">
+           <img src="${src}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 900px) 100vw, 600px"` : ""} alt="${esc(alt)}" width="1122" height="1402" fetchpriority="high">
+         </div>`
+      : `<div class="ph" style="aspect-ratio:4/5"><span class="ph__label">${t("사진 준비중")}</span></div>`;
+  }
+
+  /* ---------- 라이더 사이즈 추천 (assets/js/sizeAdvisor.js) ----------
+     입력값은 브라우저에만 저장해 다른 상품에서도 다시 안 쳐도 되게 한다(서버로 보내지 않음). */
+  const ADVISOR_KEY = "reiten_size_profile";
+  const advisor = (() => {
+    try { return { open: false, result: null, ...(JSON.parse(localStorage.getItem(ADVISOR_KEY)) || {}) }; }
+    catch (e) { return { open: false, result: null }; }
+  })();
+  advisor.open = false;
+  advisor.result = null;
+
+  function sizeAdvisorHTML() {
+    const r = advisor.result;
+    const reasonText = r && !r.error ? [
+      r.reasons.includes("protector_up") ? t("보호대 위에 입는 걸 감안해 한 치수 크게 골랐어요.") : "",
+      r.reasons.includes("fit_up") ? t("넉넉한 핏을 원하셔서 한 치수 크게 봤어요.") : "",
+      r.reasons.includes("fit_down") ? t("딱 맞는 핏을 원하셔서 한 치수 작게 봤어요.") : "",
+      r.reasons.includes("nearest_available") ? t("이 상품에 있는 사이즈 중 가장 가까운 사이즈예요.") : "",
+    ].filter(Boolean).join(" ") : "";
+    const recOut = r && !r.error && (p.soldOut.includes(r.recommended) || outSizesForColor(state.color).includes(r.recommended));
+    return `
+      <button type="button" class="link-u small" id="size-advisor-toggle" style="margin-top:12px;background:none;border:0;padding:0;cursor:pointer" aria-expanded="${advisor.open}">
+        ${esc(t("내 사이즈 추천받기 (라이더용)"))}
+      </button>
+      <div class="size-advisor" id="size-advisor" ${advisor.open ? "" : "hidden"}>
+        <div class="row-2">
+          <div class="field"><label for="sa-height">${esc(t("키 (cm)"))}</label><input id="sa-height" type="number" inputmode="numeric" min="130" max="210" value="${esc(advisor.heightCm || "")}"></div>
+          <div class="field"><label for="sa-weight">${esc(t("몸무게 (kg)"))}</label><input id="sa-weight" type="number" inputmode="numeric" min="30" max="160" value="${esc(advisor.weightKg || "")}"></div>
+        </div>
+        <div class="field">
+          <label for="sa-fit">${esc(t("원하는 핏"))}</label>
+          <select id="sa-fit">
+            <option value="fitted" ${advisor.fit === "fitted" ? "selected" : ""}>${esc(t("딱 맞게"))}</option>
+            <option value="regular" ${!advisor.fit || advisor.fit === "regular" ? "selected" : ""}>${esc(t("보통(디자인 그대로의 오버핏)"))}</option>
+            <option value="relaxed" ${advisor.fit === "relaxed" ? "selected" : ""}>${esc(t("더 넉넉하게"))}</option>
+          </select>
+        </div>
+        <label class="checkbox"><input type="checkbox" id="sa-protector" ${advisor.protector ? "checked" : ""}> <span>${esc(t("이너 프로텍터(보호대) 위에 입을 거예요"))}</span></label>
+        <button type="button" class="btn btn--sm btn--line" id="sa-run" style="margin-top:10px">${esc(t("추천 사이즈 보기"))}</button>
+        ${r && r.error ? `<p class="small" style="margin-top:10px;color:var(--danger)">${esc(t(r.error))}</p>` : ""}
+        ${r && !r.error ? `
+        <div class="notice" style="margin-top:12px">
+          <b>${esc(t("추천 사이즈"))}: ${esc(r.recommended)}</b>${r.usual !== r.recommended ? ` <span class="small">(${esc(t("평소 사이즈 {size}", { size: r.usual }))})</span>` : ""}<br>
+          ${reasonText ? `<span class="small">${esc(reasonText)}</span><br>` : ""}
+          ${recOut ? `<span class="small" style="color:var(--danger)">${esc(t("지금 고른 컬러는 이 사이즈가 품절이에요."))}</span><br>` : `<button type="button" class="btn btn--sm" id="sa-apply" style="margin-top:8px">${esc(t("{size} 선택하기", { size: r.recommended }))}</button><br>`}
+          <span class="small" style="color:var(--muted)">${esc(t("키·몸무게로 어림잡은 참고치예요. 아래 사이즈 실측표의 가슴단면도 함께 확인해 주세요."))}</span>
+        </div>` : ""}
+      </div>`;
+  }
+
+  function bindSizeAdvisor() {
+    document.getElementById("size-advisor-toggle")?.addEventListener("click", () => { advisor.open = !advisor.open; render(); });
+    document.getElementById("sa-run")?.addEventListener("click", () => {
+      advisor.heightCm = document.getElementById("sa-height").value;
+      advisor.weightKg = document.getElementById("sa-weight").value;
+      advisor.fit = document.getElementById("sa-fit").value;
+      advisor.protector = document.getElementById("sa-protector").checked;
+      /* 지금 고른 컬러에서 살 수 있는 사이즈만 추천 후보로 넘긴다 — 예전엔 품절 사이즈를 추천해 "선택하기"를 눌러도
+         담을 수 없었다. 그 컬러가 전부 품절이면 전체 사이즈로 추천하고, 아래 "이 사이즈가 품절이에요" 안내가 뜬다(2026-10-28 정기 감사). */
+      const outNow = outSizesForColor(state.color);
+      const inStock = p.sizes.filter(s => !p.soldOut.includes(s) && !outNow.includes(s));
+      advisor.result = recommendSize(advisor, { sizes: inStock.length ? inStock : p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
+      advisor.open = true;
+      try {
+        localStorage.setItem(ADVISOR_KEY, JSON.stringify({ heightCm: advisor.heightCm, weightKg: advisor.weightKg, fit: advisor.fit, protector: advisor.protector }));
+      } catch (e) {}
+      render();
+    });
+    document.getElementById("sa-apply")?.addEventListener("click", () => {
+      if (advisor.result && advisor.result.recommended) { state.size = advisor.result.recommended; render(); }
+    });
+  }
+
+  function render() {
+    // 관리자가 사이즈표를 지정하지 않았거나 없는 키면 st가 undefined — 실측표 아코디언만 빼고 그린다(2026-10-28 정기 감사).
+    const st = SIZE_TABLES[p.sizeTable];
+    const outForColor = outSizesForColor(state.color);
+    /* 사이즈가 아직 비어 있는 상품은 품절이 아니라 "판매 준비 중"으로 본다 — isProductFullyOutOfStock()과
+       같은 기준(빈 배열의 every()는 true라 예전엔 품절로 표시됐다). 고를 수 있는 컬러가 없으면 담을 수 없다. */
+    const noColor = !state.color;
+    const soldAll = noColor || (p.sizes.length > 0 && p.sizes.every(s => p.soldOut.includes(s) || outForColor.includes(s)));
+    const name = productName(p);
+    const gallery = galleryFor(state.color);
+    if (state.img >= gallery.length) state.img = 0;
+    const details = detailFor(state.color);
+
+    root.innerHTML = `
+    <nav class="small" style="margin-bottom:26px">
+      <a href="shop.html">Shop</a> <span style="opacity:.5">/</span>
+      <a href="shop.html?cat=${encodeURIComponent(p.category)}">${esc(t(p.category))}</a>
+      <span style="opacity:.5">/</span> ${esc(name)}
+    </nav>
+
+    <div class="pdp">
+      <div class="pdp__gallery">
+        <div id="main-media">${mediaHTML((gallery[state.img] || {}).src, name)}</div>
+        ${gallery.length > 1 ? `<div class="pdp__thumbs">${gallery.map((m, i) => `
+          <button class="thumb" type="button" data-i="${i}" aria-selected="${i === state.img}" aria-label="${esc(t("이미지 {n}", { n: i + 1 }))}">
+            <img src="${m.src}" ${cloudinarySrcset(m.src, [100, 160]) ? `srcset="${cloudinarySrcset(m.src, [100, 160])}" sizes="80px"` : ""} alt="" loading="lazy">
+          </button>`).join("")}</div>` : ""}
+      </div>
+
+      <div class="pdp__info">
+        <p class="eyebrow">${esc(p.name)}</p>
+        <h1 class="h-lg" style="margin-top:10px">${esc(name)}</h1>
+        <div class="price-row">
+          <span class="price">${money(p.price)}</span>
+          ${p.badge ? `<span class="card__badge" style="position:static">${esc(p.badge)}</span>` : ""}
+        </div>
+        <p style="margin-top:6px">
+          <a class="link-u small" href="reviews.html?product=${encodeURIComponent(p.id)}">${t("리뷰 보기")}</a>
+          <span class="small" style="margin:0 6px;color:var(--muted)">·</span>
+          <a class="link-u small" href="qna.html?product=${encodeURIComponent(p.id)}">${t("상품 문의")}</a>
+        </p>
+        <p class="lede" style="margin-top:18px">${esc(productText(p, "desc"))}</p>
+
+        <div class="opt">
+          <div class="opt__label"><span>Color</span><b id="color-name"></b></div>
+          <div class="color-row" id="colors"></div>
+        </div>
+
+        <div class="opt">
+          <div class="opt__label"><span>Size</span><b>${t("남녀공용 오버핏")}</b></div>
+          <div class="chips" id="sizes"></div>
+          ${p.modelInfo ? `<p class="small" style="margin-top:10px;color:var(--muted)">${esc(t("모델"))} · ${esc(p.modelInfo)}</p>` : ""}
+          ${sizeAdvisorHTML()}
+        </div>
+
+        <div class="opt">
+          <div class="opt__label"><span>Quantity</span></div>
+          <div class="qty">
+            <button type="button" id="minus" aria-label="${esc(t("수량 줄이기"))}">−</button>
+            <output id="qty">1</output>
+            <button type="button" id="plus" aria-label="${esc(t("수량 늘리기"))}">+</button>
+          </div>
+        </div>
+
+        ${p.charmReady ? `
+        <div class="notice" style="margin-top:24px">
+          <b>${t("지퍼 참을 함께 고르시겠어요?")}</b><br>
+          ${t("이 집업은 지퍼 슬라이더에 참(charm)을 달 수 있습니다.")}
+          <a class="link-u" href="customizer.html?id=${encodeURIComponent(p.id)}" style="display:inline-block;margin-top:8px">${t("스튜디오에서 조합하기")}</a>
+        </div>` : ""}
+
+        <div class="buy-row">
+          <button class="btn" type="button" id="add" ${soldAll ? "disabled" : ""}>
+            ${noColor ? t("구매할 수 있는 컬러가 없습니다") : soldAll ? t("품절") : t("장바구니 담기")}
+          </button>
+          <button class="btn btn--ghost" type="button" id="buy" ${soldAll ? "disabled" : ""}>${t("바로 주문")}</button>
+          ${wishlistButtonHTML(p.id, "buy-row__wishlist")}
+        </div>
+
+        ${(() => {
+          /* 사이즈 칩은 품절이면 disabled(pointer-events:none)라 클릭으로 state.size가 될 수
+             없다 — 그래서 "지금 고른 사이즈"가 아니라 "이 컬러에서 품절인 사이즈 전체"를 따로
+             모아서 드롭다운으로 고르게 한다(다른 사이즈는 정상 구매 가능해도 신청 가능). */
+          const outSizesNow = p.sizes.filter((s) => p.soldOut.includes(s) || outForColor.includes(s));
+          if (noColor || !outSizesNow.length) return "";
+          return `
+        <div class="notice" id="restock-notify-box" style="margin-top:20px">
+          <b>${t("품절된 사이즈가 있나요?")}</b>
+          <p class="small" style="margin-top:6px">${t("재입고되면 이메일로 알려드릴게요.")}</p>
+          <form id="restock-form" novalidate style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <select id="restock-size">
+              ${outSizesNow.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}
+            </select>
+            <input type="email" id="restock-email" placeholder="${esc(t("이메일 주소"))}" required style="flex:1;min-width:200px">
+            <button class="btn btn--sm" type="submit">${t("알림 신청")}</button>
+          </form>
+        </div>`;
+        })()}
+
+        <div class="acc">
+          <div class="acc__item">
+            <button class="acc__btn" type="button" aria-expanded="true"><span>${t("제품 정보")}</span><span>+</span></button>
+            <div class="acc__panel open">
+              <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
+                ${productDetails(p).map(d => `<li>${esc(d)}</li>`).join("")}
+              </ul>
+            </div>
+          </div>
+          ${st ? `<div class="acc__item">
+            <button class="acc__btn" type="button" aria-expanded="false"><span>${t("사이즈 실측 (cm)")}</span><span>+</span></button>
+            <div class="acc__panel">
+              <table class="spec">
+                <thead><tr>${st.head.map(h => `<th>${esc(t(h))}</th>`).join("")}</tr></thead>
+                <tbody>${st.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+              </table>
+              <p class="small" style="margin-top:12px">${t("측정 방식에 따라 1~3cm 오차가 있을 수 있습니다.")}</p>
+              <div class="ride-guide">${rideGuideHTML(p.sizeTable)}</div>
+            </div>
+          </div>` : ""}
+          <div class="acc__item">
+            <button class="acc__btn" type="button" aria-expanded="false"><span>${t("세탁 · 관리")}</span><span>+</span></button>
+            <div class="acc__panel">
+              <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
+                <li>${t("— 뒤집어서 30℃ 이하 미온수 단독 손세탁을 권장합니다.")}</li>
+                <li>${t("— 리플렉티브 프린트 위에 직접 다림질하지 마세요. 반사층이 손상됩니다.")}</li>
+                <li>${t("— 건조기·표백제 사용 금지, 그늘에서 뉘어 말리세요.")}</li>
+                <li>${t("— 드라이클리닝은 프린트 박리의 원인이 됩니다.")}</li>
+              </ul>
+            </div>
+          </div>
+          <div class="acc__item">
+            <button class="acc__btn" type="button" aria-expanded="false"><span>${t("배송 · 교환/반품")}</span><span>+</span></button>
+            <div class="acc__panel">
+              <ul class="small" style="padding-left:0;list-style:none;display:grid;gap:8px">
+                <li>— ${esc(t(SITE.shipping.leadTime))}</li>
+                <li>${t("— 배송비 {fee} · {free} 이상 무료", { fee: money(SITE.shipping.fee), free: money(SITE.shipping.freeOver) })}</li>
+                <li>${t("— 단순 변심 교환/반품은 수령 후 7일 이내, 왕복 배송비 고객 부담입니다.")}</li>
+                <li>${t("— 착용·세탁 흔적이 있거나 택을 제거한 경우 교환/반품이 어렵습니다.")}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    ${details.length ? `
+    <section class="pdp-detail" aria-label="${esc(t("상세 정보"))}">
+      <p class="eyebrow">Details</p>
+      ${details.map((m) => {
+        if (m.kind === "text") return `<p class="lede">${esc(m.text)}</p>`;
+        if (m.kind === "video") return `<figure><video src="${esc(m.src)}" muted autoplay loop playsinline controls preload="metadata"></video>${m.caption ? `<figcaption class="small">${esc(m.caption)}</figcaption>` : ""}</figure>`;
+        const srcset = cloudinarySrcset(m.src, [600, 900, 1400]);
+        return `<figure><img src="${esc(m.src)}" ${srcset ? `srcset="${srcset}" sizes="(max-width: 900px) 100vw, 900px"` : ""} alt="${esc(m.caption || name)}" loading="lazy">${m.caption ? `<figcaption class="small">${esc(m.caption)}</figcaption>` : ""}</figure>`;
+      }).join("")}
+    </section>` : ""}`;
+
+    bind();
+  }
+
+  function bind() {
+    // 컬러
+    const colorsEl = document.getElementById("colors");
+    colorsEl.innerHTML = p.colors.filter(c => COLORS[c]).map(c => `
+      <button class="color-dot" type="button" data-c="${c}"
+              aria-pressed="${c === state.color}" aria-label="${esc(t(COLORS[c].label))}"
+              style="background:${COLORS[c].hex}"></button>`).join("");
+    document.getElementById("color-name").textContent = state.color ? t(COLORS[state.color].label) : "";
+    colorsEl.querySelectorAll(".color-dot").forEach(b =>
+      b.addEventListener("click", () => {
+        state.color = b.dataset.c;
+        // 컬러를 바꿨을 때 지금 고른 사이즈가 그 컬러엔 없으면(품절) 살 수 있는 사이즈로 옮겨준다.
+        const outSizes = outSizesForColor(state.color);
+        if (p.soldOut.includes(state.size) || outSizes.includes(state.size)) {
+          state.size = p.sizes.find(s => !p.soldOut.includes(s) && !outSizes.includes(s)) || state.size;
+        }
+        /* 관리자가 이 컬러로 태그해둔 사진이 있으면 그 사진으로 바꾼다(Works 상품 등록 폼의
+           "이 사진의 컬러" 설정). 태그된 사진이 없으면 지금 보던 사진을 그대로 둔다 —
+           예전엔 컬러 순서와 사진 순서가 그냥 같다고 가정했다가 순서가 안 맞으면 엉뚱한
+           사진으로 바뀌는 문제가 있어서 뺐던 기능인데, 이번엔 명시적으로 태그된 경우에만
+           바꾸는 방식이라 그 문제가 없다. */
+        state.img = 0; // 컬러를 바꾸면 그 컬러의 첫 사진부터
+        render();
+      }));
+
+    // 사이즈
+    const sizesEl = document.getElementById("sizes");
+    const outSizes = outSizesForColor(state.color);
+    sizesEl.innerHTML = p.sizes.map(s => {
+      const out = p.soldOut.includes(s) || outSizes.includes(s);
+      return `<button class="chip" type="button" data-s="${s}" ${out ? "disabled" : ""}
+                aria-pressed="${s === state.size}" ${out ? `aria-label="${esc(t("{size} 품절", { size: s }))}" title="${esc(t("품절"))}"` : ""}>${s}</button>`;
+    }).join("");
+    sizesEl.querySelectorAll(".chip").forEach(b =>
+      b.addEventListener("click", () => { state.size = b.dataset.s; render(); }));
+    bindSizeAdvisor();
+
+    // 수량
+    const qtyEl = document.getElementById("qty");
+    qtyEl.textContent = state.qty;
+    document.getElementById("minus").addEventListener("click", () => {
+      state.qty = Math.max(1, state.qty - 1); qtyEl.textContent = state.qty;
+    });
+    document.getElementById("plus").addEventListener("click", () => {
+      state.qty = Math.min(99, state.qty + 1); qtyEl.textContent = state.qty;
+    });
+
+    // 썸네일
+    document.querySelectorAll(".thumb").forEach(b =>
+      b.addEventListener("click", () => { state.img = +b.dataset.i; render(); }));
+
+    // 아코디언
+    document.querySelectorAll(".acc__btn").forEach(b =>
+      b.addEventListener("click", () => {
+        const open = b.getAttribute("aria-expanded") === "true";
+        b.setAttribute("aria-expanded", String(!open));
+        b.nextElementSibling.classList.toggle("open", !open);
+      }));
+
+    // 담기
+    const item = () => ({
+      sig: [p.id, state.color, state.size].join("|"),
+      productId: p.id,
+      name: productName(p),
+      // 고른 컬러로 태그된 사진이 있으면 그 사진을 장바구니에 담는다(없으면 첫 사진)
+      image: (galleryFor(state.color)[0] || {}).src || p.images.find(Boolean) || null,
+      color: state.color,
+      size: state.size,
+      unit: p.price,
+      qty: state.qty,
+      opts: [
+        { label: t("컬러"), value: t(COLORS[state.color].label) },
+        { label: t("사이즈"), value: state.size },
+      ],
+    });
+
+    document.getElementById("add")?.addEventListener("click", () => {
+      Cart.add(item());
+      toast(t("{name} · {size} 담았습니다", { name: productName(p), size: state.size }));
+    });
+    document.getElementById("buy")?.addEventListener("click", () => {
+      Cart.add(item());
+      location.href = "cart.html";
+    });
+    bindWishlistButtons(root);
+
+    // 품절 알림 신청 — 지금 고른 컬러에 품절 사이즈가 하나라도 있으면 위에서 폼이 그려진다.
+    document.getElementById("restock-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const size = document.getElementById("restock-size").value;
+      const email = document.getElementById("restock-email").value.trim();
+      if (!email) return;
+      // novalidate라 형식이 틀린 주소도 그대로 서버로 갔다(서버 오류 문구만 보임) — 주문서와 같은 기준으로 먼저 확인한다(2026-10-28 정기 감사)
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast(t("이메일 형식을 확인해 주세요.")); return; }
+      const btn = form.querySelector("button");
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/restock-subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: p.id, color: state.color, size, email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(apiErrorText(data, ""));
+        form.innerHTML = `<p class="small">${esc(t("신청 완료! 재입고되면 알려드릴게요."))}</p>`;
+      } catch (err) {
+        toast(err.message || t("신청에 실패했습니다"));
+        btn.disabled = false;
+      }
+    });
+
+    initBeams();
+  }
+
+  render();
+
+  /* 위시리스트의 "재입고 알림 신청"은 product.html#restock-notify-box로 들어오는데, 이 상자는
+     상품을 받아온 뒤 render()가 비동기로 그려서 브라우저의 기본 앵커 스크롤 시점엔 아직 없다 —
+     그려진 뒤에 직접 스크롤한다(2026-10-28 정기 감사). */
+  if (location.hash === "#restock-notify-box") {
+    document.getElementById("restock-notify-box")?.scrollIntoView({ block: "center" });
+  }
+
+  /* 검색엔진용 구조화 데이터(Product) — 컬러·사이즈를 바꿀 때마다 다시 만들 필요는 없어서
+     render()가 아니라 여기서 한 번만 넣는다. 재고 0(품절)은 모든 컬러·사이즈 조합을 다 확인해서
+     — soldOut(관리자가 손으로 체크한 전체 품절)과 outOfStockByColor(컬러별 실재고)를 합쳐 —
+     진짜로 살 수 있는 조합이 하나도 없을 때만 OutOfStock으로 표시한다. */
+  // 카드 배지·위시리스트와 같은 판정(app.js isProductFullyOutOfStock — 사이즈·컬러가 비어 있으면 품절 아님)을 쓴다(2026-10-28 정기 감사).
+  const fullyOutOfStock = isProductFullyOutOfStock(p);
+  const ld = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    name: productName(p),
+    image: p.images.filter(Boolean).map((src) => new URL(src, location.href).href),
+    description: productText(p, "desc") || productText(p, "short"),
+    sku: p.id,
+    brand: { "@type": "Brand", name: "REITEN" },
+    offers: {
+      "@type": "Offer",
+      url: location.href,
+      priceCurrency: "KRW",
+      price: String(p.price),
+      availability: fullyOutOfStock ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      itemCondition: "https://schema.org/NewCondition",
+    },
+  };
+  // 서버가 이미 구조화 데이터를 넣어 보냈으면(server/lib/seo.js, 검색 로봇용) 같은 상품이 두 번 잡히지 않게 그대로 둔다.
+  if (!document.getElementById("ld-product")) {
+    const ldScript = document.createElement("script");
+    ldScript.type = "application/ld+json";
+    ldScript.id = "ld-product";
+    ldScript.textContent = JSON.stringify(ld);
+    document.head.appendChild(ldScript);
+  }
+
+  // 추천
+  const also = PRODUCTS.filter(x => x.id !== p.id).slice(0, 4);
+  if (also.length) {
+    document.getElementById("also-wrap").hidden = false;
+    document.getElementById("also").innerHTML = also.map((x, i) => productCard(x, i * 50)).join("");
+    bindWishlistButtons(document.getElementById("also"));
+  }
+
+  // 최근 본 상품 — 이 페이지를 기록으로 남기기 전에(자기 자신 제외) 먼저 읽어서 보여준다.
+  const recent = RecentlyViewed.list(p.id, 4);
+  if (recent.length) {
+    document.getElementById("recent-wrap").hidden = false;
+    document.getElementById("recent").innerHTML = recent.map((x, i) => productCard(x, i * 50)).join("");
+    bindWishlistButtons(document.getElementById("recent"));
+  }
+  RecentlyViewed.add(p.id);
+
+  renderFooter();
+  initReveal();
+  initBeams();
+  })();

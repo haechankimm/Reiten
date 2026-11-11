@@ -1,0 +1,54 @@
+        <div id="admin-calendar" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="캘린더">캘린더</div>
+              <div class="content-sub" data-i18n="발매일·행사·휴무 같은 일정을 색으로 구분해 한 화면에서 봅니다.">발매일·행사·휴무 같은 일정을 색으로 구분해 한 화면에서 봅니다.</div>
+            </div>
+            <button type="button" class="btn btn--sm" id="cal-new" data-i18n="+ 새 일정">+ 새 일정</button>
+          </div>
+          <div class="panel" id="cal-form-panel" hidden style="margin-bottom:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px 14px;align-items:end">
+              <div class="field" style="margin:0;grid-column:span 2">
+                <label for="cal-f-title" data-i18n="제목">제목</label>
+                <input id="cal-f-title" maxlength="100">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="cal-f-date" data-i18n="시작일">시작일</label>
+                <input id="cal-f-date" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label for="cal-f-end" data-i18n="종료일 (하루면 비워두기)">종료일 (하루면 비워두기)</label>
+                <input id="cal-f-end" type="date">
+              </div>
+              <div class="field" style="margin:0">
+                <label data-i18n="색상">색상</label>
+                <div id="cal-f-color" class="cal-color-picker"></div>
+              </div>
+            </div>
+            <div class="field" style="margin:10px 0 0">
+              <label for="cal-f-memo" data-i18n="메모 (선택)">메모 (선택)</label>
+              <textarea id="cal-f-memo" rows="2" maxlength="500"></textarea>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button type="button" class="btn btn--sm" id="cal-f-save" data-i18n="저장">저장</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="cal-f-cancel" data-i18n="닫기">닫기</button>
+              <button type="button" class="btn btn--sm btn--danger" id="cal-f-delete" hidden data-i18n="삭제">삭제</button>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:center;gap:14px">
+              <button type="button" class="btn btn--sm btn--ghost" id="cal-prev">‹</button>
+              <b id="cal-month-label" class="tnum" style="min-width:120px;text-align:center"></b>
+              <button type="button" class="btn btn--sm btn--ghost" id="cal-next">›</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="cal-today" style="margin-left:10px" data-i18n="오늘">오늘</button>
+            </div>
+          </div>
+          <div id="cal-grid" class="cal-grid"></div>
+          <div class="panel" style="margin-top:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <b id="cal-selected-label"></b>
+              <button type="button" class="btn btn--sm btn--ghost" id="cal-add-for-day" data-i18n="+ 일정 추가">+ 일정 추가</button>
+            </div>
+            <div id="cal-day-events" style="margin-top:10px;display:grid;gap:8px"></div>
+          </div>
+        </div>

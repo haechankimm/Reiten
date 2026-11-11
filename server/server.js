@@ -91,8 +91,9 @@ app.set("trust proxy", 1);
 // gzip 압축 — i18n.js(125KB)·style.css·app.js가 압축 없이 나가던 것을 약 1/4로 줄인다
 app.use(compression());
 
-/* CSP — 빌드 도구 없는 정적 사이트라 인라인 <script>/<style>에 크게 의존하므로 'unsafe-inline'을
-   허용한다(nonce 기반으로 바꾸려면 전 페이지에 빌드 단계가 필요해져 지금 구조와 안 맞음).
+/* CSP — 예전엔 페이지마다 인라인 <script>가 있어 'unsafe-inline'을 허용했다. 2026-11-11에 우리 HTML의 인라인 스크립트는
+   전부 파일(assets/js/site-init.js·pages/*.js)로 옮겼지만, 결제창(포트원·KCP)·채널톡 등 외부 스크립트가 인라인을 쓰는지
+   실결제로 확인하기 전까지 script-src의 'unsafe-inline'은 남겨 둔다(README §5-2).
    완벽한 XSS 차단은 아니지만, 그래도 아래 두 가지는 확실히 막는다: ① 스크립트가 주입되더라도
    여기 허용목록에 없는 임의의 외부 도메인으로 데이터를 빼돌리는 것(connect-src/img-src) ②
    <object>/<embed> 삽입. 실제 쓰는 외부 도메인만 최소로 나열 — GA4(googletagmanager/

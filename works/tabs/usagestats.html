@@ -1,0 +1,27 @@
+        <div id="admin-usagestats" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="사용 통계">사용 통계</div>
+              <div class="content-sub" data-i18n="어떤 탭·기능을 자주 쓰고 안 쓰는지 확인해, 중장기로 화면 배치를 조정할 때 참고합니다.">어떤 탭·기능을 자주 쓰고 안 쓰는지 확인해, 중장기로 화면 배치를 조정할 때 참고합니다.</div>
+            </div>
+            <div class="seg" id="usage-period-switch">
+              <button type="button" data-days="7" aria-pressed="false">7<span data-i18n="일">일</span></button>
+              <button type="button" data-days="30" aria-pressed="true">30<span data-i18n="일">일</span></button>
+              <button type="button" data-days="90" aria-pressed="false">3<span data-i18n="개월">개월</span></button>
+              <button type="button" data-days="365" aria-pressed="false" data-i18n="누적">누적</button>
+            </div>
+          </div>
+          <p class="small" style="color:var(--text-muted);margin-bottom:14px" id="usage-summary"></p>
+          <div class="usage-layout">
+          <div class="panel">
+            <b data-i18n="탭별 조회 횟수">탭별 조회 횟수</b>
+            <p class="small" style="color:var(--text-muted);margin-top:2px" data-i18n="막대에 마우스를 올리면 최근 사용 시각이 보입니다. 안 연 탭은 아래에 모아 둡니다.">막대에 마우스를 올리면 최근 사용 시각이 보입니다. 안 연 탭은 아래에 모아 둡니다.</p>
+            <div id="usage-tabs" style="margin-top:10px"></div>
+          </div>
+          <div class="panel">
+            <b data-i18n="개별 기능 사용 횟수">개별 기능 사용 횟수</b>
+            <p class="small" style="color:var(--text-muted);margin-top:2px" data-i18n="탭 이동과 별개로, 여러 탭에 흩어진 기능(내보내기 등)을 얼마나 쓰는지 보여줍니다.">탭 이동과 별개로, 여러 탭에 흩어진 기능(내보내기 등)을 얼마나 쓰는지 보여줍니다.</p>
+            <div id="usage-features" style="margin-top:10px"></div>
+          </div>
+          </div>
+        </div>

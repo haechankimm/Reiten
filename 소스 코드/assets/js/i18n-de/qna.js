@@ -1,0 +1,23 @@
+/* Works 독일어 번역 — 문의 탭 (2026-11-11 i18n.de.js에서 분리 — 값은 그대로). 이 탭에서만 쓰는 문구를 넣는다. */
+addDe({
+  "답변완료": "Beantwortet",
+  "답변대기": "Wartet auf Antwort",
+  "작성자·문의 내용·상품ID 검색": "Suche nach Verfasser, Frage, Produkt-ID",
+  "조건에 맞는 문의가 없습니다": "Keine Anfragen für diese Filter",
+  "답변 등록": "Antwort veröffentlichen",
+  "답변을 입력하세요": "Antwort eingeben",
+  "비밀글": "Nicht öffentlich",
+  "답변": "Antwort",
+  "답변 내용을 입력해 주세요.": "Bitte geben Sie eine Antwort ein.",
+  "답변을 등록했습니다": "Antwort veröffentlicht",
+  "빠른 답변 템플릿 선택...": "Schnellantwort-Vorlage wählen...",
+  "키워드가 일치해 \"{label}\" 템플릿을 미리 채웠습니다 — 확인 후 등록하거나 자유롭게 고쳐 쓰세요.": "Schlüsselwort erkannt — Vorlage „{label}“ wurde automatisch eingefügt. Bitte prüfen, absenden oder frei bearbeiten.",
+  "담당·메모 저장": "Zuständigkeit/Notiz speichern",
+  "담당자·메모를 저장했습니다": "Zuständigkeit und Notiz gespeichert",
+  "답변을 등록하면 {email}로 안내 메일이 갑니다": "Nach dem Antworten geht eine Benachrichtigung an {email}",
+  "회원 문의 — 답변을 등록하면 계정 이메일로 안내 메일이 갑니다": "Mitgliederanfrage — nach dem Antworten geht eine Mail an die Konto-E-Mail",
+  "실시간 에이전트 AI가 만든 답변 초안입니다 — 내용을 확인하고 고친 뒤 등록하세요.": "Antwortentwurf der Echtzeit-KI — bitte prüfen, anpassen und dann veröffentlichen.",
+  "초안 지우기": "Entwurf löschen",
+  "초안을 지웠습니다": "Entwurf gelöscht",
+  "일반 문의": "Allgemeine Anfrage",
+});

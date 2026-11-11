@@ -7,17 +7,7 @@
 <base href="/">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-0GKE5QTQ31');
-</script>
-<!-- Channel Talk -->
-<script>
-(function(){var w=window;if(w.ChannelIO){return w.console.error("ChannelIO script included twice.");}var ch=function(){ch.c(arguments);};ch.q=[];ch.c=function(args){ch.q.push(args);};w.ChannelIO=ch;function l(){if(w.ChannelIOInitialized){return;}w.ChannelIOInitialized=true;var s=document.createElement("script");s.type="text/javascript";s.async=true;s.src="https://cdn.channel.io/plugin/ch-plugin-web.js";var x=document.getElementsByTagName("script")[0];if(x.parentNode){x.parentNode.insertBefore(s,x);}}if(document.readyState==="complete"){l();}else{w.addEventListener("DOMContentLoaded",l);w.addEventListener("load",l);}})();
-ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
-</script>
+<script src="/assets/js/site-init.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>페이지를 찾을 수 없습니다 — REITEN</title>
 <meta name="robots" content="noindex">
@@ -45,13 +35,6 @@ ChannelIO('boot', { "pluginKey": "c060dbe0-8b3a-4e72-86f1-02d17015d217" });
 <script src="/assets/js/data.js"></script>
 <script src="/assets/js/i18n.js"></script>
 <script src="/assets/js/app.js"></script>
-<script>
-  /* 예전엔 applyI18n()을 부르지 않아 영어·일본어 사용자에게도 한국어로만 보였다(2026-10-28 정기 감사).
-     오류 페이지라 스크립트 하나가 실패해도 본문은 보이도록 각각 감싼다. */
-  try { applyI18n(); document.title = t("페이지를 찾을 수 없습니다") + " — REITEN"; } catch (e) {}
-  try { renderHeader(""); } catch (e) {}
-  // <base href="/"> 때문에 "본문으로 건너뛰기"(#main)가 홈(/#main)으로 이동해 버리므로 지금 주소 기준으로 고친다(2026-10-28 정기 감사)
-  try { const skip = document.querySelector(".skip-link"); if (skip) skip.setAttribute("href", location.pathname + location.search + "#main"); } catch (e) {}
-</script>
+<script src="/assets/js/pages/404.js"></script>
 </body>
 </html>
