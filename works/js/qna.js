@@ -20,7 +20,7 @@
           <b>${esc(q.name)}</b>
           <span class="small tnum">${fmtDate(q.at)}</span>
         </div>
-        <div class="small" style="margin-top:6px" title="${esc(q.productId)}">${esc(q.productName || (q.productId === "general" ? t("일반 문의") : q.productId))} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
+        <div class="small" style="margin-top:6px" title="${esc(q.productId)}">${esc(q.productName ? t(q.productName) : (q.productId === "general" ? t("일반 문의") : q.productId))} ${q.secret ? "· 🔒 " + esc(t("비밀글")) : ""}</div>
         ${q.email ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("답변을 등록하면 {email}로 안내 메일이 갑니다", { email: q.email }))}</div>`
           : q.hasAccount ? `<div class="small" style="margin-top:4px;color:var(--text-muted)">✉ ${esc(t("회원 문의 — 답변을 등록하면 계정 이메일로 안내 메일이 갑니다"))}</div>` : ""}
         <p style="margin-top:10px">${esc(q.question)}</p>
@@ -140,7 +140,7 @@
   async function paintAdminQna(loadMore = false) {
     qnaState.page = loadMore ? qnaState.page + 1 : 1;
     const seq = (qnaState.seq = (qnaState.seq || 0) + 1); // 마지막 요청만 화면에 반영(검색 직후 탭 첫 로딩과 겹칠 때, 2026-11-11)
-    const result = await adminFetch(`/api/admin/qna?${qnaQueryParams().toString()}`);
+    const [result] = await Promise.all([adminFetch(`/api/admin/qna?${qnaQueryParams().toString()}`), ensureProductNames()]);
     if (!result || seq !== qnaState.seq) return;
     qnaState.total = result.total;
     qnaState.items = loadMore ? qnaState.items.concat(result.items) : result.items;

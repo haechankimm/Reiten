@@ -8,6 +8,7 @@
     paymentlog: "결제 트랜잭션", products: "상품", coupons: "쿠폰", reviews: "리뷰", lookbook: "룩북",
     members: "회원 계정 관리", calendar: "캘린더", notices: "공지", outbox: "발송 실패 아웃박스",
     settings: "정보", auditlog: "활동 로그", dashboard: "대시보드", usagestats: "사용 통계",
+    agent: "AI 승인함", expenses: "지출·정산", staff: "직원·권한",
   };
   const USAGE_FEATURE_LABEL = {
     "feature:export:ord-export": "주문 내보내기",
@@ -18,19 +19,26 @@
 
   let usagePeriodDays = 30;
 
+  /* 한 줄 막대(2026-11-11) — 예전엔 항목마다 이름 줄 + 막대 줄로 두 줄씩 써서 스크롤이 길었다.
+     이름 · 막대 · 횟수 · 최근 사용(짧게)을 한 줄에, 넓은 화면에선 두 단으로 나눠 한 화면에 들어오게 한다. */
+  function usageShortDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
   function usageBarRowsHTML(rows, max) {
     if (!rows.length) return `<p class="small" style="color:var(--text-muted)">${esc(t("데이터가 아직 없습니다"))}</p>`;
-    return rows
+    return `<div class="usage-rows">${rows
       .map(
-        (r) => `
-      <div class="best-row">
-        <span></span>
-        <span>${esc(r.label)}</span>
-        <span class="tnum">${esc(t("{n}회", { n: r.count }))}${r.lastUsedAt ? ` <span class="small" style="color:var(--text-muted)">· ${esc(t("최근"))} ${fmtDate(r.lastUsedAt)}</span>` : ""}</span>
-        <div class="best-bar-track"><div class="best-bar-fill" style="width:${max ? Math.round((r.count / max) * 100) : 0}%"></div></div>
+        (r) => `<div class="usage-row" title="${r.lastUsedAt ? esc(t("최근") + " " + fmtDate(r.lastUsedAt)) : ""}">
+        <span class="usage-name">${esc(r.label)}</span>
+        <span class="usage-track"><span class="usage-fill" style="width:${max ? Math.max(2, Math.round((r.count / max) * 100)) : 0}%"></span></span>
+        <span class="usage-count tnum">${esc(String(r.count))}</span>
+        <span class="usage-last tnum">${r.lastUsedAt ? esc(usageShortDate(r.lastUsedAt)) : ""}</span>
       </div>`
       )
-      .join("");
+      .join("")}</div>`;
   }
 
   async function paintUsageStats() {
@@ -57,7 +65,12 @@
     const featureMax = Math.max(1, ...featureRows.map((r) => r.count));
 
     el("usage-summary").textContent = t("최근 {days}일간 총 {n}건의 사용 기록", { days: usagePeriodDays, n: result.totalEvents });
-    el("usage-tabs").innerHTML = usageBarRowsHTML(tabRows, tabMax);
+    // 안 쓴(0회) 탭은 막대 대신 한 줄 칩으로 모은다 — "안 쓰는 기능"이 한눈에 보이고 스크롤도 줄어든다
+    const used = tabRows.filter((r) => r.count > 0);
+    const unused = tabRows.filter((r) => r.count === 0);
+    el("usage-tabs").innerHTML = usageBarRowsHTML(used, tabMax) + (unused.length
+      ? `<div class="usage-unused"><span class="m-label">${esc(t("이 기간에 안 연 탭"))}</span> ${unused.map((r) => `<span class="usage-chip">${esc(r.label)}</span>`).join("")}</div>`
+      : "");
     el("usage-features").innerHTML = usageBarRowsHTML(featureRows, featureMax);
   }
 

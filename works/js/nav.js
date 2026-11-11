@@ -239,10 +239,32 @@
         data.forEach((c) => {
           COLORS[c.key] = c;
           // 관리자가 넣은 독일어 이름을 번역 사전에 등록 — 저장만 되고 화면엔 안 쓰이던 것(2026-10-28 정기 감사)
-          if (c.labelDe) I18N[c.label] = Object.assign({}, I18N[c.label], { de: c.labelDe });
+          // 독일어 이름이 없으면 영어 이름으로라도(한글이 그대로 뜨지 않게, 2026-11-11)
+          const de = c.labelDe || c.labelEn;
+          if (de && !(I18N[c.label] && I18N[c.label].de)) I18N[c.label] = Object.assign({}, I18N[c.label], { de });
         });
       }
     } catch (e) {}
+  }
+
+  /* 상품 이름 — 한국어가 아닐 때 사전에 번역이 없으면 상품의 영어 이름(또는 그 언어 번역)으로 등록한다(2026-11-11).
+     그래서 화면 곳곳의 t(p.nameKo)·서버가 준 한국어 상품명이 독일어 화면에서 한글로 남지 않는다. */
+  function registerProductNames(items) {
+    (items || []).forEach((p) => {
+      const ko = p.nameKo || p.name_ko;
+      if (!ko) return;
+      const tr = p.translations || {};
+      const de = (tr.de && tr.de.name) || p.name || (tr.en && tr.en.name);
+      if (de && de !== ko && !(I18N[ko] && I18N[ko].de)) I18N[ko] = Object.assign({}, I18N[ko], { de });
+    });
+  }
+
+  /* 한국어가 아닐 때 상품 이름 번역을 한 번만 받아 둔다 — 주문·문의처럼 상품 목록을 안 부르는 화면용 */
+  let productNamesPromise = null;
+  function ensureProductNames() {
+    if (getLang() === "ko" || (typeof canView === "function" && !canView("products"))) return Promise.resolve();
+    if (!productNamesPromise) productNamesPromise = adminFetch("/api/admin/products?page=1&pageSize=100").catch(() => null);
+    return productNamesPromise;
   }
 
   /* 서버 오류 응답을 지금 언어(한국어/독일어)로 — 한국어 원문이 곧 사전 키라 t()로 바로 번역되고,
@@ -323,7 +345,9 @@
       }
       return null;
     }
-    return res.json();
+    const data = await res.json();
+    if (path.startsWith("/api/admin/products") && data && Array.isArray(data.items)) registerProductNames(data.items);
+    return data;
   }
 
   /* 목록 API를 끝까지 모아 받는다(100개씩) — 재고 화면·쿠폰 대상 상품·룩북 편집이 첫 페이지(50~100개)까지만 보여
