@@ -92,6 +92,9 @@
        로그"·"대시보드"가 통째로 안 보이고 눌리지도 않았다(2026-09 코드 감사에서 재현
        확인). 자체 스크롤을 열어 항상 끝까지 닿을 수 있게 한다. */
     overflow-y: auto; -webkit-overflow-scrolling: touch;
+    /* 넓은 화면: 사이드바를 화면에 고정(자체 스크롤) — 예전엔 페이지와 같이 스크롤돼, 아래쪽 메뉴를 누르려고 내려간 만큼
+       새 탭도 중간부터 보였다(2026-11-11). 좁은 화면은 아래 @media의 서랍(fixed)이 덮어쓴다. */
+    position: sticky; top: 0; height: 100vh; height: 100dvh; align-self: flex-start;
   }
   /* ---------- 사이드바 카테고리 아코디언(2026-09) ----------
      figlo WORKS를 참고해 평면 목록이던 사이드바를 펼침/접힘 가능한 카테고리 그룹으로 바꿨다.
@@ -470,7 +473,7 @@
     }
     .sidebar-toggle svg { width: 18px; height: 18px; }
     .sidebar {
-      position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 236px;
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 236px; height: auto;
       transform: translateX(-100%); transition: transform .22s ease; box-shadow: 0 0 0 rgba(0,0,0,0);
     }
     .sidebar.is-open { transform: translateX(0); box-shadow: 8px 0 24px rgba(0,0,0,.25); }
