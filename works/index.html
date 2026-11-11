@@ -44,6 +44,12 @@
         <span data-i18n="업무">업무</span>
       </button>
       <div class="nav-group-body" id="nav-group-body-work">
+        <!-- AI 승인함(2026-11-11, 054) — 실시간 에이전트 AI가 제안한 작업을 승인·거절. js/agent.js -->
+        <button type="button" class="nav-item" data-tab="agent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15.5h5"/></svg>
+          <span data-i18n="AI 승인함">AI 승인함</span>
+          <span class="nav-badge" id="nav-badge-agent" hidden></span>
+        </button>
         <button type="button" class="nav-item" data-tab="orders">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M8 9h8M8 13h5"/></svg>
           <span data-i18n="전체 주문">전체 주문</span>
@@ -471,6 +477,25 @@
           <div id="admin-qna-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start"></div>
         </div>
 
+        <div id="admin-agent" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="AI 승인함">AI 승인함</div>
+              <div class="content-sub" data-i18n="실시간 에이전트 AI가 제안한 작업입니다. 승인한 것만 서버가 승인한 사람의 권한으로 실행하고, 모두 활동 로그에 남습니다. 결정하지 않으면 24시간 뒤 만료됩니다.">실시간 에이전트 AI가 제안한 작업입니다. 승인한 것만 서버가 승인한 사람의 권한으로 실행하고, 모두 활동 로그에 남습니다. 결정하지 않으면 24시간 뒤 만료됩니다.</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <div class="seg" id="agent-view">
+                <button type="button" data-view="pending" aria-pressed="true" data-i18n="대기 중">대기 중</button>
+                <button type="button" data-view="history" aria-pressed="false" data-i18n="처리 기록">처리 기록</button>
+              </div>
+              <button type="button" class="btn btn--sm btn--ghost" id="agent-policy-toggle" hidden data-i18n="AI 권한 설정">AI 권한 설정</button>
+            </div>
+          </div>
+          <div id="agent-migration-note" class="notice" hidden data-i18n="DB 마이그레이션 054를 실행하면 AI 승인함을 쓸 수 있습니다.">DB 마이그레이션 054를 실행하면 AI 승인함을 쓸 수 있습니다.</div>
+          <div id="agent-off-note" class="notice" hidden></div>
+          <div id="agent-policy" class="panel" hidden style="margin-bottom:16px"></div>
+          <div id="agent-list"></div>
+        </div>
         <div id="admin-expenses" hidden>
           <div class="content-head">
             <div>
@@ -1324,6 +1349,7 @@
 <script src="js/palette.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/expenses.js"></script>
+<script src="js/agent.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   // 품절 조합은 "판매 중(공개)" 상품만 센다 — 비공개 상품의 0개 재고까지 세어 알림이 늘 떠 있던 것(2026-11-11 점검)
   const { data: activeProducts } = await supabaseAdmin.from("products").select("id").eq("active", true);
   const activeIds = (activeProducts || []).map((p) => p.id);
-  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending] = await Promise.all([
+  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
     activeIds.length
       ? supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0).in("product_id", activeIds)
@@ -30,6 +30,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     // 공급처 배송완료인데 아직 입고 처리 안 한 송장(048), 확인 대기 매입(050) — 표가 없으면 0
     supabaseAdmin.from("supplier_shipments").select("id", { count: "exact", head: true }).eq("status", "DELIVERED"),
     supabaseAdmin.from("supplier_invoices").select("id", { count: "exact", head: true }).eq("status", "RECORDED"),
+    supabaseAdmin.from("agent_actions").select("id", { count: "exact", head: true }).eq("status", "PENDING").gt("expires_at", new Date().toISOString()),
   ]);
 
   /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불
@@ -43,6 +44,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "pendingReturns", label: "처리 대기 반품·교환 신청", count: returns.count || 0, tab: "returns", severity: "warning" },
     { key: "systemErrors", label: "시스템 오류", count: systemErrors.count || 0, tab: "systemErrors", severity: "critical" },
     { key: "supplierAwaitingReceipt", label: "공급처 도착·입고 처리 대기", count: (!supplierDelivered.error && supplierDelivered.count) || 0, tab: "inventory", severity: "info" },
+    { key: "agentPending", label: "AI 승인 대기", count: (!agentPending.error && agentPending.count) || 0, tab: "agent", severity: "warning" },
     { key: "invoicesPending", label: "확인 대기 지출", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "expenses", severity: "info" },
   ];
   res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });

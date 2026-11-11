@@ -35,7 +35,8 @@ const AREAS = {
 };
 
 /* 권한 검사 없이(PIN·로그인만) 모든 관리자가 쓰는 경로: 알림 개수, 사용 기록, 푸시 구독, 담당자 목록 조회. */
-const OPEN_PATHS = ["notifications", "usage-log", "push", "admins"];
+// agent-actions: 목록은 모든 관리자, 승인은 작업별 영역 권한을 routes/agentActions.js가 확인. agent-policy는 표에 없으므로 마스터만.
+const OPEN_PATHS = ["notifications", "usage-log", "push", "admins", "agent-actions"];
 /* PIN 검사도 건너뛰는 경로: 내 상태 조회와 PIN 설정·인증 자체. */
 const PIN_EXEMPT_PATHS = ["me", "pin"];
 
@@ -263,6 +264,15 @@ async function adminGuard(req, res, next) {
   try {
     const sub = req.path;
     if (matchesPrefix(sub, "login-lock")) return next();
+    // AI 승인함에서 승인된 작업을 서버가 승인자 신분으로 실행하는 내부 요청(lib/internalDispatch.js) — 승인 시점에 권한을 이미 확인함
+    const internal = require("./internalDispatch").readInternal(req);
+    if (internal) {
+      req.user = { id: internal.actor.id, email: internal.actor.email };
+      req.adminVerified = true;
+      req.isMasterAdmin = !!internal.actor.isMaster;
+      req.agentActionId = internal.actionId;
+      return next();
+    }
 
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;

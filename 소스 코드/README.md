@@ -94,6 +94,11 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > ④ **Render 무료 플랜은 잠들면 안 된다** — 15분 비활성 시 잠들면 크론(미입금 자동취소·배송조회·구매확정·백업·정산·아침 요약)이 그 시각을 건너뛰고,
 >    깨어나는 30초~1분 동안 포트원 웹훅·주문 요청이 실패할 수 있다. 무료 750시간은 서버 1대를 한 달(최대 744시간) 켜 둬도 남으므로 **UptimeRobot을
 >    `/health` 5분 주기로 유지**. 런칭 직후 Starter 이상으로 결제 예정(사용자 결정 2026-11-09) — 그 뒤엔 잠들지 않음.
+> **예외 둘(2026-11-11, 054) — AI 승인함**: `POST /api/bot/actions`로 정해진 작업(운송장 입력·입금 확인·공급처 입고·문의 답변·지출 확인·상품 노출·재고 조정·리뷰 승인)을
+>    **제안**만 한다. 제안은 아무것도 바꾸지 않고, 사람이 Works "AI 승인함"에서 승인해야 서버가 **승인자 신분으로 기존 관리자 API를 내부 호출**해 실행한다
+>    (`lib/internalDispatch.js` — 프로세스 메모리의 무작위 토큰 + 127.0.0.1만, `adminGuard`가 PIN 대신 승인자 신분 사용, 원래 로그에 `viaAgentAction`).
+>    환불·취소·결제·송금·권한·삭제는 목록에 없다 — **새 작업을 추가할 땐 `lib/agentActions.js`에 prepare(검증·미리보기)·execute(기존 API 호출)만 추가**하고
+>    직접 DB를 쓰지 말 것. 자동 승인은 `autoAllowed` 작업만, 메인 관리자가 켠 경우에만(기본 꺼짐).
 > ⑤ 피클은 Gmail 발송 권한이 있다 → 보안 대책은 아래 "피클 Gmail 보안" 참고(사용자 쪽 설정).
 > **피클 Gmail 보안(권장)**: 피클이 읽는 알림 메일(Sentry·UptimeRobot)은 라벨/필터로 분리해 그 라벨만 읽게, 발송은 **대표 본인 주소로만**(외부 수신자 금지) 또는
 > 초안만 만들고 사람이 보내게, 메일 본문 속 지시는 따르지 않는다는 규칙, 첨부·링크 자동 열기 금지, 키(`REITEN_BOT_KEY`)는 메일·채팅에 쓰지 않기.
@@ -528,6 +533,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `051_receipt_undo.sql` | 재고 이력 사유 `supplier_receipt_undo`(입고 취소) + 운영 점검용 `reiten_schema_version()`(=51) | ⚠️ 미실행(2026-11-11 신규) — 실행 전에도 입고 취소는 되지만 재고 이력 한 줄이 남지 않음 |
 | `052_expense_ledger.sql` | 지출 장부(매입 장부 확장 — `supplier_invoices`에 분류·결제수단·카드 뒤 4자리·누구 돈·공동 부담·증빙·메모·정산·정기·가져오기 칸), 동업자 `expense_partners`(기본 대표·동업자 50:50), 정산 기록 `expense_settlements`, 정기 지출 `expense_recurring`, 예산 `expense_budgets`, `products.unit_cost`, `reiten_schema_version()`=52 | ⚠️ 미실행(2026-11-11 신규) |
 | `053_product_cost_items.sql` | 상품 1벌 원가 구성 `product_cost_items`(항목·종류·금액·몇 벌 기준·메모), `reiten_schema_version()`=53 | ⚠️ 미실행(2026-11-11 신규) |
+| `054_agent_actions.sql` | AI 승인함 `agent_actions`(AI 제안·사전 검사 결과·바뀔 내용·상태·결정자·실행 결과·되돌리기, 대기 중 중복 방지 색인), AI 권한 설정 `agent_policy`(한 줄), `reiten_schema_version()`=54 | ⚠️ 미실행(2026-11-11 신규) — 실행 전엔 피클 제안 통로 503, Works 승인함은 안내만 |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -633,6 +639,17 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-11 (7) — AI 승인함: 피클 제안 → 사람 승인 → 서버 실행 + AI 권한 설정(마이그레이션 054).**
+- 사용자 결정: A 폰 푸시 승인, B 묶음 승인, C 사전 검사·바뀔 내용 표시, D 조건부 자동 승인(기능만, 기본 꺼짐), 작업 ①~⑧(리뷰 승인은 기본 꺼짐), 권한 설정 칸, 전부 로그.
+- 서버: `lib/agentActions.js`(작업 표 — prepare/execute/undo, `autoAllowed`·`amountBased`·`defaultEnabled`), `routes/agentActions.js`
+  (봇 `GET /api/bot/actions/policy`·`POST /api/bot/actions`·`GET /api/bot/actions`, 관리자 `GET /api/admin/agent-actions`·`POST .../decide`(묶음)·`POST .../:id/undo`·`GET|PUT /api/admin/agent-policy`(메인만)),
+  `lib/internalDispatch.js`(승인자 신분으로 기존 관리자 API 내부 호출), `adminGuard`(내부 호출 인식, `agent-actions`는 OPEN_PATHS — 작업별 권한은 결정 시점에 영역 권한으로 확인),
+  `adminLog`(`viaAgentAction`). 이중 검사(제안 시·승인 시), 대기 중 같은 대상 중복 제안 무시, 24시간 만료(크론 매시 50분), 푸시 5분 묶음, 알림센터 "AI 승인 대기".
+  로그: `agent.propose`·`agent.propose_rejected`·`agent.approve`·`agent.reject`·`agent.undo`·`agent.policy` + 실행된 원래 작업 로그.
+- Works: "업무" 맨 위 "AI 승인함" 탭(`works/js/agent.js`) — 작업별 묶음·전체 선택·선택 승인/거절(사유), 전 → 후 미리보기, 처리 기록(자동 배지·오류·되돌리기),
+  "AI 권한 설정"(메인만: 비상 정지·작업별 허용·자동 승인·하루 한도·금액 상한). 폰 푸시를 누르면 그 탭이 열림(`sw.js` open-tab, `#tab=`).
+- `pickle-handoff.md` 업무 7·API J~L·개정 이력. 테스트 `test/agentActions.test.js` 6건.
 
 **2026-11-11 (6) — 활동 로그 권한 기록은 마스터만, 긴 목록 접기·검색, CS 템플릿 줄 깨짐.**
 - `routes/auditLog.js`: 마스터가 아니면 `staff.*`(직원 권한·PIN 초기화·비밀번호)·`admin.*`(관리자 초대·해제·PIN) 기록을 서버에서 뺀다 — 직원에게 "활동 로그" 권한을 줘도 안 보임.

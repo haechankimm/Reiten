@@ -694,3 +694,15 @@ details > summary::marker { color: var(--text-muted); }
 /* 긴 목록 접기·검색 */
 .compact-more { margin-top: 8px; }
 .compact-search { width: 100%; max-width: 320px; height: 34px; padding: 0 10px; margin: 4px 0 8px; border-radius: 8px; font-size: 12.5px; box-sizing: border-box; }
+
+/* AI 승인함(2026-11-11) */
+.agent-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.agent-item:first-child { border-top: 0; }
+.agent-item input[type="checkbox"] { margin-top: 3px; }
+.agent-line { font-size: 12.5px; line-height: 1.6; }
+.agent-line-label { color: var(--text-muted); margin-right: 6px; }
+.agent-before { color: var(--text-secondary); text-decoration: line-through; text-decoration-color: rgba(127,127,127,.5); }
+.agent-after { color: var(--text-primary); }
+.agent-items { margin-top: 6px; }
+#agent-policy .exp-grid { align-items: center; }
+#agent-policy .exp-grid input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; padding: 0; justify-self: start; }

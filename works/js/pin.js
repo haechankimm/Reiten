@@ -32,6 +32,7 @@
     if (!adminMe) return "none";
     if (tab === "systemErrors") tab = "paymentlog"; // 알림센터의 시스템 오류 행은 결제 영역 권한을 따른다
     if (tab === "home") return "edit";
+    if (tab === "agent") return "edit"; // AI 승인함 — 모두에게 보이고, 작업별 승인 가능 여부는 서버가 영역 권한으로 판단(canDecide)
     if (tab === "staff") return adminMe.isMaster ? "edit" : "none";
     const area = adminMe.tabAreas && adminMe.tabAreas[tab];
     return area ? adminMe.permissions[area] || "none" : "none";

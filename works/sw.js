@@ -10,18 +10,23 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body: data.body || "",
       icon: "/assets/img/apple-touch-icon.png",
+      data: { tab: data.tab || "" }, // 누르면 그 화면(예: AI 승인함)으로(2026-11-11)
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const tab = (event.notification.data && event.notification.data.tab) || "";
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clientsArr) => {
       for (const client of clientsArr) {
-        if ("focus" in client) return client.focus();
+        if ("focus" in client) {
+          if (tab) client.postMessage({ type: "open-tab", tab });
+          return client.focus();
+        }
       }
-      if (self.clients.openWindow) return self.clients.openWindow("/");
+      if (self.clients.openWindow) return self.clients.openWindow(tab ? `/#tab=${tab}` : "/");
     })
   );
 });

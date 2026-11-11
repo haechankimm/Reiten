@@ -61,6 +61,7 @@ const MIGRATION_CHECKS = [
   { no: "051", probe: schemaVersionAtLeast(51), missing: "DB 마이그레이션 051이 아직 실행되지 않았습니다(입고 취소 때 재고 이력이 남지 않음)" },
   { no: "052", probe: schemaVersionAtLeast(52), missing: "DB 마이그레이션 052가 아직 실행되지 않았습니다(지출 장부·동업자 정산·정기 지출·예산이 꺼져 있음)" },
   { no: "053", probe: schemaVersionAtLeast(53), missing: "DB 마이그레이션 053이 아직 실행되지 않았습니다(상품 원가 구성 저장 불가 — 1벌 원가 한 칸만 사용)" },
+  { no: "054", probe: schemaVersionAtLeast(54), missing: "DB 마이그레이션 054가 아직 실행되지 않았습니다(AI 승인함이 꺼져 있음)" },
 ];
 
 async function migrationChecks(db = supabaseAdmin) {
