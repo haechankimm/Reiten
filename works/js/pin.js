@@ -27,12 +27,15 @@
     try { sessionStorage.removeItem(PIN_STORAGE_KEY); } catch (e) {}
   }
 
+  const AGENT_AREAS = ["orders", "inventory", "qna", "expenses", "products", "reviews"];
   /* 권한: 탭 → 영역 → 레벨. home은 항상, staff는 마스터만. */
   function permLevelForTab(tab) {
     if (!adminMe) return "none";
     if (tab === "systemErrors") tab = "paymentlog"; // 알림센터의 시스템 오류 행은 결제 영역 권한을 따른다
     if (tab === "home") return "edit";
-    if (tab === "agent") return "edit"; // AI 승인함 — 모두에게 보이고, 작업별 승인 가능 여부는 서버가 영역 권한으로 판단(canDecide)
+    // AI 승인함 — 승인할 수 있는 작업 영역(server/lib/agentActions.js의 area) 중 하나라도 "수정" 권한이 있을 때만 보인다.
+    // 권한이 없는 사람에게는 "권한 없음" 안내 대신 탭째 숨긴다(2026-11-11). 목록도 서버가 승인 가능한 종류만 준다.
+    if (tab === "agent") return adminMe.isMaster || AGENT_AREAS.some((a) => adminMe.permissions[a] === "edit") ? "edit" : "none";
     if (tab === "staff") return adminMe.isMaster ? "edit" : "none";
     const area = adminMe.tabAreas && adminMe.tabAreas[tab];
     return area ? adminMe.permissions[area] || "none" : "none";
@@ -231,13 +234,8 @@
       if (!canView(r.tab) || canEdit(r.tab)) continue;
       const scope = r.panel ? `#${r.panel} ` : "";
       const panel = r.panel && el(r.panel);
-      if (panel && r.panel !== "admin-home" && !panel.querySelector(".ro-banner")) {
-        panel.classList.add("is-readonly");
-        const banner = `<p class="ro-banner">${esc(t("보기 전용 — 이 화면은 조회만 할 수 있습니다. 수정이 필요하면 마스터 관리자에게 권한을 요청하세요."))}</p>`;
-        const head = panel.querySelector(".content-head");
-        if (head) head.insertAdjacentHTML("afterend", banner);
-        else panel.insertAdjacentHTML("afterbegin", banner);
-      }
+      // "보기 전용·권한 요청" 안내 문구는 띄우지 않는다 — 수정 버튼만 조용히 숨긴다(2026-11-11 사용자 요청)
+      if (panel && r.panel !== "admin-home") panel.classList.add("is-readonly");
       (r.hidePanel || []).forEach((s) => {
         const target = document.querySelector(scope + s);
         const box = target && (target.closest(".panel") || target);

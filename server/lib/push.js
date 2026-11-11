@@ -17,14 +17,16 @@ if (configured) {
 
 /* 모든 관리자의 모든 구독 기기에 알림을 보낸다(새 주문 접수처럼 관리자 전원이 알아야 할 이벤트용).
    구독이 만료·취소됐으면(410 Gone, 404) 그 행을 지워 다음부터는 시도조차 안 하게 정리한다. */
-async function sendPushToAdmins(payload) {
+/* opts.adminIds: 이 관리자들의 기기에만 보낸다(예: AI 승인 요청은 승인할 수 있는 사람에게만) */
+async function sendPushToAdmins(payload, opts = {}) {
   if (!configured) return { ok: false, sent: 0, total: 0, error: "VAPID 키 없음" };
 
-  const { data: subs, error } = await supabaseAdmin.from("push_subscriptions").select("endpoint, keys");
+  let { data: subs, error } = await supabaseAdmin.from("push_subscriptions").select("endpoint, keys, admin_id");
   if (error) {
     if (!isMissingSchemaError(error)) console.error("[push] 구독 목록 조회 실패:", error.message);
     return { ok: false, sent: 0, total: 0, error: "구독 목록 조회 실패" }; // 테이블 없음(026 미실행)이거나 다른 오류
   }
+  if (Array.isArray(opts.adminIds)) subs = subs.filter((x) => opts.adminIds.includes(x.admin_id));
   if (!subs.length) return { ok: false, sent: 0, total: 0, error: "알림을 켠 기기가 없음" };
 
   const body = JSON.stringify(payload);

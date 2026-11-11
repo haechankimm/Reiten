@@ -19,6 +19,10 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   // 품절 조합은 "판매 중(공개)" 상품만 센다 — 비공개 상품의 0개 재고까지 세어 알림이 늘 떠 있던 것(2026-11-11 점검)
   const { data: activeProducts } = await supabaseAdmin.from("products").select("id").eq("active", true);
   const activeIds = (activeProducts || []).map((p) => p.id);
+  // AI 승인 대기는 이 관리자가 승인할 수 있는 종류만 센다(못 하는 건 알림에도 안 보이게)
+  const { ACTIONS } = require("../lib/agentActions");
+  const agentTypes = [];
+  for (const [k, a] of Object.entries(ACTIONS)) if (await hasAreaPermission(req, a.area, "edit")) agentTypes.push(k);
   const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
     activeIds.length
@@ -30,7 +34,9 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     // 공급처 배송완료인데 아직 입고 처리 안 한 송장(048), 확인 대기 매입(050) — 표가 없으면 0
     supabaseAdmin.from("supplier_shipments").select("id", { count: "exact", head: true }).eq("status", "DELIVERED"),
     supabaseAdmin.from("supplier_invoices").select("id", { count: "exact", head: true }).eq("status", "RECORDED"),
-    supabaseAdmin.from("agent_actions").select("id", { count: "exact", head: true }).eq("status", "PENDING").gt("expires_at", new Date().toISOString()),
+    agentTypes.length
+      ? supabaseAdmin.from("agent_actions").select("id", { count: "exact", head: true }).eq("status", "PENDING").gt("expires_at", new Date().toISOString()).in("action_type", agentTypes)
+      : Promise.resolve({ count: 0 }),
   ]);
 
   /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불

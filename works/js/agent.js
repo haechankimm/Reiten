@@ -34,9 +34,7 @@
       return `<div class="panel agent-group" data-type="${esc(type)}" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="agent-all" ${can ? "" : "disabled"}><b>${esc(t(items[0].label))}</b> <span class="small" style="color:var(--text-muted)">${esc(t("{n}건", { n: items.length }))}</span></label>
-          ${can
-            ? `<div style="display:flex;gap:6px"><button type="button" class="btn btn--sm agent-approve" disabled>${esc(t("선택 승인"))}</button><button type="button" class="btn btn--sm btn--ghost agent-reject" disabled>${esc(t("선택 거절"))}</button></div>`
-            : `<span class="small" style="color:var(--text-muted)">${esc(t("이 작업을 승인할 권한이 없습니다"))}</span>`}
+          ${can ? `<div style="display:flex;gap:6px"><button type="button" class="btn btn--sm agent-approve" disabled>${esc(t("선택 승인"))}</button><button type="button" class="btn btn--sm btn--ghost agent-reject" disabled>${esc(t("선택 거절"))}</button></div>` : ""}
         </div>
         <div class="agent-items" data-compact="10" data-compact-search="15">${items.map((a) => agentItemHTML(a, can)).join("")}</div>
       </div>`;
