@@ -6,7 +6,7 @@
     orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", paymentlog: "admin-paymentlog",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", members: "admin-members",
     calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
-    dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff", expenses: "admin-expenses",
+    dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff", expenses: "admin-expenses", agent: "admin-agent",
   };
   const SHORTCUT_DESC = {
     orders: "주문 검색·상태 변경·배송 등록",
@@ -17,6 +17,7 @@
     dashboard: "매출·베스트셀러·기기별 통계",
     calendar: "발매일·행사·휴무 일정 확인",
     expenses: "지출 기록·동업자 정산·예산",
+    agent: "AI가 제안한 작업 승인·거절",
   };
   const DEFAULT_SHORTCUTS = ["orders", "inventory", "paymentlog", "members", "outbox", "dashboard", "calendar"];
 

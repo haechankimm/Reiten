@@ -41,14 +41,14 @@ test("전체 백업 — gzip JSON으로 표마다 행이 들어간다", async ()
 /* 2026-11-11 — 마이그레이션은 전부 적용되면 한 줄, 빠지면 빠진 번호만 */
 test("마이그레이션 점검 — 전부 있으면 '최신까지 적용' 한 줄, 빠진 것만 경고", async () => {
   const { migrationChecks, MIGRATION_CHECKS } = require("../lib/opsCheck");
-  const okDb = { from: () => ({ select: () => ({ limit: async () => ({ error: null }) }) }), rpc: async (fn) => ({ data: fn === "reiten_schema_version" ? 53 : null, error: null }) };
+  const okDb = { from: () => ({ select: () => ({ limit: async () => ({ error: null }) }) }), rpc: async (fn) => ({ data: fn === "reiten_schema_version" ? 54 : null, error: null }) };
   const all = await migrationChecks(okDb);
   assert.equal(all.length, 1);
   assert.equal(all[0].level, "ok");
   assert.match(all[0].label, new RegExp(MIGRATION_CHECKS[MIGRATION_CHECKS.length - 1].no));
   const missingDb = {
     from: (t) => ({ select: () => ({ limit: async () => ({ error: t === "supplier_invoices" ? { code: "PGRST205" } : null }) }) }),
-    rpc: async (fn) => ({ data: fn === "reiten_schema_version" ? 53 : null, error: null }),
+    rpc: async (fn) => ({ data: fn === "reiten_schema_version" ? 54 : null, error: null }),
   };
   const some = await migrationChecks(missingDb);
   assert.deepEqual(some.map((c) => c.key), ["migration_050"]);

@@ -21,6 +21,7 @@ const { buildBackup } = require("./backup");
 const { checkDeliveries, autoConfirmOrders } = require("./purchaseConfirm");
 const { checkSupplierShipments } = require("./supplierShipments");
 const { generateRecurringExpenses } = require("../routes/expenses");
+const { expireStale: expireAgentActions } = require("../routes/agentActions");
 const { buildSettlement } = require("./settlement");
 const { PENDING_CANCEL_HOURS } = require("./orderRules");
 
@@ -190,6 +191,11 @@ scheduleExclusive("tracking", "15 * * * *", async () => {
 scheduleExclusive("expense-recurring", "10 6 * * *", () => {
   generateRecurringExpenses().catch((err) => console.error("[expense-recurring] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
+
+/* AI 승인함 — 24시간 지난 제안 만료(매시 50분, 2026-11-11) */
+scheduleExclusive("agent-expire", "50 * * * *", () => {
+  expireAgentActions().catch((err) => console.error("[agent-expire] 실행 실패:", err.message));
+});
 
 /* 자동 구매확정 — 매일 03:40(KST), 배송완료 7일·출고 14일 지난 주문(반품·교환 처리 중 제외) 확정 + 적립금 지급 */
 scheduleExclusive("purchase-confirm", "40 3 * * *", () => {

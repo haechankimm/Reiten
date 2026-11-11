@@ -242,6 +242,9 @@
     el("notif-wrap").hidden = false;
     el("palette").hidden = false;
     renderFavorites();
+    // 폰 푸시를 눌러 들어왔으면(#tab=agent 등) 그 화면으로(2026-11-11)
+    const hashTab = (location.hash.match(/tab=([a-z]+)/) || [])[1];
+    if (hashTab && hashTab !== "systemErrors") setTimeout(() => goToTab(hashTab), 0);
     el("logout").hidden = false;
     el("change-pin").hidden = !me.pin.enabled;
     const name = profile.name || profile.email;
@@ -297,13 +300,14 @@
     notices: () => paintAdminNotices(),
     outbox: () => paintAdminOutbox(),
     expenses: () => paintExpenses(),
+    agent: () => paintAgent(),
   };
   const TAB_REFRESH_MS = 60000;
   const TAB_PANEL_IDS = {
     members: "admin-members", orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings",
     auditlog: "admin-auditlog", dashboard: "admin-dashboard", paymentlog: "admin-paymentlog", notices: "admin-notices", outbox: "admin-outbox",
-    expenses: "admin-expenses",
+    expenses: "admin-expenses", agent: "admin-agent",
   };
   const tabLoadedAt = {};
   function tabHasUnsavedChanges(tab) {

@@ -39,7 +39,8 @@ function logAdminAction(req, action, targetType, targetId, detail) {
       action,
       target_type: targetType,
       target_id: String(targetId),
-      detail: detail || null,
+      // AI 승인함에서 승인돼 실행된 작업이면 그 제안 번호를 함께 남긴다(2026-11-11)
+      detail: req.agentActionId ? { ...(detail || {}), viaAgentAction: req.agentActionId } : detail || null,
     })
     .then(({ error }) => {
       if (error) console.error("[audit-log] 적재 실패:", error.message);

@@ -52,6 +52,7 @@ const supplierShipmentsRoutes = require("./routes/supplierShipments");
 const supplierInvoicesRoutes = require("./routes/supplierInvoices");
 const botAssistRoutes = require("./routes/botAssist");
 const expensesRoutes = require("./routes/expenses");
+const agentActionsRoutes = require("./routes/agentActions");
 const { assertNoRouteShadowing } = require("./lib/routeShadowing");
 const { htmlWithVersions, immutableAssets } = require("./lib/assetVersion");
 
@@ -214,6 +215,8 @@ app.use(supplierInvoicesRoutes);
 app.use(botAssistRoutes);
 /* 지출 장부·동업자 정산·정기 지출·예산·상품 마진(2026-11-11, 마이그레이션 052) */
 app.use(expensesRoutes);
+/* AI 승인함 — AI 제안 → 사람 승인 → 서버가 승인자 신분으로 실행(2026-11-11, 마이그레이션 054) */
+app.use(agentActionsRoutes);
 
 /* GET /health는 routes/health.js에서 가져온다 — UptimeRobot이 DB 연결까지 확인할 수 있는
    전용 엔드포인트(2026-09-01 추가, 위 0번 섹션 참고). */
@@ -324,6 +327,7 @@ app.use((err, req, res, next) => {
   res.status(500).sendFile(path.join(SITE_DIR, "500.html"));
 });
 
+require("./lib/internalDispatch").setPort(PORT);
 app.listen(PORT, () => {
   console.log(`REITEN server running at http://localhost:${PORT}`);
 });
