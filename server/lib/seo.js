@@ -105,6 +105,11 @@ function epCell(v) {
   return String(v ?? "").replace(/[\t\r\n]+/g, " ").trim();
 }
 
+function epTitle(name) {
+  const n = String(name || "").trim();
+  return new RegExp(`^${BRAND}\\b`, "i").test(n) ? `${BRAND} ${n.replace(new RegExp(`^${BRAND}\\s*`, "i"), "")}`.trim() : `${BRAND} ${n}`;
+}
+
 function naverEpTsv(products, { shippingFee = 3500, freeOver = 100000, reviewCountByProduct = new Map() } = {}) {
   const rows = products
     .filter((p) => productImages(p).length && !isFullyOutOfStock(p))
@@ -112,7 +117,8 @@ function naverEpTsv(products, { shippingFee = 3500, freeOver = 100000, reviewCou
       const images = productImages(p);
       const row = {
         id: p.id,
-        title: `${BRAND} ${p.nameKo || p.name}`,
+        // 상품명에 이미 브랜드가 들어 있으면("Reiten 리플랙티브 티셔츠") "REITEN Reiten …"처럼 겹치지 않게(2026-11-11 감사)
+        title: epTitle(p.nameKo || p.name),
         price_pc: p.price,
         price_mobile: p.price,
         normal_price: p.price,

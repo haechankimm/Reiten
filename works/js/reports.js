@@ -267,7 +267,12 @@
     paintNotifications();
     /* 로그인 시점 조회만으로는 Works를 계속 켜둔 사이 들어온 신규 알림을 새로고침 전까지
        모른다는 피드백 — 60초마다 자동으로 다시 센다(패널이 열려 있어도 갱신됨). */
-    if (!notifPollTimer) notifPollTimer = setInterval(paintNotifications, 60000);
+    /* 브라우저 탭이 숨겨져 있을 땐 세지 않고(Works를 켜 둔 채 다른 일을 하면 1분마다 DB 조회 6건이 계속 나가던 것, 2026-11-11 감사),
+       다시 보이는 순간 바로 한 번 센다. 숨겨진 동안의 긴급 알림은 폰·브라우저 푸시가 맡는다. */
+    if (!notifPollTimer) {
+      notifPollTimer = setInterval(() => { if (!document.hidden) paintNotifications(); }, 60000);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) paintNotifications(); });
+    }
     paintAdminAccounts();
     /* 탭 데이터는 그 탭을 처음 열 때 불러온다(2026-11-11 속도 개선) — 예전엔 로그인하자마자 모든 탭(약 30개 요청)을
        한꺼번에 불러와 첫 화면이 늦게 떴다. 다시 열 때는 1분이 지났으면 새로 고친다(loadTab). */

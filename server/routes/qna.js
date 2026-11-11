@@ -187,15 +187,19 @@ router.patch("/api/admin/qna/:id", requireAdmin, async (req, res) => {
    완전 자동응답이 아니라 관리자가 QnA 답변창에서 자주 쓰는 문구를 버튼 한 번으로 채워 넣는
    용도 — 답변 시간만 줄여준다. 마이그레이션 미실행 시(42P01, 테이블 없음) 빈 목록만 내려주고
    조용히 실패해 QnA 답변 작성 자체엔 지장이 없게 한다. */
+/* SQL로 직접 넣은 템플릿은 줄바꿈이 글자 그대로 "\n"으로 저장돼 화면·답변창에 "\n\n"이 보였다(2026-11-11) —
+   보낼 때·저장할 때 진짜 줄바꿈으로 바꾼다. */
+const fixNewlines = (s) => String(s || "").replace(/\\r\\n|\\n/g, "\n");
+
 router.get("/api/admin/qna-templates", requireAdmin, async (req, res) => {
   const { data, error } = await supabaseAdmin.from("qna_templates").select("*").order("created_at", { ascending: true });
   if (error) return res.json({ items: [] });
-  res.json({ items: data.map((t) => ({ id: t.id, label: t.label, body: t.body, keywords: t.keywords || [] })) });
+  res.json({ items: data.map((t) => ({ id: t.id, label: t.label, body: fixNewlines(t.body), keywords: t.keywords || [] })) });
 });
 
 router.post("/api/admin/qna-templates", requireAdmin, async (req, res) => {
   const label = String((req.body || {}).label || "").trim().slice(0, 60);
-  const body = String((req.body || {}).body || "").trim().slice(0, 2000);
+  const body = fixNewlines((req.body || {}).body).trim().slice(0, 2000);
   /* 문의 본문과 대조할 키워드 — QnA 답변창에서 이 템플릿을 기본 선택해주는 용도(자동 매칭). */
   const keywords = Array.isArray((req.body || {}).keywords)
     ? (req.body.keywords).map((k) => String(k).trim()).filter(Boolean).slice(0, 20)

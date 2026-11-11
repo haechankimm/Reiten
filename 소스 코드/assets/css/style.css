@@ -862,6 +862,9 @@ table.spec td:first-child, table.spec th:first-child { text-align: left; }
    ========================================================= */
 .checkout { display: grid; grid-template-columns: 1.35fr 0.65fr; gap: clamp(24px, 4vw, 56px); align-items: start; }
 @media (max-width: 900px) { .checkout { grid-template-columns: 1fr; } }
+/* 휴대폰: 결제 요약(aside)이 주문서 아래로 내려가므로 제출 버튼 위에 총액 한 줄(2026-11-11) */
+.summary-inline { display: none; }
+@media (max-width: 900px) { .summary-inline { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0; margin-top: 8px; border-top: 1px solid var(--line); font-size: 15px; } .summary-inline b { font-size: 18px; } }
 
 .line-item {
   display: grid;

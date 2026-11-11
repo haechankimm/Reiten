@@ -135,6 +135,8 @@
     if (appliedPoints) el("sum-points").textContent = "−" + money(appliedPoints);
     el("sum-ship").textContent = ship === 0 ? t("무료") : money(ship);
     el("sum-total").textContent = money(displayTotal());
+    // 휴대폰(한 줄 배치)에선 결제 요약이 제출 버튼 아래로 내려가 금액을 못 보고 제출하게 돼서, 버튼 바로 위에도 총액을 보여 준다(2026-11-11 감사)
+    if (el("sum-total-inline")) el("sum-total-inline").textContent = money(displayTotal());
 
     const left = SITE.shipping.freeOver - Cart.subtotal();
     el("ship-hint").textContent = left > 0

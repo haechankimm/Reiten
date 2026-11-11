@@ -56,4 +56,25 @@ async function sendPushToAdmins(payload, opts = {}) {
   return { ok: sent > 0, sent, total: subs.length, expired: staleEndpoints.length, error: lastError || undefined };
 }
 
-module.exports = { sendPushToAdmins, configured };
+/* 알림을 켠 관리자 중 이 영역(areas 중 하나)을 minLevel("view"|"edit") 이상으로 볼 수 있는 사람의 id.
+   권한 없는 사람에게는 알림도 보내지 않는다(Works 규칙 "권한 없는 것은 아예 안 보이게"). 확인 못 하면 보내지 않는다.
+   AI 승인 요청(routes/agentActions.js)·공지·일정 알림(lib/collabPush.js)이 같이 쓴다. */
+async function pushRecipientsForAreas(areas, minLevel = "view") {
+  const { getStoredPermissions, resolvePermissions } = require("./adminGuard");
+  const { MASTER_ADMIN_EMAIL } = require("./auth");
+  const okLevels = minLevel === "edit" ? ["edit"] : ["view", "edit"];
+  const { data: subs } = await supabaseAdmin.from("push_subscriptions").select("admin_id");
+  const ids = [...new Set((subs || []).map((x) => x.admin_id).filter(Boolean))];
+  const allowed = [];
+  for (const id of ids) {
+    try {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(id);
+      if (((data && data.user && data.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) { allowed.push(id); continue; }
+      const perms = resolvePermissions(await getStoredPermissions(id), false);
+      if (areas.some((a) => okLevels.includes(perms[a]))) allowed.push(id);
+    } catch (e) { /* 확인 못 하면 보내지 않음 */ }
+  }
+  return allowed;
+}
+
+module.exports = { sendPushToAdmins, pushRecipientsForAreas, configured };

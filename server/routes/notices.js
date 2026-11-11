@@ -44,6 +44,8 @@ router.post("/api/admin/notices", requireAdmin, async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: "공지 등록에 실패했습니다." });
   logAdminAction(req, "notice.create", "notice", data.id, { title });
+  // 작성 즉시 협업 권한이 있는 다른 관리자 폰으로 푸시(2026-11-11) — 실패해도 공지 등록은 그대로
+  require("../lib/collabPush").notifyNewNotice(data, req.user.id).catch((e) => console.error("[notice-push] 실패:", e.message));
   res.json(toNoticeDto(data));
 });
 

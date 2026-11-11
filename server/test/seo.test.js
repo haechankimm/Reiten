@@ -44,3 +44,12 @@ test("네이버 EP — 필수 열, 사진 없는/전부 품절 상품 제외, �
   const expensive = naverEpTsv([{ ...P, price: 120000 }]).trim().split("\n")[1];
   assert.equal(cols(expensive).shipping, "0");
 });
+
+test("네이버 EP — 상품명에 브랜드가 이미 있으면 겹쳐 쓰지 않는다", () => {
+  const cols = (line) => Object.fromEntries(EP_COLUMNS.map((c, i) => [c, line.split("\t")[i]]));
+  const row = (nameKo) => cols(naverEpTsv([{ ...P, nameKo }]).trim().split("\n")[1]);
+  assert.equal(row("Reiten 리플랙티브 티셔츠").title, "REITEN 리플랙티브 티셔츠");
+  assert.equal(row("REITEN 후디").title, "REITEN 후디");
+  assert.equal(row("리플렉트 하트 후디").title, "REITEN 리플렉트 하트 후디");
+  assert.equal(row("Reitenwear 후디").title, "REITEN Reitenwear 후디");
+});

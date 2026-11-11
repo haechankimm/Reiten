@@ -12,8 +12,7 @@ const { logAdminAction } = require("../lib/adminLog");
 const { isMissingSchemaError } = require("../lib/pgErrors");
 const { botLimiter, botWriteLimiter } = require("../lib/rateLimiters");
 const { requireBotKey, BOT_ACTOR_ID } = require("../lib/botAuth");
-const { hasAreaPermission, getStoredPermissions, resolvePermissions } = require("../lib/adminGuard");
-const { MASTER_ADMIN_EMAIL } = require("../lib/auth");
+const { hasAreaPermission } = require("../lib/adminGuard");
 const { ACTIONS, loadPolicy, normalizePolicy, catalog } = require("../lib/agentActions");
 const { kstDateKey } = require("../lib/kst");
 
@@ -54,18 +53,8 @@ async function decidableTypes(req) {
 /* 푸시 받을 관리자 — 대기 중인 종류 중 하나라도 승인할 수 있는 사람만 */
 async function pushRecipients(pendingTypes) {
   const areas = [...new Set(pendingTypes.map((k) => ACTIONS[k] && ACTIONS[k].area).filter(Boolean))];
-  const { data: subs } = await supabaseAdmin.from("push_subscriptions").select("admin_id");
-  const ids = [...new Set((subs || []).map((x) => x.admin_id).filter(Boolean))];
-  const allowed = [];
-  for (const id of ids) {
-    try {
-      const { data } = await supabaseAdmin.auth.admin.getUserById(id);
-      if (((data && data.user && data.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) { allowed.push(id); continue; }
-      const perms = resolvePermissions(await getStoredPermissions(id), false);
-      if (areas.some((a) => perms[a] === "edit")) allowed.push(id);
-    } catch (e) { /* 확인 못 하면 보내지 않음 */ }
-  }
-  return allowed;
+  const { pushRecipientsForAreas } = require("../lib/push");
+  return pushRecipientsForAreas(areas, "edit");
 }
 
 /* 새 승인 요청 폰 푸시 — 5분에 한 번까지(여러 건이 몰려도 알림 폭탄이 되지 않게) */

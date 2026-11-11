@@ -229,7 +229,7 @@
           ${p.active ? "" : `<span class="grid-card-badge">${esc(t("비공개"))}</span>`}
         </div>
         <div class="grid-card-body">
-          <b>${esc(t(p.nameKo))}</b>
+          <b class="grid-card-name">${esc(t(p.nameKo))}</b>
           <div class="small tnum">${money(p.price)}</div>
         </div>
         <div class="grid-card-actions">
@@ -277,6 +277,16 @@
       btn.addEventListener("click", () => {
         const id = btn.closest("[data-id]").dataset.id;
         const p = productsState.items.find((x) => x.id === id);
+        if (p) fillProductForm(p);
+      })
+    );
+    /* 사진·상품명을 눌러도 바로 수정 화면이 열린다(2026-11-11 사용자 요청 — 아래 "수정" 버튼만 되어서 버그인 줄 알았음).
+       수정 권한이 없으면(보기 전용) 아무 일도 안 일어나고 손가락 커서도 안 보인다. */
+    el("products-list").classList.toggle("is-editable", canEdit("products"));
+    el("products-list").querySelectorAll(".grid-card-thumb, .grid-card-name").forEach((node) =>
+      node.addEventListener("click", () => {
+        if (!canEdit("products")) return;
+        const p = productsState.items.find((x) => x.id === node.closest("[data-id]").dataset.id);
         if (p) fillProductForm(p);
       })
     );
@@ -372,6 +382,18 @@
       return r;
     })
   );
+
+  /* 다른 탭(재고)에서 상품 사진·이름을 누르면 상품 탭으로 옮겨 그 상품의 수정 화면을 연다(2026-11-11). */
+  async function openProductEditor(id) {
+    if (!canEdit("products")) return;
+    goToTab("products");
+    let p = productsState.items.find((x) => x.id === id);
+    if (!p) {
+      const result = await adminFetch(`/api/admin/products?page=1&pageSize=200`);
+      p = result && (result.items || []).find((x) => x.id === id);
+    }
+    if (p) fillProductForm(p);
+  }
 
   async function paintAdminProducts(loadMore = false) {
     productsState.page = loadMore ? productsState.page + 1 : 1;

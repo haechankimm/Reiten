@@ -229,7 +229,7 @@
       <div class="list-row-main">
         <b>${esc(tpl.label)}</b>
         ${tpl.keywords && tpl.keywords.length ? `<div class="small" style="color:var(--text-muted)">🔑 ${esc(tpl.keywords.join(", "))}</div>` : ""}
-        ${tpl.body ? `<div class="small list-row-preview">${esc(tpl.body)}</div>` : ""}
+        ${tpl.body ? `<div class="small list-row-preview qt-preview" title="${esc(t("눌러서 전체 보기"))}">${esc(tpl.body)}</div>` : ""}
       </div>
       ${hasAreaEdit("qna") ? `<button type="button" class="btn btn--sm btn--danger qt-delete">${esc(t("삭제"))}</button>` : ""}
     </div>`;
@@ -243,6 +243,10 @@
     el("qna-template-list").innerHTML = qnaTemplates.length
       ? qnaTemplates.map(qnaTemplateRowHTML).join("")
       : `<p class="small" style="color:var(--text-muted)">${esc(t("등록된 템플릿이 없습니다"))}</p>`;
+    // 답변은 두 줄까지만 보이고, 누르면 줄바꿈 그대로 전체가 펼쳐진다(2026-11-11 — 한 줄로 길게 잘려 보였음)
+    el("qna-template-list").querySelectorAll(".qt-preview").forEach((node) =>
+      node.addEventListener("click", () => node.classList.toggle("is-open"))
+    );
     el("qna-template-list").querySelectorAll(".qt-delete").forEach((btn) =>
       btn.addEventListener("click", async () => {
         if (!confirm(t("이 빠른 답변 템플릿을 삭제할까요?"))) return; // 실수로 지우지 않게(2026-11-11 점검)
@@ -364,6 +368,20 @@
     "backup.full_download": "전체 백업 다운로드(주문·회원 포함)",
     "report.settlement_download": "정산 리포트 받기",
     "report.settlement_send": "정산 리포트 메일 재발송",
+    // 2026-11-11: 로그에는 남는데 이름이 없어 키 그대로 보이던 것
+    "agent.policy": "AI 자동 실행 규칙 변경",
+    "agent.undo": "AI 실행 되돌리기",
+    "bot.expense_summary_read": "AI 지출 요약 조회",
+    "expense.budgets": "지출 예산 변경",
+    "expense.cost_items": "상품 원가 구성 수정",
+    "expense.export": "지출 내보내기",
+    "expense.import": "지출 가져오기",
+    "expense.partners": "동업자 지분 변경",
+    "expense.recurring_create": "정기 지출 추가",
+    "expense.recurring_update": "정기 지출 수정",
+    "expense.settle": "동업자 정산 확정",
+    "expense.settle_cancel": "동업자 정산 취소",
+    "expense.unit_costs": "상품 원가 일괄 수정",
   };
   function fmtDateTime(iso) {
     return new Date(iso).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR");
@@ -379,24 +397,97 @@
     return String(email || "").split("@")[0];
   }
 
+  /* 활동 로그를 읽기 쉽게(2026-11-11 사용자 요청) — 날짜별 묶음 + 시간만, 대상은 "상품 tshirt"처럼 한국어로,
+     내용은 원본 JSON 대신 주요 값 몇 개만 칩으로 보이고 "자세히"를 누르면 전체가 펼쳐진다. */
+  const AUDIT_TARGET_LABELS = {
+    product: "상품", products: "상품", order: "주문", notice: "공지", calendar_event: "일정", qna: "문의", qna_template: "CS 템플릿",
+    coupon: "쿠폰", member: "회원", review: "리뷰", lookbook: "룩북", setting: "정보", inventory: "재고", return: "반품",
+    agent_action: "AI 제안", supplier_shipment: "공급처 송장", supplier_invoice: "매입", color: "색상", handoff_note: "인수인계 노트",
+    expense: "지출", staff: "직원", admin: "관리자", backup: "백업", report: "리포트",
+    expense_settlement: "동업자 정산", expense_partners: "동업자", expense_budgets: "예산", expense_recurring: "정기 지출",
+    supplier_invoices: "매입", agent_policy: "AI 자동 실행 규칙",
+  };
+  const AUDIT_DETAIL_LABELS = {
+    title: "제목", name: "영문 이름", name_ko: "이름", nameKo: "이름", label: "이름", price: "가격", active: "공개", status: "상태",
+    qty: "수량", count: "건수", date: "날짜", endDate: "종료일", amount: "금액", reason: "사유", size: "사이즈", color: "컬러",
+    memo: "메모", email: "이메일", unitCost: "원가", sold_out: "품절", viaAgentAction: "AI 제안 번호", month: "월",
+    colors: "컬러", after: "변경 후", before: "변경 전", total: "합계", tracking: "송장번호", type: "종류", note: "메모",
+  };
+  // 칩에는 안 보이는(자세히에만) 값 — 접속 IP·시각·긴 본문·사진 목록 등
+  const AUDIT_DETAIL_SKIP = new Set(["ip", "updated_at", "created_at", "images", "media", "translations", "description", "details", "body", "short", "model_info", "size_table", "image_colors"]);
+
+  function auditTargetText(r) {
+    if (r.targetType === "system") return t("시스템");
+    const label = AUDIT_TARGET_LABELS[r.targetType] ? t(AUDIT_TARGET_LABELS[r.targetType]) : r.targetType;
+    const id = String(r.targetId || "");
+    // 긴 내부 ID(uuid)는 앞 8자리만
+    const shortId = /^[0-9a-f-]{30,}$/i.test(id) ? id.slice(0, 8) : id;
+    return shortId && shortId !== "undefined" ? `${label} · ${shortId}` : label;
+  }
+
+  function auditChipValue(v) {
+    if (typeof v === "boolean") return t(v ? "예" : "아니오");
+    if (typeof v === "number") return v.toLocaleString();
+    if (Array.isArray(v)) return v.every((x) => x === null || typeof x !== "object") ? v.filter((x) => x !== null).join(", ") : t("{n}개", { n: v.length });
+    if (v && typeof v === "object") return null;
+    const s = String(v ?? "");
+    return s.length > 40 ? s.slice(0, 39) + "…" : s;
+  }
+
+  function auditDetailChips(detail) {
+    if (!detail || typeof detail !== "object") return "";
+    const chips = [];
+    for (const [k, v] of Object.entries(detail)) {
+      if (AUDIT_DETAIL_SKIP.has(k) || v === null || v === undefined || v === "") continue;
+      const val = auditChipValue(v);
+      if (val === null || val === "") continue;
+      chips.push(`<span class="logchip"><span class="logchip-k">${esc(AUDIT_DETAIL_LABELS[k] ? t(AUDIT_DETAIL_LABELS[k]) : k)}</span>${esc(val)}</span>`);
+      if (chips.length >= 5) break;
+    }
+    return chips.join("");
+  }
+
+  function auditDayKey(iso) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+  function auditDayLabel(iso) {
+    const d = new Date(iso);
+    const today = new Date();
+    const yest = new Date(Date.now() - 86400000);
+    if (auditDayKey(iso) === auditDayKey(today.toISOString())) return t("오늘");
+    if (auditDayKey(iso) === auditDayKey(yest.toISOString())) return t("어제");
+    return d.toLocaleDateString(getLang() === "de" ? "de-DE" : "ko-KR", { month: "long", day: "numeric", weekday: "short" });
+  }
+
   function auditRowHTML(r) {
     const label = t(AUDIT_ACTION_LABELS[r.action] || r.action);
-    const detailStr = r.detail && Object.keys(r.detail).length ? JSON.stringify(r.detail) : "";
+    const hasDetail = r.detail && Object.keys(r.detail).length;
+    const isBot = /^bot:/i.test(String(r.adminEmail || ""));
+    const time = new Date(r.at).toLocaleTimeString(getLang() === "de" ? "de-DE" : "ko-KR", { hour: "2-digit", minute: "2-digit" });
     return `
-      <div class="logrow">
-        <span class="tnum small">${esc(fmtDateTime(r.at))}</span>
+      <div class="logrow${isBot ? " is-bot" : ""}">
+        <span class="tnum small" title="${esc(fmtDateTime(r.at))}">${esc(time)}</span>
         <span class="small" title="${esc(r.adminEmail)}">${esc(emailName(r.adminEmail))}</span>
         <span class="logrow-action">${esc(label)}</span>
-        <span>
-          <span class="tnum">${esc(r.targetType)}:${esc(r.targetId)}</span>
-          ${detailStr ? `<div class="logrow-detail">${esc(detailStr)}</div>` : ""}
+        <span class="logrow-target">
+          <span>${esc(auditTargetText(r))}</span>
+          ${hasDetail ? `<span class="logrow-chips">${auditDetailChips(r.detail)}</span>
+          <details class="logrow-more"><summary>${esc(t("자세히"))}</summary><pre>${esc(JSON.stringify(r.detail, null, 2))}</pre></details>` : ""}
         </span>
       </div>`;
   }
 
   function renderAuditLog() {
+    let lastDay = "";
+    const rows = auditLogState.items.map((r) => {
+      const day = auditDayKey(r.at);
+      const head = day !== lastDay ? `<div class="logrow-day">${esc(auditDayLabel(r.at))}</div>` : "";
+      lastDay = day;
+      return head + auditRowHTML(r);
+    });
     el("auditlog-rows").innerHTML =
-      auditLogState.items.map(auditRowHTML).join("") ||
+      rows.join("") ||
       `<div class="logrow small" style="color:var(--text-muted)">${esc(t("아직 기록된 활동이 없습니다"))}</div>`;
     const hasMore = auditLogState.items.length < auditLogState.total;
     el("auditlog-more-wrap").innerHTML = loadMoreHTML(hasMore, "auditlog-more");
@@ -422,6 +513,8 @@
     if (auditLogState.action) params.set("action", auditLogState.action);
     if (auditLogState.dateFrom) params.set("dateFrom", auditLogState.dateFrom);
     if (auditLogState.dateTo) params.set("dateTo", auditLogState.dateTo);
+    // 특정 작업 종류를 골랐으면 그대로 보여 주고, 아니면 "AI 조회 기록 보기"를 켰을 때만 AI 조회 기록을 포함
+    if (!auditLogState.action && !el("al-show-bot").checked) params.set("hideBotReads", "1");
     const result = await adminFetch(`/api/admin/audit-log?${params.toString()}`);
     if (!result) return;
     auditLogState.total = result.total;
@@ -442,7 +535,9 @@
     el("al-action").value = "";
     el("al-from").value = "";
     el("al-to").value = "";
+    el("al-show-bot").checked = false;
     el("al-search").click();
   });
   el("al-admin").addEventListener("keydown", (e) => { if (e.key === "Enter") el("al-search").click(); });
+  el("al-show-bot").addEventListener("change", () => el("al-search").click());
 

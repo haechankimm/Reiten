@@ -69,6 +69,7 @@ class FakeQuery {
   is(col, val) { return this._cmp(col, "is", val); }
   not(col, op, val) { return this._cmp(col, op === "is" ? "notis" : op === "like" ? "notlike" : "neq", val); }
   neq(col, val) { return this._cmp(col, "neq", val); }
+  like(col, val) { return this._cmp(col, "like", val); }
   lt(col, val) { return this._cmp(col, "lt", val); }
   lte(col, val) { return this._cmp(col, "lte", val); }
   gt(col, val) { return this._cmp(col, "gt", val); }
@@ -138,9 +139,9 @@ class FakeQuery {
           if (op === "is") return val === null ? v === null || v === undefined : v === val;
           if (op === "notis") return val === null ? !(v === null || v === undefined) : v !== val;
           if (op === "neq") return v !== val;
-          if (op === "notlike") {
+          if (op === "notlike" || op === "like") {
             const re = new RegExp("^" + String(val).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");
-            return !re.test(String(v ?? ""));
+            return op === "like" ? re.test(String(v ?? "")) : !re.test(String(v ?? ""));
           }
           if (v === null || v === undefined) return false;
           if (op === "lt") return v < val;
