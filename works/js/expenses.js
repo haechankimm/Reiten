@@ -61,7 +61,7 @@
         <label>${esc(t("공급가액(선택)"))}<input type="number" min="0" class="ef-supply" value="${esc(v.supplyAmount ?? "")}"></label>
         <label>${esc(t("부가세(선택)"))}<input type="number" min="0" class="ef-vat" value="${esc(v.vatAmount ?? "")}"></label>
         <label class="mini-form-wide">${esc(t("적요(품목)"))}<input class="ef-items" value="${esc(v.itemsSummary || "")}"></label>
-        <label>${esc(t("어느 상품 원가인가(선택)"))}<select class="ef-product"><option value="">${esc(t("상품과 무관"))}</option>${((expState.margin && expState.margin.items) || []).map((m) => `<option value="${esc(m.productId)}" ${m.productId === v.productId ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
+        <label>${esc(t("어느 상품 원가인가(선택)"))}<select class="ef-product"><option value="">${esc(t("상품과 무관"))}</option>${((expState.margin && expState.margin.items) || []).map((m) => `<option value="${esc(m.productId)}" ${m.productId === v.productId ? "selected" : ""}>${esc(t(m.name))}</option>`).join("")}</select></label>
         <label class="mini-form-wide">${esc(t("메모"))}<input class="ef-memo" value="${esc(v.memo || "")}"></label>
         <div class="mini-form-actions">
           <button type="button" class="btn btn--sm ef-save">${esc(t(isEdit ? "저장" : "등록"))}</button>
@@ -408,9 +408,9 @@
   function costEditorHTML(m, kinds) {
     const rows = m.components.length ? m.components : [{ kind: "body", perQty: 1 }];
     return `<div class="cost-editor mini-form" style="grid-template-columns:1fr">
-      <div class="form-head">${esc(t("{name} 1벌 원가 구성", { name: m.name }))}</div>
+      <div class="form-head">${esc(t("{name} 1벌 원가 구성", { name: t(m.name) }))}</div>
       ${costSources(m).length ? `<div class="cost-copy small"><span class="m-label">${esc(t("다른 상품에서 가져오기"))}</span>
-        <select class="cost-copy-from"><option value="">${esc(t("상품 선택…"))}</option>${costSources(m).map((x) => `<option value="${esc(x.productId)}">${esc(x.name)} · ${esc(t("{n}개 항목", { n: x.components.length }))} · ${esc(expWon(x.unitCost))}</option>`).join("")}</select></div>` : ""}
+        <select class="cost-copy-from"><option value="">${esc(t("상품 선택…"))}</option>${costSources(m).map((x) => `<option value="${esc(x.productId)}">${esc(t(x.name))} · ${esc(t("{n}개 항목", { n: x.components.length }))} · ${esc(expWon(x.unitCost))}</option>`).join("")}</select></div>` : ""}
       <button type="button" class="form-x cost-close" aria-label="${esc(t("닫기"))}" title="${esc(t("닫기"))}">✕</button>
       <div class="exp-grid small" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,1.6fr) auto;color:var(--text-muted)">
         <span>${esc(t("항목"))}</span><span>${esc(t("종류"))}</span><span>${esc(t("금액(원)"))}</span><span>${esc(t("몇 벌 기준"))}</span><span>${esc(t("메모(거래처·조건)"))}</span><span></span>
@@ -437,6 +437,7 @@
   function paintMargin(margin) {
     if (!margin) return;
     expState.margin = margin;
+    registerProductNames((margin.items || []).map((m) => ({ nameKo: m.name, name: m.nameEn })));
     const kinds = margin.kinds || {};
     const tt = margin.totals || {};
     const editable = expEditable();
@@ -456,7 +457,7 @@
         </div>
         ${sorted.map((m) => `<div class="margin-row" data-pid="${esc(m.productId)}">
           <div class="exp-grid" style="grid-template-columns:${COLS};padding:6px 0;border-top:1px solid var(--border)">
-            <span class="m-name">${esc(m.name)}${m.linkedExpenses ? `<div class="m-label">${esc(t("이번 달 연결 지출 {v}", { v: expWon(m.linkedExpenses) }))}</div>` : ""}</span>
+            <span class="m-name">${esc(t(m.name))}${m.linkedExpenses ? `<div class="m-label">${esc(t("이번 달 연결 지출 {v}", { v: expWon(m.linkedExpenses) }))}</div>` : ""}</span>
             <span class="tnum">${m.qty}</span>
             <span class="tnum">${esc(expWon(m.revenue))}</span>
             ${m.components.length
@@ -517,7 +518,7 @@
     const html = src.components.map((c) => costRowHTML(c, expState.margin.kinds || {})).join("");
     if (replace) box.innerHTML = html; else box.insertAdjacentHTML("beforeend", html);
     updateCostSum(editor);
-    toast(t("{name}의 원가 항목 {n}개를 가져왔습니다 — 고친 뒤 '원가 구성 저장'", { name: src.name, n: src.components.length }));
+    toast(t("{name}의 원가 항목 {n}개를 가져왔습니다 — 고친 뒤 '원가 구성 저장'", { name: t(src.name), n: src.components.length }));
   });
   el("exp-margin-sort")?.addEventListener("change", () => paintMargin(expState.margin));
   el("exp-margin")?.addEventListener("input", (e) => {

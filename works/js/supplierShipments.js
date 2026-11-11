@@ -24,7 +24,7 @@
     return `
       <div class="receipt-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">
         ${it.name ? `<span style="color:var(--text-muted);min-width:120px">${esc(t("메일 품목"))}: ${esc(it.name)}</span>` : ""}
-        <select class="receipt-product"><option value="">${esc(t("상품 선택"))}</option>${products.map((x) => `<option value="${esc(x.id)}" ${x.id === it.productId ? "selected" : ""}>${esc(x.nameKo || x.name || x.id)}</option>`).join("")}</select>
+        <select class="receipt-product"><option value="">${esc(t("상품 선택"))}</option>${products.map((x) => `<option value="${esc(x.id)}" ${x.id === it.productId ? "selected" : ""}>${esc(t(x.nameKo || x.name || x.id))}</option>`).join("")}</select>
         <select class="receipt-color">${colors.map((c) => `<option value="${esc(c)}" ${c === it.color ? "selected" : ""}>${esc(t((COLORS[c] && COLORS[c].label) || c))}</option>`).join("")}</select>
         <select class="receipt-size">${sizes.map((z) => `<option value="${esc(z)}" ${z === it.size ? "selected" : ""}>${esc(z)}</option>`).join("")}</select>
         <input type="number" class="receipt-qty" min="1" max="100000" value="${esc(it.qty || 1)}" style="width:80px">
@@ -89,7 +89,7 @@
     return `<div class="supplier-events" id="supplier-events-${esc(s.id)}" hidden style="margin-top:6px;padding-left:10px;border-left:2px solid var(--border)">${s.trackingEvents
       .slice()
       .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
-      .map((e) => `<div class="tnum">${esc(e.at)} · ${esc(e.kind)}${e.where ? ` · ${esc(e.where)}` : ""}</div>`)
+      .map((e) => `<div class="tnum">${esc(e.at)} · ${esc(t(e.kind))}${e.where ? ` · ${esc(e.where)}` : ""}</div>`)
       .join("")}</div>`;
   }
 
@@ -97,7 +97,7 @@
   function receiptItemLabel(it) {
     const p = (supplierState.products || []).find((x) => x.id === it.productId);
     const color = it.color ? t((COLORS[it.color] && COLORS[it.color].label) || it.color) : "";
-    return [it.name || (p && (p.nameKo || p.name)) || it.productId || "", color, it.size || ""].filter(Boolean).join(" ") + ` ×${it.qty}`;
+    return [it.name || (p && t(p.nameKo || p.name)) || it.productId || "", color, it.size || ""].filter(Boolean).join(" ") + ` ×${it.qty}`;
   }
 
   /* 직접 등록·수정 폼(2026-11-11) — AI가 놓친 송장 등록, 잘못 적힌 값 고치기. 상태도 사람이 바꿀 수 있다(재고 반영된 입고는 "입고 취소"로). */
@@ -156,7 +156,7 @@
       : `<span class="tnum">${esc(s.trackingNumber)}</span>`;
     const open = s.status !== "RECEIVED" && s.status !== "CANCELED";
     const lastCheck = s.trackingCheckedAt
-      ? `<div style="color:var(--text-muted);margin-top:2px">${esc(t("마지막 배송조회"))} ${fmtDate(s.trackingCheckedAt)}${s.trackingStatus ? ` · ${esc(s.trackingStatus)}` : ""}${s.trackingError ? ` · <span style="color:var(--danger)">${esc(s.trackingError)}</span>` : ""}</div>`
+      ? `<div style="color:var(--text-muted);margin-top:2px">${esc(t("마지막 배송조회"))} ${fmtDate(s.trackingCheckedAt)}${s.trackingStatus ? ` · ${esc(t(s.trackingStatus))}` : ""}${s.trackingError ? ` · <span style="color:var(--danger)">${esc(s.trackingError)}</span>` : ""}</div>`
       : "";
     return `
       <div data-id="${esc(s.id)}" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)">
@@ -165,7 +165,7 @@
           <b style="margin-left:6px">${esc(s.supplierLabel || s.supplierName)}</b>
           ${s.supplierOrderId ? `<span style="color:var(--text-muted);margin-left:6px" class="tnum">${esc(s.supplierOrderId)}</span>` : ""}
           ${s.itemsSummary ? `<div style="margin-top:2px">${esc(s.itemsSummary)}</div>` : ""}
-          <div style="color:var(--text-muted);margin-top:2px">${esc(carrier)} · ${tracking} · ${fmtDate(s.shippedAt || s.createdAt)}</div>
+          <div style="color:var(--text-muted);margin-top:2px">${esc(t(carrier))} · ${tracking} · ${fmtDate(s.shippedAt || s.createdAt)}</div>
           ${lastCheck}
           ${s.receiptItems && s.receiptItems.length ? `<div style="color:var(--text-muted);margin-top:2px">${esc(t("입고 품목"))}: ${s.receiptItems.map((it) => esc(receiptItemLabel(it))).join(", ")}</div>` : ""}
           ${supplierEventsHTML(s)}

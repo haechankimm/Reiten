@@ -63,7 +63,7 @@
       <button type="button" class="prow ${o.no === selectedOrderNo ? "is-selected" : ""}" data-no="${esc(o.no)}">
         <span>
           <span class="prow-id">${esc(o.no)}</span>
-          <div class="prow-sub">${esc(o.customer.name)} · ${o.items.map((it) => `${esc(it.name)} × ${it.qty}`).join(", ")}</div>
+          <div class="prow-sub">${esc(o.customer.name)} · ${o.items.map((it) => `${esc(t(it.name))} × ${it.qty}`).join(", ")}</div>
         </span>
         <span style="text-align:right">
           <div class="prow-amount tnum">${money(o.total)}</div>
@@ -102,7 +102,7 @@
       </div>
       ${orderVirtualAccountHTML(o)}
       <div class="detail-items">
-        ${o.items.map((it) => `<div class="detail-item"><span>${esc(it.name)}${it.options ? ` (${esc(it.options)})` : ""} × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
+        ${o.items.map((it) => `<div class="detail-item"><span>${esc(t(it.name))}${it.options ? ` (${esc(it.options)})` : ""} × ${it.qty}</span><span class="tnum">${money(it.sum)}</span></div>`).join("")}
         <div class="detail-total"><span>${esc(t("총 결제금액"))}</span><span class="tnum">${money(o.total)}</span></div>
         ${o.refundedAmount ? `<div class="detail-total" style="color:var(--danger)"><span>${esc(t("환불된 금액"))}</span><span class="tnum">−${money(o.refundedAmount)}</span></div>` : ""}
       </div>
@@ -279,7 +279,7 @@
   async function paintAdminOrders(loadMore = false, { keepSelection = false } = {}) {
     ordersState.page = loadMore ? ordersState.page + 1 : 1;
     const seq = (ordersState.seq = (ordersState.seq || 0) + 1); // 마지막 요청만 화면에 반영(검색 직후 탭 첫 로딩과 겹칠 때, 2026-11-11)
-    const result = await adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`);
+    const [result] = await Promise.all([adminFetch(`/api/admin/orders?${ordersQueryParams().toString()}`), ensureProductNames()]);
     if (!result || seq !== ordersState.seq) return;
     ordersState.total = result.total;
     ordersState.items = loadMore ? ordersState.items.concat(result.items) : result.items;

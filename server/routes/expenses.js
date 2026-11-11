@@ -340,7 +340,7 @@ router.get("/api/admin/expenses/margin", requireAdmin, async (req, res) => {
   const mb = ex.monthBounds(monthKey);
   const [{ data: orders }, { data: products, error: pErr }, costs, { data: linked }] = await Promise.all([
     supabaseAdmin.from("orders").select("items, status").gte("created_at", `${mb.first}T00:00:00+09:00`).lt("created_at", `${mb.next}T00:00:00+09:00`),
-    supabaseAdmin.from("products").select("id, name_ko, unit_cost, active"),
+    supabaseAdmin.from("products").select("id, name, name_ko, unit_cost, active"),
     loadCostItems(),
     supabaseAdmin.from(TABLE).select("product_id, total_amount, status").gte("issued_on", mb.first).lt("issued_on", mb.next).not("product_id", "is", null),
   ]);
@@ -369,7 +369,7 @@ router.get("/api/admin/expenses/margin", requireAdmin, async (req, res) => {
     const unitCost = components.length ? Math.round(components.reduce((n, c) => n + perPiece({ amount: c.amount, per_qty: c.perQty }), 0)) : p.unit_cost ?? null;
     const cost = unitCost == null ? null : unitCost * a.qty;
     return {
-      productId: p.id, name: p.name_ko || p.id, qty: a.qty, revenue: a.revenue, unitCost, cost, components,
+      productId: p.id, name: p.name_ko || p.id, nameEn: p.name || null, qty: a.qty, revenue: a.revenue, unitCost, cost, components,
       margin: cost == null ? null : a.revenue - cost, marginRate: cost == null || !a.revenue ? null : (a.revenue - cost) / a.revenue,
       linkedExpenses: linkedBy.get(p.id) || 0,
     };

@@ -1624,3 +1624,35 @@
   ["지금 보고 있는 컬러입니다", "Das ist die aktuell gewählte Farbe"],
   ["{n}개 사이즈 수량을 채웠습니다 — 확인 후 '변경사항 저장'을 누르세요", "Mengen für {n} Größen eingetragen — prüfen und 'Änderungen speichern' drücken"],
 ].forEach(([k, de]) => { I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* 2026-11-11 (10): 택배 배송 단계(택배사 조회 화면·스마트택배에서 오는 한국어 상태) */
+[
+  ["집화처리", "Abgeholt"],
+  ["집화완료", "Abgeholt"],
+  ["상품인수", "Sendung übernommen"],
+  ["간선상차", "Im Hauptlauf verladen"],
+  ["간선하차", "Im Hauptlauf entladen"],
+  ["상품이동중", "Unterwegs"],
+  ["터미널입고", "Im Depot eingegangen"],
+  ["터미널도착", "Im Depot angekommen"],
+  ["배송출발", "In Zustellung"],
+  ["배달출발", "In Zustellung"],
+  ["배달준비", "Zustellung wird vorbereitet"],
+  ["배송중", "Unterwegs"],
+  ["배송완료", "Zugestellt"],
+  ["배달완료", "Zugestellt"],
+  ["미배달", "Nicht zugestellt"],
+  ["일양로지스", "Ilyang Logis"],
+  ["합동택배", "Hapdong Express"],
+  ["CU 편의점택배", "CU Convenience-Store-Paket"],
+  ["GS Postbox 택배", "GS Postbox Paket"],
+  ["경동택배", "Kyungdong Express"],
+  ["대신택배", "Daesin Express"],
+].forEach(([k, de]) => { if (!(I18N[k] && I18N[k].de)) I18N[k] = Object.assign({}, I18N[k], { de }); });
+
+/* 2026-11-11 (11): 사용 통계 한 줄 막대 */
+[
+  ["막대에 마우스를 올리면 최근 사용 시각이 보입니다. 안 연 탭은 아래에 모아 둡니다.", "Mit der Maus über einen Balken fahren zeigt die letzte Nutzung. Nicht geöffnete Tabs stehen unten."],
+  ["이 기간에 안 연 탭", "In diesem Zeitraum nicht geöffnet"],
+  ["AI 승인함", "KI-Freigaben"],
+].forEach(([k, de]) => { if (!(I18N[k] && I18N[k].de)) I18N[k] = Object.assign({}, I18N[k], { de }); });
