@@ -125,6 +125,9 @@ app.use(
           "https://res.cloudinary.com",
           "https://www.google-analytics.com",
           "https://*.google-analytics.com",
+          // GA4(gtag.js)가 googletagmanager.com/td로 이미지 비콘을 보낸다 — 빠져 있어 막히던 것(2026-11-11, 구글 권장 CSP 목록)
+          "https://www.googletagmanager.com",
+          "https://*.googletagmanager.com",
           "https://*.channel.io",
           "https://*.kakaocdn.net",
         ],
@@ -135,6 +138,8 @@ app.use(
           "https://www.google-analytics.com",
           "https://*.google-analytics.com",
           "https://*.analytics.google.com",
+          "https://www.googletagmanager.com",
+          "https://*.googletagmanager.com",
           "https://*.channel.io",
           "wss://*.channel.io",
           "https://*.portone.io",
