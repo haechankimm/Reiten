@@ -113,6 +113,11 @@ test("묶어서 승인 — 승인자 신분으로 기존 관리자 API 호출, �
 
 test("권한 — 주문 '보기'만 있는 직원은 입금 확인을 승인할 수 없고, 거절은 기록된다", async () => {
   const a = (await propose({ type: "deposit_confirm", params: { orderNo: "R2", amount: 89000 } })).body.action.id;
+  // 승인할 수 없는 종류는 목록에 아예 안 나온다("권한 없음" 표시 대신 미표출)
+  const listed = await request(app()).get("/api/admin/agent-actions").set(STAFF);
+  assert.strictEqual(listed.body.items.length, 0);
+  assert.strictEqual(listed.body.policy, null);
+  assert.strictEqual((await request(app()).get("/api/admin/agent-actions").set(MASTER)).body.items.length, 1);
   const staff = await request(app()).post("/api/admin/agent-actions/decide").set(STAFF).send({ ids: [a], decision: "approve" });
   assert.match(staff.body.results[0].error, /권한/);
   assert.strictEqual(calls.length, 0);

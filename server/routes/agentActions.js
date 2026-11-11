@@ -12,7 +12,8 @@ const { logAdminAction } = require("../lib/adminLog");
 const { isMissingSchemaError } = require("../lib/pgErrors");
 const { botLimiter, botWriteLimiter } = require("../lib/rateLimiters");
 const { requireBotKey, BOT_ACTOR_ID } = require("../lib/botAuth");
-const { hasAreaPermission } = require("../lib/adminGuard");
+const { hasAreaPermission, getStoredPermissions, resolvePermissions } = require("../lib/adminGuard");
+const { MASTER_ADMIN_EMAIL } = require("../lib/auth");
 const { ACTIONS, loadPolicy, normalizePolicy, catalog } = require("../lib/agentActions");
 const { kstDateKey } = require("../lib/kst");
 
@@ -42,15 +43,43 @@ async function expireStale(db = supabaseAdmin) {
   await db.from(TABLE).update({ status: "EXPIRED" }).eq("status", "PENDING").lt("expires_at", new Date().toISOString());
 }
 
+/* 이 관리자가 승인할 수 있는 작업 종류(그 영역 "수정" 권한) — 승인 못 하는 종류는 목록·알림·푸시에서 아예 빼서
+   "권한이 없습니다" 같은 표시 없이 안 보이게 한다(2026-11-11 사용자 요청). */
+async function decidableTypes(req) {
+  const out = [];
+  for (const [k, a] of Object.entries(ACTIONS)) if (await hasAreaPermission(req, a.area, "edit")) out.push(k);
+  return out;
+}
+
+/* 푸시 받을 관리자 — 대기 중인 종류 중 하나라도 승인할 수 있는 사람만 */
+async function pushRecipients(pendingTypes) {
+  const areas = [...new Set(pendingTypes.map((k) => ACTIONS[k] && ACTIONS[k].area).filter(Boolean))];
+  const { data: subs } = await supabaseAdmin.from("push_subscriptions").select("admin_id");
+  const ids = [...new Set((subs || []).map((x) => x.admin_id).filter(Boolean))];
+  const allowed = [];
+  for (const id of ids) {
+    try {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(id);
+      if (((data && data.user && data.user.email) || "").toLowerCase() === MASTER_ADMIN_EMAIL) { allowed.push(id); continue; }
+      const perms = resolvePermissions(await getStoredPermissions(id), false);
+      if (areas.some((a) => perms[a] === "edit")) allowed.push(id);
+    } catch (e) { /* 확인 못 하면 보내지 않음 */ }
+  }
+  return allowed;
+}
+
 /* 새 승인 요청 폰 푸시 — 5분에 한 번까지(여러 건이 몰려도 알림 폭탄이 되지 않게) */
 let lastPushAt = 0;
 async function notifyPending() {
   if (Date.now() - lastPushAt < 5 * 60 * 1000) return;
   lastPushAt = Date.now();
-  const { count } = await supabaseAdmin.from(TABLE).select("id", { count: "exact", head: true }).eq("status", "PENDING");
   try {
+    const { data: pend } = await supabaseAdmin.from(TABLE).select("action_type").eq("status", "PENDING");
+    const types = (pend || []).map((r) => r.action_type);
+    const adminIds = await pushRecipients(types);
+    if (!adminIds.length) return;
     const { sendPushToAdmins } = require("../lib/push");
-    await sendPushToAdmins({ title: "AI 승인 요청", body: `실시간 에이전트 AI가 승인을 기다리는 작업 ${count || 1}건`, tab: "agent" });
+    await sendPushToAdmins({ title: "AI 승인 요청", body: `실시간 에이전트 AI가 승인을 기다리는 작업 ${types.length || 1}건`, tab: "agent" }, { adminIds });
   } catch (e) { /* 푸시 실패는 무시 */ }
 }
 
@@ -154,10 +183,11 @@ router.get("/api/admin/agent-actions", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "AI 승인함을 불러오지 못했습니다." });
   }
   const p = await loadPolicy();
-  // 승인 버튼은 그 영역 수정 권한이 있을 때만(서버도 다시 확인)
-  const canDecide = {};
-  for (const [k, a] of Object.entries(ACTIONS)) canDecide[k] = await hasAreaPermission(req, a.area, "edit");
-  res.json({ items: (data || []).map(toApi), catalog: catalog(), policy: p.policy || null, canDecide, isMaster: !!req.isMasterAdmin });
+  // 승인할 수 없는 종류는 목록에서 아예 뺀다(서버가 결정 때도 다시 확인)
+  const types = await decidableTypes(req);
+  const canDecide = Object.fromEntries(Object.keys(ACTIONS).map((k) => [k, types.includes(k)]));
+  const items = (data || []).filter((r) => types.includes(r.action_type)).map(toApi);
+  res.json({ items, catalog: catalog(), policy: req.isMasterAdmin ? p.policy || null : null, canDecide, isMaster: !!req.isMasterAdmin });
 });
 
 /* 승인·거절(여러 건 한 번에) — { ids:[…], decision:"approve"|"reject", note? } */
