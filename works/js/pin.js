@@ -204,12 +204,12 @@
     { tab: "orders", panel: "admin-orders", hide: ["#ord-bulk-toggle", "#ord-bulk-input", "#ord-bulk-submit", "#od-save"], disable: ["#od-status", "#od-courier", "#od-tracking", "#od-assignee", "#od-internal-note", "#od-cancel-reason"] },
     { tab: "returns", panel: "admin-returns", hide: [".admin-return-save", ".admin-return-restock-lines", ".admin-return-reship", ".admin-return-refund"], disable: [".admin-return-status", ".admin-return-assignee", ".admin-return-note"] },
     // 공급처 입고·배송(2026-11-11): 직접 등록·수정·입고 처리·입고 취소·배송조회 버튼도 숨긴다
-    { tab: "inventory", panel: "admin-inventory", hide: ["#inv-save-btn", ".inv-bulk-qty-apply", ".inv-bulk-qty-input", "#supplier-shipments-new", ".supplier-edit", ".supplier-receive", ".supplier-receive-undo", ".supplier-track"], disable: [".admin-inv-qty"] },
+    { tab: "inventory", panel: "admin-inventory", hide: ["#inv-save-btn", ".inv-bulk-qty-apply", ".inv-bulk-qty-input", ".inv-copy-from", "#supplier-shipments-new", ".supplier-edit", ".supplier-receive", ".supplier-receive-undo", ".supplier-track"], disable: [".admin-inv-qty"] },
     { tab: "qna", panel: "admin-qna", hide: [".admin-qna-submit", ".admin-qna-save-meta", ".admin-qna-template-pick", ".admin-qna-clear-draft"], disable: [".admin-qna-answer", ".admin-qna-note", ".admin-qna-assignee"] },
     { tab: "paymentlog", panel: null, hide: [".notif-error-resolve"] },
     { tab: "reviews", panel: "admin-reviews", hide: ["#reviews-bulk-approve", "#reviews-bulk-hide", "#reviews-select-all", ".review-select", ".admin-review-delete", ".admin-review-toggle"] },
     { tab: "coupons", panel: "admin-coupons", hidePanel: ["#coupon-form"], hide: [".cp-delete", ".cp-edit", ".cp-toggle"] },
-    { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".grid-card-select"] },
+    { tab: "products", panel: "admin-products", hidePanel: ["#product-form", "#products-bulk-bar"], hide: [".admin-product-delete", ".admin-product-edit", ".admin-product-duplicate", ".grid-card-select"] },
     // 매입 장부(2026-11-11): 직접 입력·수정·확인·제외 버튼
     { tab: "dashboard", panel: null, hide: ["#settle-send", "#briefing-test"] },
     // 지출·정산(2026-11-11): 보기 전용이면 입력·수정·정산·설정 버튼을 숨긴다(내보내기·요약 복사는 그대로)
