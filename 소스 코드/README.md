@@ -527,6 +527,7 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 | `050_pickle_ops.sql` | 피클 업무 확장 — `supplier_shipments.receipt_items`·`received_at`·`tracking_source`, `inventory_log` 사유 `supplier_receipt` 추가(027 목록 + 1), 매입 장부 `supplier_invoices`(RLS), `qna.ai_draft`·`ai_draft_at` | ✅ 실행함(2026-11-11 사용자) |
 | `051_receipt_undo.sql` | 재고 이력 사유 `supplier_receipt_undo`(입고 취소) + 운영 점검용 `reiten_schema_version()`(=51) | ⚠️ 미실행(2026-11-11 신규) — 실행 전에도 입고 취소는 되지만 재고 이력 한 줄이 남지 않음 |
 | `052_expense_ledger.sql` | 지출 장부(매입 장부 확장 — `supplier_invoices`에 분류·결제수단·카드 뒤 4자리·누구 돈·공동 부담·증빙·메모·정산·정기·가져오기 칸), 동업자 `expense_partners`(기본 대표·동업자 50:50), 정산 기록 `expense_settlements`, 정기 지출 `expense_recurring`, 예산 `expense_budgets`, `products.unit_cost`, `reiten_schema_version()`=52 | ⚠️ 미실행(2026-11-11 신규) |
+| `053_product_cost_items.sql` | 상품 1벌 원가 구성 `product_cost_items`(항목·종류·금액·몇 벌 기준·메모), `reiten_schema_version()`=53 | ⚠️ 미실행(2026-11-11 신규) |
 | `046_performance_indexes.sql` | 조회 색인: `orders(created_at)`, `orders(status, created_at)`, `pending_payments(created_at) where reminder_sent_at is null` | ✅ 실행함(2026-11-09 사용자) |
 | `044_product_translations.sql` | 상품 영어·일본어 이름·설명 `products.translations`(jsonb) + 색상 영어·일본어 이름 `product_colors.label_en`·`label_ja`(2026-10-28~29) | ✅ **실행함(2026-11-09 사용자, 점검 확인 전)** — 실행 전엔 번역 칸만 빼고 저장(`translationsSkipped`), 운영 점검에 경고 |
 
@@ -632,6 +633,16 @@ AI 비서 에이전트 **피클** 연동 완료(2026-11-10): Render `REITEN_BOT_
 > 전체 변경 내역은 `git log`가 정확합니다. 여기는 세션 인수인계용 요약이라 오래된 항목은
 > 수시로 압축·삭제해도 됩니다 — 지금은 2026-08-14에 한 번 압축했습니다(원래 53개 항목·
 > 265줄 → 아래로 축약, 원문은 git 히스토리의 이 커밋 이전 버전에서 계속 볼 수 있음).
+
+**2026-11-11 (5) — 펼침 메뉴 직관성·입력칸 대비·상품 원가 구성(마이그레이션 053).**
+- **펼침 버튼 공통**(`core.js` `setDisclosure`): 누르면 아래에 창이 열리는 버튼은 열리면 "… 닫기 ▴" + 강조 테두리(`.btn.is-open`)·`aria-expanded`, 닫히면 원래 글자(▾).
+  펼친 창 오른쪽 위 ✕(`.form-x`)와 제목(`.form-head`). 적용: 지출 입력·CSV 가져오기·예산 설정·정기 지출 추가·지출 수정·원가 구성·공급처 직접 등록/수정/입고 처리·주문 일괄 처리,
+  내보내기 메뉴는 ▾/▴(`aria-haspopup`). **예산 설정 닫을 때 지연**: 탭 전체를 다시 불러오던 것 → 받아 둔 통계(`expState.lastStats`)로 바로 그림.
+- **입력칸 대비**(works.css `--input-bg/--input-border`): 라이트 흰 칸+진한 테두리, 다크 패널보다 어두운 칸+보이는 테두리, 포커스 강조. `.shell` 안의 모든 입력칸에 적용.
+- **상품 원가 구성**(053 `product_cost_items`): 상품마다 항목(본체·부자재·인쇄·봉제·포장·배송·기타) × "금액 ÷ 몇 벌 기준" = 1벌 원가, 합계를 `products.unit_cost`에 저장.
+  `PUT /api/admin/expenses/cost-items/:productId`(통째로 교체, 이전 값 로그·실패 시 복구). 마진 응답에 구성·합계(판매액·원가·마진·원가 없는 상품 수)·"이번 달 연결 지출"(지출의 `product_id`).
+  지출 입력에 "어느 상품 원가인가(선택)". 상품 목록은 상품 탭 상품이 자동으로 나온다(재고와 무관), 판매는 주문에서.
+- 테스트 324건. `pickle-handoff.md` 개정(업무 4 `productId`).
 
 **2026-11-11 (4) — 지출 장부·동업자 정산(마이그레이션 052, 사용자 요청: 1~3단계 전부).**
 - 사용자 결정: 동업자 2명이 지출을 **즉시 기록하고 나중에 50:50 정산**, 세무사 없음 → **업계 통상 기준**, 지금은 개인 카드(곧 사업자 카드 — 체크카드 보유, 신용카드 예정), **두 사람 모두 열람**.

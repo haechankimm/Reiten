@@ -356,13 +356,18 @@
   }
 
   function wireExportMenu(btnId, menuId, onFormat) {
+    el(btnId).setAttribute("aria-haspopup", "menu"); // ▾ 표시(works.css) — 눌러서 펼치는 메뉴임을 알 수 있게
+    el(btnId).setAttribute("aria-expanded", "false");
     el(btnId).addEventListener("click", (e) => {
       e.stopPropagation();
       el(menuId).hidden = !el(menuId).hidden;
+      el(btnId).setAttribute("aria-expanded", String(!el(menuId).hidden));
+      el(btnId).classList.toggle("is-open", !el(menuId).hidden);
     });
     el(menuId).querySelectorAll("[data-format]").forEach((b) =>
       b.addEventListener("click", () => {
         el(menuId).hidden = true;
+        el(btnId).classList.remove("is-open");
         trackUsage(`feature:export:${btnId}`);
         onFormat(b.dataset.format);
       })
@@ -370,6 +375,8 @@
     document.addEventListener("click", (e) => {
       if (!el(menuId).hidden && !el(menuId).contains(e.target) && e.target !== el(btnId)) {
         el(menuId).hidden = true;
+        el(btnId).classList.remove("is-open");
+        el(btnId).setAttribute("aria-expanded", "false");
       }
     });
   }
@@ -388,6 +395,7 @@
      여러 건을 한꺼번에 취소·환불하는 사고를 막기 위해 일부러 뺌 — 취소는 계속 건별로만). */
   el("ord-bulk-toggle").addEventListener("click", () => {
     el("ord-bulk-panel").hidden = !el("ord-bulk-panel").hidden;
+    setDisclosure(el("ord-bulk-toggle"), !el("ord-bulk-panel").hidden); // 펼침 상태를 버튼에 표시(2026-11-11)
   });
 
   function parseBulkOrderLines(text) {
