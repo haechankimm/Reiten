@@ -684,3 +684,13 @@ details > summary { cursor: pointer; user-select: none; }
 details > summary::marker { color: var(--text-muted); }
 .btn[aria-haspopup="menu"]::after { content: " ▾"; }
 .btn[aria-haspopup="menu"][aria-expanded="true"]::after { content: " ▴"; }
+
+/* 목록 한 줄(내용 + 오른쪽 버튼) — CS 템플릿 등(2026-11-11) */
+.list-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.list-row:first-child { border-top: 0; }
+.list-row-main { flex: 1; min-width: 0; }
+.list-row-preview { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.btn { white-space: nowrap; }
+/* 긴 목록 접기·검색 */
+.compact-more { margin-top: 8px; }
+.compact-search { width: 100%; max-width: 320px; height: 34px; padding: 0 10px; margin: 4px 0 8px; border-radius: 8px; font-size: 12.5px; box-sizing: border-box; }

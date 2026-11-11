@@ -67,7 +67,7 @@ class FakeQuery {
   /* 배송추적·구매확정 크론(lib/purchaseConfirm.js, 2026-10-02)이 쓰는 비교 필터 — is(null)·neq·lt·lte·gt·gte.
      ISO 날짜 문자열은 사전순 비교가 시간순과 같아 그대로 비교한다. */
   is(col, val) { return this._cmp(col, "is", val); }
-  not(col, op, val) { return this._cmp(col, op === "is" ? "notis" : "neq", val); }
+  not(col, op, val) { return this._cmp(col, op === "is" ? "notis" : op === "like" ? "notlike" : "neq", val); }
   neq(col, val) { return this._cmp(col, "neq", val); }
   lt(col, val) { return this._cmp(col, "lt", val); }
   lte(col, val) { return this._cmp(col, "lte", val); }
@@ -138,6 +138,10 @@ class FakeQuery {
           if (op === "is") return val === null ? v === null || v === undefined : v === val;
           if (op === "notis") return val === null ? !(v === null || v === undefined) : v !== val;
           if (op === "neq") return v !== val;
+          if (op === "notlike") {
+            const re = new RegExp("^" + String(val).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");
+            return !re.test(String(v ?? ""));
+          }
           if (v === null || v === undefined) return false;
           if (op === "lt") return v < val;
           if (op === "lte") return v <= val;

@@ -64,6 +64,72 @@
     btn.setAttribute("aria-expanded", String(!!open));
   }
 
+  /* ---------- 긴 목록 접기(2026-11-11) ----------
+     목록 요소에 data-compact="5"만 붙이면: 처음 5개만 보이고 "n개 더 보기 ▾ / 접기 ▴" 버튼이 붙는다.
+     data-compact-search="8" — 항목이 8개를 넘으면 위에 검색칸(이름·내용으로 거르기)도 붙는다.
+     data-compact-item=".margin-row" — 항목 선택자(기본은 바로 아래 자식 전부, 입력 폼(.mini-form)은 항상 보임).
+     목록을 다시 그려도(innerHTML) 자동으로 다시 적용된다(MutationObserver). 펼침 상태는 그 목록에서 유지. */
+  function applyCompact(box) {
+    const limit = Number(box.dataset.compact) || 5;
+    const sel = box.dataset.compactItem;
+    const items = [...box.children].filter((c) => !c.classList.contains("compact-more") && !c.classList.contains("mini-form") && !c.querySelector(":scope > .mini-form") && (!sel || c.matches(sel)));
+    const q = (box.__compactQuery || "").trim().toLowerCase();
+    const matched = items.filter((c) => !q || c.textContent.toLowerCase().includes(q));
+    const expanded = box.dataset.compactOpen === "1" || !!q;
+    items.forEach((c) => { c.hidden = !matched.includes(c); });
+    matched.forEach((c, i) => { if (!expanded && i >= limit) c.hidden = true; });
+    let more = box.querySelector(":scope > .compact-more");
+    const hiddenCount = Math.max(0, matched.length - limit);
+    if (!hiddenCount || q) { if (more) more.remove(); }
+    else {
+      if (!more) {
+        more = document.createElement("button");
+        more.type = "button";
+        more.className = "btn btn--sm btn--ghost compact-more";
+        more.addEventListener("click", () => {
+          box.dataset.compactOpen = box.dataset.compactOpen === "1" ? "0" : "1";
+          applyCompact(box);
+          if (box.dataset.compactOpen !== "1") box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      }
+      box.appendChild(more); // 항상 맨 아래
+      more.textContent = expanded ? `${t("접기")} ▴` : `${t("{n}개 더 보기", { n: hiddenCount })} ▾`;
+      more.setAttribute("aria-expanded", String(expanded));
+    }
+    // 검색칸
+    const searchAt = Number(box.dataset.compactSearch) || 0;
+    let search = box.previousElementSibling && box.previousElementSibling.classList.contains("compact-search") ? box.previousElementSibling : null;
+    if (searchAt && items.length > searchAt) {
+      if (!search) {
+        search = document.createElement("input");
+        search.type = "search";
+        search.className = "compact-search";
+        search.placeholder = t("목록에서 찾기");
+        search.addEventListener("input", () => { box.__compactQuery = search.value; applyCompact(box); });
+        box.parentNode.insertBefore(search, box);
+      }
+    } else if (search && !q) search.remove();
+  }
+  const compactObserver = new MutationObserver((muts) => {
+    const boxes = new Set();
+    muts.forEach((m) => { const b = m.target.closest && m.target.closest("[data-compact]"); if (b) boxes.add(b); });
+    boxes.forEach((b) => {
+      if (b.__compactBusy) return;
+      b.__compactBusy = true;
+      try { applyCompact(b); } finally { setTimeout(() => { b.__compactBusy = false; }, 0); }
+    });
+  });
+  function initCompactLists(root = document) {
+    root.querySelectorAll("[data-compact]").forEach((b) => {
+      if (b.__compactWatched) return;
+      b.__compactWatched = true;
+      compactObserver.observe(b, { childList: true });
+      applyCompact(b);
+    });
+  }
+
+  initCompactLists();
+
   /* 라이트/다크는 기본적으로 OS 설정을 따르고, 한 번 수동으로 바꾸면 그 이후로는
      기기와 무관하게 그 선택을 기억한다(로컬에만 저장, 서버에는 안 감). */
   const savedTheme = localStorage.getItem("works_theme");
