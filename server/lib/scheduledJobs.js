@@ -12,7 +12,7 @@ const { reversePointsForOrder } = require("./loyaltyPoints");
 const portone = require("./portone");
 const { kstMonthRangeISO } = require("./kst");
 const { restoreItemsFromOrder, findOutOfStockSinceFromLogs } = require("./inventory");
-const { logInventoryChange, logSystemError } = require("./adminLog");
+const { logInventoryChange, logSystemError, pruneBotReadLogs } = require("./adminLog");
 const { remindAbandonedCarts } = require("./abandonedCart");
 const { sendReviewRequests } = require("./reviewRequest");
 const { isMissingColumnError } = require("./pgErrors");
@@ -331,6 +331,11 @@ scheduleExclusive("briefing", "57 8 * * *", () => {
   sendMorningBriefing().catch((err) => console.error("[briefing] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
+/* 캘린더 일정 알림 — 매일 09:00(KST), 오늘·내일 시작하는 일정을 협업 권한이 있는 관리자 폰으로(2026-11-11) */
+scheduleExclusive("calendar-reminder", "0 9 * * *", () => {
+  require("./collabPush").sendCalendarReminders().catch((err) => console.error("[calendar-push] 실행 실패:", err.message));
+}, { timezone: "Asia/Seoul" });
+
 scheduleExclusive("settlement", "0 9 1 * *", () => {
   sendMonthlySettlement().catch((err) => console.error("[settlement] 실행 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
@@ -341,6 +346,11 @@ scheduleExclusive("rate-limit-cleanup", "50 4 * * *", async () => {
   if (!sharedEnabled()) return;
   const { error } = await supabaseAdmin.from("rate_limits").delete().lt("reset_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
   if (error) console.error("[rate-limit] 지난 카운터 정리 실패:", error.message);
+}, { timezone: "Asia/Seoul" });
+
+/* 활동 로그 정리 — 매일 04:55(KST), AI "조회만 한" 기록 30일 지난 것(lib/adminLog.js pruneBotReadLogs, 2026-11-11) */
+scheduleExclusive("audit-log-cleanup", "55 4 * * *", () => {
+  pruneBotReadLogs().catch((err) => console.error("[audit-log] 정리 실패:", err.message));
 }, { timezone: "Asia/Seoul" });
 
 module.exports = { cancelStalePendingOrders, closeExpiredVirtualAccounts, checkRestockNeeded, sendMonthlySettlement };

@@ -15,6 +15,9 @@ router.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
   /* 직원 권한·PIN·관리자 계정 관리 기록은 마스터만 본다(2026-11-11) — 직원에게 "활동 로그" 권한을 줘도
      누가 누구의 권한을 바꿨는지·PIN 초기화·관리자 초대/해제는 보이지 않게. 화면이 아니라 서버에서 거른다. */
   if (!req.isMasterAdmin) query = query.not("action", "like", "staff.%").not("action", "like", "admin.%");
+  /* AI(피클)가 2시간마다 남기는 "조회만 한" 기록(bot.*_read)은 기본 화면에서 뺀다(2026-11-11 — 사람이 한 일이 묻혔음).
+     Works의 "AI 조회 기록 보기"를 켜면 hideBotReads=0으로 다시 보인다. */
+  if (req.query.hideBotReads === "1") query = query.not("action", "like", "bot.%_read");
   if (adminEmail) query = query.ilike("admin_email", `%${adminEmail}%`);
   if (action) query = query.eq("action", action);
   /* 주문 상세 화면의 "변경 이력" 타임라인용 — targetType+targetId(예: order/R260830-000003)로

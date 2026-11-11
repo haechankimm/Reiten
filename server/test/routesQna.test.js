@@ -160,3 +160,14 @@ test("POST /api/qna — 비회원 비밀글은 이메일 필수, 이메일은 �
   const admin = await request(app).get("/api/admin/qna").set("Authorization", `Bearer ${TOKEN}`);
   assert.strictEqual(admin.body.items[0].email, "guest@example.com", "관리자 화면에는 연락 이메일이 보인다");
 });
+
+test("CS 템플릿 — 글자 그대로 저장된 \\n은 진짜 줄바꿈으로 바꿔 보낸다", async () => {
+  const app = buildApp();
+  const created = await request(app)
+    .post("/api/admin/qna-templates")
+    .set("Authorization", `Bearer ${TOKEN}`)
+    .send({ label: "줄바꿈", body: "안녕하세요.\\n\\n감사합니다." });
+  assert.strictEqual(created.body.body, "안녕하세요.\n\n감사합니다.");
+  const listed = await request(app).get("/api/admin/qna-templates").set("Authorization", `Bearer ${TOKEN}`);
+  assert.ok(listed.body.items.some((t) => t.body === "안녕하세요.\n\n감사합니다."));
+});

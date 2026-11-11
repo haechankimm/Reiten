@@ -90,6 +90,7 @@
     if (!rows || !productsRes) return;
     // 상품 탭 권한이 없는 직원에게는 바로가기를 숨긴다(pin.js canView).
     if (el("inv-go-products")) el("inv-go-products").hidden = !!adminMe && !canView("products");
+    el("admin-inventory").classList.toggle("can-edit-products", !!adminMe && canEdit("products"));
 
     const qtyByProduct = new Map();
     rows.forEach((r) => {
@@ -417,6 +418,13 @@
   wireExportMenu("inv-export", "inv-export-menu", downloadInventoryExport);
   // 재고 탭은 수량만 다룬다 — 상품 자체의 등록·수정·삭제는 "상품" 탭이 맡아서 바로가기만 둔다.
   el("inv-go-products")?.addEventListener("click", () => goToTab("products"));
+  /* 재고 카드의 사진·상품명을 누르면 상품 탭의 그 상품 수정 화면으로(2026-11-11) — 수정 권한이 있을 때만 */
+  el("admin-inventory")?.addEventListener("click", (e) => {
+    const hit = e.target.closest(".inv-card-thumb, .inv-card-name b");
+    if (!hit || !canEdit("products")) return;
+    const card = hit.closest(".inv-card[data-product]");
+    if (card && typeof openProductEditor === "function") openProductEditor(card.dataset.product);
+  });
 
 
   /* 저장 안 한 재고 수정이 있는지(2026-11-11) — 탭을 다시 열 때 새로 고침을 건너뛰고, 창을 닫거나 새로 고칠 때 경고한다.

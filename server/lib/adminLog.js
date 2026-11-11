@@ -118,4 +118,14 @@ function logPaymentAttempt({ paymentId, orderNo, status, amount, method, reason 
     });
 }
 
-module.exports = { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL };
+/* 활동 로그 정리 — AI가 "조회만 한" 기록(bot.*_read)은 30일 지나면 지운다(2026-11-11, 매일 04:55 크론).
+   하루 수십 줄씩 쌓여 화면·백업만 무겁게 하고 나중에 볼 일이 없다. 사람이 한 일·AI가 무언가를 쓴 기록은 그대로 둔다. */
+const BOT_READ_LOG_KEEP_DAYS = 30;
+async function pruneBotReadLogs(now = new Date()) {
+  const cutoff = new Date(now.getTime() - BOT_READ_LOG_KEEP_DAYS * 24 * 3600 * 1000).toISOString();
+  const { error } = await supabaseAdmin.from("admin_audit_log").delete().like("action", "bot.%_read").lt("at", cutoff);
+  if (error) console.error("[audit-log] 지난 AI 조회 기록 정리 실패:", error.message);
+  return !error;
+}
+
+module.exports = { logAdminAction, logInventoryChange, logSystemError, logPaymentAttempt, SYSTEM_ERROR_LABEL, pruneBotReadLogs };
