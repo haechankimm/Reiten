@@ -83,6 +83,8 @@
       r.reasons.includes("protector_up") ? t("보호대 위에 입는 걸 감안해 한 치수 크게 골랐어요.") : "",
       r.reasons.includes("fit_up") ? t("넉넉한 핏을 원하셔서 한 치수 크게 봤어요.") : "",
       r.reasons.includes("fit_down") ? t("딱 맞는 핏을 원하셔서 한 치수 작게 봤어요.") : "",
+      r.reasons.includes("runs_small") ? t("이 상품은 작다는 교환·반품이 많아 한 치수 크게 봤어요.") : "",
+      r.reasons.includes("runs_large") ? t("이 상품은 크다는 교환·반품이 많아 한 치수 작게 봤어요.") : "",
       r.reasons.includes("nearest_available") ? t("이 상품에 있는 사이즈 중 가장 가까운 사이즈예요.") : "",
     ].filter(Boolean).join(" ") : "";
     const recOut = r && !r.error && (p.soldOut.includes(r.recommended) || outSizesForColor(state.color).includes(r.recommended));
@@ -127,7 +129,7 @@
          담을 수 없었다. 그 컬러가 전부 품절이면 전체 사이즈로 추천하고, 아래 "이 사이즈가 품절이에요" 안내가 뜬다(2026-10-28 정기 감사). */
       const outNow = outSizesForColor(state.color);
       const inStock = p.sizes.filter(s => !p.soldOut.includes(s) && !outNow.includes(s));
-      advisor.result = recommendSize(advisor, { sizes: inStock.length ? inStock : p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable] });
+      advisor.result = recommendSize(advisor, { sizes: inStock.length ? inStock : p.sizes, guide: PROTECTOR_GUIDE[p.sizeTable], fitBias: p.fitBias });
       advisor.open = true;
       try {
         localStorage.setItem(ADVISOR_KEY, JSON.stringify({ heightCm: advisor.heightCm, weightKg: advisor.weightKg, fit: advisor.fit, protector: advisor.protector }));

@@ -5,7 +5,7 @@ const path = require("path");
 const express = require("express");
 const { SITE } = require("../../소스 코드/assets/js/data.js");
 const { supabaseAdmin } = require("../lib/supabase");
-const { productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, productUrl: seoProductUrl } = require("../lib/seo");
+const { productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, googleFeedXml, productUrl: seoProductUrl } = require("../lib/seo");
 const SITE_DIR = path.join(__dirname, "..", "..", "소스 코드");
 const { getActiveProducts } = require("../lib/catalog");
 const { versionHtml } = require("../lib/assetVersion");
@@ -122,6 +122,20 @@ router.get("/ep/naver.tsv", async (req, res) => {
   }
   res.set("Content-Type", "text/tab-separated-values; charset=utf-8").set("Cache-Control", "public, max-age=600");
   res.send(naverEpCache.body);
+});
+
+/* 구글 쇼핑 피드(lib/seo.js googleFeedXml) — 머천트 센터에 https://reiten.kr/feed/google.xml (영어: ?lang=en, 일본어: ?lang=ja) 등록. 10분 캐시. */
+const googleFeedCache = new Map();
+router.get("/feed/google.xml", async (req, res) => {
+  const lang = ["en", "ja"].includes(req.query.lang) ? req.query.lang : "ko";
+  const hit = googleFeedCache.get(lang);
+  let body = hit && Date.now() - hit.at < 10 * 60 * 1000 ? hit.body : null;
+  if (!body) {
+    body = googleFeedXml(await getActiveProducts(), { lang, shippingFee: SITE.shipping.fee, freeOver: SITE.shipping.freeOver });
+    googleFeedCache.set(lang, { body, at: Date.now() });
+  }
+  res.set("Content-Type", "application/xml; charset=utf-8").set("Cache-Control", "public, max-age=600");
+  res.send(body);
 });
 
 /* 상품별 승인 리뷰 수·평균 별점(구조화 데이터 aggregateRating용) */

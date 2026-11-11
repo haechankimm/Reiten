@@ -81,8 +81,28 @@
      입력하지 않은 조합은 inventory 테이블에 행 자체가 없으므로, 기존 행에서 사이즈를 뽑는 대신
      "상품 등록 폼"에 저장된 컬러·사이즈 목록을 기준으로 입력칸을 전부 만들고, 값이 있으면 채워
      넣는 방식으로 바꿨다 — 그래야 아직 입력 전인 조합도 빈 칸(0)으로 보여 입력할 수 있다. */
+  /* 재고 소진 예측·발주 제안(2026-11-11) — 품절 예상이 가까운 순. 6개 넘으면 나머지는 접어 둔다(스크롤 최소). */
+  async function paintStockForecast() {
+    const panel = el("inv-forecast-panel");
+    if (!panel) return;
+    const d = await adminFetch("/api/admin/inventory/forecast");
+    const items = (d && d.items) || [];
+    panel.hidden = !items.length;
+    if (!items.length) return;
+    const row = (r) => `<div class="fc-row">
+        <span class="fc-name"><b>${esc(t(r.name))}</b> ${esc(t(COLORS[r.color]?.label || r.color))} ${esc(r.size)}</span>
+        <span class="status-chip ${r.qty <= 0 ? "st-overdue" : r.daysLeft <= 7 ? "st-pending" : "st-neutral"}">${esc(r.qty <= 0 ? t("품절") : t("{n}일 뒤 품절 예상", { n: r.daysLeft }))}</span>
+        <span class="m-label">${esc(t("재고 {q} · 주 {w}장 판매", { q: r.qty, w: r.perWeek }))}</span>
+        <b class="fc-qty">${esc(t("발주 {n}장", { n: r.suggestQty }))}</b>
+      </div>`;
+    const head = items.slice(0, 6).map(row).join("");
+    const rest = items.slice(6);
+    el("inv-forecast-list").innerHTML = head + (rest.length ? `<details class="logrow-more"><summary>${esc(t("{n}개 더 보기", { n: rest.length }))}</summary>${rest.map(row).join("")}</details>` : "");
+  }
+
   async function paintAdminInventory() {
     if (typeof paintSupplierShipments === "function") paintSupplierShipments(); // 공급처 입고·배송(js/supplierShipments.js)
+    paintStockForecast();
     const [rows, productsRes] = await Promise.all([
       adminFetch("/api/admin/inventory"),
       adminFetchAll("/api/admin/products"),

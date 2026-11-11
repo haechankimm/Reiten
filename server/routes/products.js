@@ -41,6 +41,13 @@ async function saveWithMediaFallback(run, patch) {
 
 const router = express.Router();
 
+/* 사이즈 반품 쏠림(lib/fitFeedback.js, 2026-11-11) — Works 상품 카드 칩 */
+router.get("/api/admin/products/fit-feedback", requireAdmin, async (req, res) => {
+  const r = await require("../lib/fitFeedback").computeFitFeedback();
+  if (r.error) return res.json({ byProduct: {} });
+  res.json(r);
+});
+
 router.get("/api/admin/products", requireAdmin, async (req, res) => {
   const { page, pageSize, from, to } = paginationParams(req.query, { defaultSize: 50 });
   const { data, error, count } = await supabaseAdmin

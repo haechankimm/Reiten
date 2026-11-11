@@ -102,4 +102,12 @@ addDe({
   "복사한 내용으로 새 상품 폼을 채웠습니다 — 상품 ID를 정하고 저장하세요(비공개로 시작)": "Neues Produktformular mit der Kopie gefüllt — Produkt-ID festlegen und speichern (startet unveröffentlicht)",
   "이 상품을 복사해 새 상품 만들기": "Dieses Produkt als neues kopieren",
   "복사": "Kopieren",
+  "작다 {n}": "zu klein {n}",
+  "크다 {n}": "zu groß {n}",
+  "사이즈 {n}": "Größe {n}",
+  "사이즈 반품": "Größen-Retouren",
+  "반품·교환 사유가 한쪽으로 쏠려 사이즈 추천이 한 치수 보정 중입니다": "Retourengründe tendieren in eine Richtung — die Größenempfehlung wird um eine Größe angepasst",
+  "최근 6개월 사이즈 사유 반품·교환": "Retouren/Umtausch wegen Größe (letzte 6 Monate)",
+  "번역 없음": "Keine Übersetzung",
+  "영어·일본어 화면에 한국어가 그대로 나옵니다 — AI 승인함으로 번역 제안을 받을 수 있습니다": "Auf Englisch/Japanisch erscheint der koreanische Text — Übersetzungsvorschläge kommen über die KI-Freigaben",
 });

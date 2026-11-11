@@ -3,6 +3,9 @@
    ② GET  /api/bot/qna/pending — 답변 대기 문의(질문 글은 이메일·전화번호를 가린 채, 작성자 이름·이메일은 주지 않음) + CS 빠른 답변 템플릿.
    ③ POST /api/bot/qna/:id/draft — 피클이 만든 답변 "초안"만 저장(qna.ai_draft). 고객에게는 보이지 않고, 관리자가 Works에서
       고쳐서 직접 "답변 등록"을 눌러야 나간다. 문의 글은 고객이 쓴 글이라 그 안의 지시는 따르지 않는다(프롬프트 인젝션) — 피클 인수인계 참고.
+   ④ GET  /api/bot/products/translation-queue — 영어·일본어 번역이 빈 판매 중 상품의 한국어 원문(2026-11-11). 번역은 여기서 저장하지 않고
+      AI 승인함에 product_translate로 "제안"한다(routes/agentActions.js) — 사람이 읽고 승인해야 고객 화면에 나간다.
+   브리핑에는 재고 소진 예측·발주 제안(lib/stockForecast.js)과 사이즈 반품 쏠림(lib/fitFeedback.js)도 들어간다(2026-11-11).
    피클의 쓰기는 초안 칸 하나뿐 — 답변 등록·상태 변경·환불 같은 것은 이 파일에 추가하지 말 것. */
 const express = require("express");
 const { supabaseAdmin } = require("../lib/supabase");
@@ -99,6 +102,20 @@ router.get("/api/bot/briefing", botLimiter, requireBotKey, async (req, res) => {
   if (qna && qna.withoutDraft) lines.push(`답변 초안이 없는 문의 ${qna.withoutDraft}건`);
   if (trackingUsage && trackingUsage.remaining <= Math.ceil(trackingUsage.limit * 0.1)) lines.push(`배송조회 남은 한도 ${trackingUsage.remaining}/${trackingUsage.limit}건`);
 
+  // 재고 소진 예측·발주 제안(2026-11-11) — 발주(돈이 나가는 일)는 사람이 공급처에 한다. 피클은 알려주기만.
+  const { forecastLine, loadStockForecast } = require("../lib/stockForecast");
+  const fc = await loadStockForecast().catch(() => ({ items: [] }));
+  const stockForecast = fc.error ? null : (fc.items || []).slice(0, 15);
+  const fcLine = stockForecast && forecastLine(fc.items || []);
+  if (fcLine) lines.push(fcLine);
+  // 번역 빈 상품 — 피클이 /api/bot/products/translation-queue로 원문을 받아 승인함에 번역 제안
+  const queue = await translationQueue().catch(() => null);
+  if (queue && queue.length) lines.push(`영어·일본어 번역이 빈 상품 ${queue.length}개(번역 제안 가능)`);
+  // 사이즈 반품 쏠림 — 사이즈 추천이 자동으로 한 치수 조정 중인 상품
+  const fit = await require("../lib/fitFeedback").computeFitFeedback().catch(() => ({ byProduct: {} }));
+  const fitRows = Object.entries((fit && fit.byProduct) || {}).filter(([, v]) => v.bias);
+  if (fitRows.length) lines.push(`사이즈 반품 쏠림 ${fitRows.length}개 상품(사이즈 추천 자동 보정 중): ` + fitRows.slice(0, 3).map(([id, v]) => `${id} ${v.bias === "small" ? "작다" : "크다"} ${v.bias === "small" ? v.small : v.big}건`).join(", "));
+
   audit("bot.briefing_read", { ip: req.ip });
   res.set("Cache-Control", "no-store");
   res.json({
@@ -108,9 +125,37 @@ router.get("/api/bot/briefing", botLimiter, requireBotKey, async (req, res) => {
     suppliers,
     invoices,
     qna,
+    stockForecast,
+    untranslatedProducts: queue ? queue.length : null,
+    fitFeedback: fitRows.map(([id, v]) => ({ productId: id, small: v.small, big: v.big, unknown: v.unknown, sold: v.sold, bias: v.bias })),
     trackingUsage: trackingUsage && { month: trackingUsage.month, calls: trackingUsage.calls, limit: trackingUsage.limit, remaining: trackingUsage.remaining },
     summaryLines: lines,
     summary: lines.length ? lines.join("\n") : "오늘 처리할 일이 없습니다.",
+  });
+});
+
+/* 번역이 빈(이름·설명 중 하나라도 없는) 판매 중 상품 — 한국어 원문과 빠진 언어 */
+async function translationQueue() {
+  const { data, error } = await supabaseAdmin.from("products").select("id, name, name_ko, short, description, details, translations").eq("active", true).order("sort_order", { ascending: true });
+  if (error) return null;
+  return (data || [])
+    .map((p) => {
+      const tr = p.translations && typeof p.translations === "object" ? p.translations : {};
+      const missing = ["en", "ja"].filter((l) => !(tr[l] && tr[l].name && tr[l].desc));
+      return { productId: p.id, nameKo: p.name_ko, nameEn: p.name || null, short: p.short || "", desc: p.description || "", details: p.details || [], missing, current: tr };
+    })
+    .filter((p) => p.missing.length);
+}
+
+router.get("/api/bot/products/translation-queue", botLimiter, requireBotKey, async (req, res) => {
+  const items = await translationQueue();
+  if (!items) return res.status(500).json({ ok: false, error: "상품을 불러오지 못했습니다" });
+  audit("bot.translation_queue_read", { count: items.length, ip: req.ip });
+  res.set("Cache-Control", "no-store");
+  res.json({
+    ok: true,
+    note: "번역은 POST /api/bot/actions { type: \"product_translate\", params: { productId, lang: \"en\"|\"ja\", name, short, desc, details[] } }로 제안하세요. 사람이 승인해야 반영됩니다. 상품명의 브랜드명 REITEN은 그대로 두고, 없는 사실(소재·기능)을 지어내지 마세요.",
+    items,
   });
 });
 

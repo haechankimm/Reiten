@@ -15,6 +15,14 @@
               </div>
             </div>
           </div>
+          <!-- 재고 소진 예측·발주 제안(2026-11-11, server/lib/stockForecast.js) — 3주 안에 품절 예상인 조합만, 없으면 숨김. js/inventory.js paintStockForecast -->
+          <div class="panel" id="inv-forecast-panel" hidden style="margin-bottom:16px">
+            <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">
+              <b data-i18n="발주 제안">발주 제안</b>
+              <span class="m-label" data-i18n="최근 4주 판매 속도 기준 · 입고까지 2주 + 한 달 버틸 수량">최근 4주 판매 속도 기준 · 입고까지 2주 + 한 달 버틸 수량</span>
+            </div>
+            <div id="inv-forecast-list" class="small"></div>
+          </div>
           <!-- 공급처 입고·배송(2026-11-10, 마이그레이션 048) — 비서 에이전트가 출고 메일에서 기록한 송장. js/supplierShipments.js -->
           <div class="panel" id="supplier-shipments-panel" style="margin-bottom:16px">
             <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px">

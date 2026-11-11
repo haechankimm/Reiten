@@ -13,6 +13,15 @@
 
 # A. 작업 이력 (최신이 위)
 
+**2026-11-11 (18) — 성장·자동화 6종 + README 방향성·AI 로드맵(§6).**
+- 미입금 리마인드: 무통장 주문 자동 취소 약 6시간 전 1회 메일(+알림톡 템플릿 `DEPOSIT_REMINDER` 추가, 이제 7종). `lib/depositReminder.js`, 크론 매시 20분, 표시 칸 `orders.deposit_reminded_at`(마이그레이션 055). 끄기 `DEPOSIT_REMINDER=off`.
+- 아침 요약(푸시·피클 브리핑)에 현금영수증 발급 대기·발주 제안 건수 추가(`lib/briefing.js`).
+- 구글 쇼핑 무료 노출 피드 `/feed/google.xml`(`?lang=en|ja`, `lib/seo.js` `googleFeedXml`) + 고객 사이트가 주소의 `?lang=`을 따르도록(`i18n.js` `getLang`).
+- AI 승인함 작업 ⑨ `product_translate`(상품 영어·일본어 번역 제안 → 사람 승인 → 번역 칸 저장, 되돌리기 있음, 자동 승인 불가) + 피클용 `GET /api/bot/products/translation-queue`.
+- 재고 소진 예측·발주 제안(`lib/stockForecast.js`): 최근 4주 순판매(취소 복원 제외)로 품절 예상일·발주 수량(리드타임 2주 + 30일). Works 재고 탭 "발주 제안"(3주 안 품절 예상만), `GET /api/admin/inventory/forecast`, 피클 브리핑 `stockForecast`. 발주 자체는 사람이(돈이 나가는 일).
+- 반품 사유 "사이즈 불만족" → "사이즈가 작아요/커요"로 분리. `lib/fitFeedback.js`가 최근 6개월 상품별로 모아 한쪽으로 확실히 쏠리면(3건+·반대쪽 2배+·판매량 5%+) 고객 상품 목록에 `fitBias`를 붙이고 사이즈 추천이 한 치수 조정(이유 문구 표시). Works 상품 카드에 "사이즈 반품"·"번역 없음" 칩.
+- 피클 인수인계서: 업무 8(번역 제안, API M), 브리핑 새 항목. 테스트 354건(`test/growthAutomation.test.js` 8건).
+
 **2026-11-11 (17) — 현금영수증 신청, 구매안전서비스 표시 자리, 카카오 알림톡(솔라피) 연결.**
 - 주문서(무통장입금일 때만): "현금영수증" 선택(신청 안 함/소득공제용 휴대폰/지출증빙용 사업자번호). 서버 검사 `lib/cashReceipt.js`(재고·쿠폰 차감 전에 검사), `orders.customer.cashReceipt`에 저장(jsonb — 마이그레이션 없음). 개인정보처리방침 수집 항목에 추가. 주문 접수 메일에 가린 번호로 표시.
 - Works: 주문 목록 "현금영수증 발급 필요" 뱃지(입금확인 이후·미발급), 상세에 종류·번호 + "홈택스 발급 완료로 표시"(POST `/api/admin/orders/:no/cash-receipt`, 활동 로그 `order.cash_receipt_issued`), 알림벨 "현금영수증 발급 대기" 건수. 실제 발급은 홈택스에서.

@@ -280,6 +280,28 @@ async function sendCustomerAutoCancelled(order) {
   });
 }
 
+/* 미입금 리마인드(고객용, 2026-11-11) — 무통장입금 주문이 자동 취소되기 몇 시간 전에 한 번만(lib/depositReminder.js).
+   깜빡한 손님이 입금하도록 계좌·금액·남은 시간을 다시 알려준다. */
+async function sendCustomerDepositReminder(order, { hoursLeft } = {}) {
+  if (!resend || !order.customer || !order.customer.email) return;
+
+  await sendTracked("customer_deposit_reminder", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: order.customer.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] 아직 입금 전이에요 — ${order.order_no}`,
+    html: `
+      <h2>${escHtml(order.customer.name)}님, 주문하신 상품이 기다리고 있어요</h2>
+      <p>아직 입금이 확인되지 않았습니다. 약 <b>${escHtml(hoursLeft)}시간</b> 안에 입금하지 않으면 주문이 자동으로 취소됩니다.</p>
+      <p><b>주문번호</b> ${escHtml(order.order_no)}<br>
+        <b>입금액</b> ${won(order.total)}<br>
+        <b>입금계좌</b> ${escHtml(SITE.order.bankName)} ${escHtml(SITE.order.accountNo)} · 예금주 ${escHtml(SITE.order.holder)}</p>
+      <ul>${itemsHtml(order)}</ul>
+      <p style="margin-top:16px;color:#666">이미 입금하셨다면 이 메일은 무시하셔도 됩니다. 입금자명이 주문자와 다르면 회신 메일로 알려주세요.</p>
+    `,
+  });
+}
+
 /* 관리자가 직접 주문을 취소했을 때(고객용) — 미입금 자동취소(sendCustomerAutoCancelled)와는
    달리 사유가 매번 다를 수 있어 관리자가 입력한 사유를 그대로 보여준다. 사유를 안 남겼으면
    문구를 생략(빈 칸을 그대로 보여주지 않는다). */
@@ -621,6 +643,7 @@ module.exports = {
   sendCustomerCardPaid,
   sendCustomerVirtualAccountIssued,
   sendCustomerAutoCancelled,
+  sendCustomerDepositReminder,
   sendAdminCardCancelFailed,
   sendAdminOrderFinalizeFailed,
   sendAdminRefundFailed,

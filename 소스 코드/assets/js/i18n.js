@@ -13,6 +13,14 @@ const PUBLIC_LANGS = ["ko", "en", "ja"];
 const LANG_LABEL = { ko: "한국어", en: "English", ja: "日本語", de: "Deutsch" };
 
 function getLang() {
+  /* 주소에 ?lang=en|ja가 있으면 그 언어로(구글 쇼핑 영어·일본어 피드 링크, 2026-11-11) — 한 번 저장해 다음 페이지도 같은 언어 */
+  try {
+    const q = new URLSearchParams(location.search).get("lang");
+    if (q && PUBLIC_LANGS.includes(q)) {
+      try { localStorage.setItem(LANG_KEY, q); } catch (e) {}
+      return q;
+    }
+  } catch (e) {}
   try {
     const l = localStorage.getItem(LANG_KEY);
     return LANGS.includes(l) ? l : "ko";
@@ -667,6 +675,12 @@ const I18N = {
   },
   "단순변심": { en: "Change of mind", ja: "単純な気持ちの変化" },
   "사이즈 불만족": { en: "Size doesn't fit", ja: "サイズ不満足" },
+  "사이즈가 작아요": { en: "Too small", ja: "サイズが小さい" },
+  "사이즈가 커요": { en: "Too large", ja: "サイズが大きい" },
+  "사이즈 작음": { en: "Too small", ja: "サイズが小さい" },
+  "사이즈 큼": { en: "Too large", ja: "サイズが大きい" },
+  "이 상품은 작다는 교환·반품이 많아 한 치수 크게 봤어요.": { en: "Many exchanges say this item runs small, so we went one size up.", ja: "小さいという交換・返品が多いため、1サイズ大きめにしました。" },
+  "이 상품은 크다는 교환·반품이 많아 한 치수 작게 봤어요.": { en: "Many exchanges say this item runs large, so we went one size down.", ja: "大きいという交換・返品が多いため、1サイズ小さめにしました。" },
   "불량": { en: "Defective", ja: "不良品" },
   "오배송": { en: "Wrong item shipped", ja: "誤配送" },
   "기타": { en: "Other", ja: "その他" },

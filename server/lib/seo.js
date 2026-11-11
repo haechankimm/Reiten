@@ -141,6 +141,60 @@ function naverEpTsv(products, { shippingFee = 3500, freeOver = 100000, reviewCou
   return [EP_COLUMNS.join("\t"), ...rows].join("\n") + "\n";
 }
 
+/* ---------- 구글 쇼핑 무료 노출 피드(Google Merchant Center, RSS 2.0 + g: 네임스페이스) (2026-11-11) ----------
+   머천트 센터 → 제품 → 피드 추가 → "예약 가져오기"에 https://reiten.kr/feed/google.xml 을 등록하면 구글이 매일 가져가
+   구글 쇼핑 탭에 무료로 노출한다. lang=en|ja는 상품의 영어·일본어 번역(없으면 한국어)으로 만들고, 링크에 ?lang=을 붙여
+   손님이 같은 언어 화면으로 들어오게 한다(i18n.js getLang). 가격은 원화(KRW) — 해외 배송을 시작하기 전에는 한국만 대상.
+   네이버 EP와 같은 기준으로 사진 없거나 전부 품절인 상품은 뺀다. 순수 함수. */
+const GOOGLE_APPAREL_CATEGORY = "1604"; // Apparel & Accessories > Clothing
+
+function xmlEsc(s) {
+  return String(s ?? "").replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+
+function localized(p, lang) {
+  const tr = (lang !== "ko" && p.translations && p.translations[lang]) || {};
+  return {
+    name: tr.name || (lang === "ko" ? p.nameKo || p.name : p.name || p.nameKo),
+    desc: tr.desc || tr.short || (lang === "ko" ? p.desc || p.short : "") || p.desc || p.short || "",
+    translated: !!(tr.name || tr.desc),
+  };
+}
+
+function googleFeedXml(products, { lang = "ko", shippingFee = 3500, freeOver = 100000 } = {}) {
+  const items = products
+    .filter((p) => productImages(p).length && !isFullyOutOfStock(p))
+    .map((p) => {
+      const images = productImages(p);
+      const t = localized(p, lang);
+      const link = lang === "ko" ? productUrl(p) : `${productUrl(p)}&lang=${lang}`;
+      const title = epTitle(t.name).slice(0, 150);
+      const desc = String(t.desc || title).replace(/\s+/g, " ").trim().slice(0, 5000);
+      const lines = [
+        `<g:id>${xmlEsc(p.id)}</g:id>`,
+        `<title>${xmlEsc(title)}</title>`,
+        `<description>${xmlEsc(desc)}</description>`,
+        `<link>${xmlEsc(link)}</link>`,
+        `<g:image_link>${xmlEsc(images[0])}</g:image_link>`,
+        ...images.slice(1, 11).map((u) => `<g:additional_image_link>${xmlEsc(u)}</g:additional_image_link>`),
+        `<g:availability>in_stock</g:availability>`,
+        `<g:price>${Math.round(Number(p.price) || 0)} KRW</g:price>`,
+        `<g:brand>${BRAND}</g:brand>`,
+        `<g:condition>new</g:condition>`,
+        `<g:identifier_exists>no</g:identifier_exists>`,
+        `<g:google_product_category>${GOOGLE_APPAREL_CATEGORY}</g:google_product_category>`,
+        p.category ? `<g:product_type>${xmlEsc(p.category)}</g:product_type>` : "",
+        `<g:age_group>adult</g:age_group>`,
+        `<g:gender>unisex</g:gender>`,
+        (p.colors || []).length ? `<g:color>${xmlEsc(p.colors.slice(0, 3).join("/"))}</g:color>` : "",
+        (p.sizes || []).length ? `<g:size>${xmlEsc(p.sizes.join(","))}</g:size>` : "",
+        `<g:shipping><g:country>KR</g:country><g:price>${Number(p.price) >= freeOver ? 0 : shippingFee} KRW</g:price></g:shipping>`,
+      ].filter(Boolean);
+      return `<item>\n${lines.map((l) => "  " + l).join("\n")}\n</item>`;
+    });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n<channel>\n<title>${BRAND}</title>\n<link>${SITE_URL}</link>\n<description>${BRAND} rider apparel</description>\n${items.join("\n")}\n</channel>\n</rss>\n`;
+}
+
 module.exports = {
-  SITE_URL, productUrl, isFullyOutOfStock, productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, EP_COLUMNS,
+  SITE_URL, productUrl, isFullyOutOfStock, productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, EP_COLUMNS, googleFeedXml,
 };

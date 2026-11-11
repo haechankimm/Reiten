@@ -17,6 +17,10 @@ const TEMPLATES = {
     label: "무통장입금 주문 접수(입금 안내)",
     text: "[REITEN] 주문이 접수되었습니다.\n#{name}님, 주문해 주셔서 감사합니다.\n\n■ 주문번호: #{orderNo}\n■ 결제금액: #{amount}\n■ 입금계좌: #{account}\n■ 입금기한: 주문 후 #{hours}시간 이내\n\n기한 안에 입금이 확인되지 않으면 주문이 자동으로 취소됩니다.",
   },
+  DEPOSIT_REMINDER: {
+    label: "미입금 리마인드(자동 취소 전 안내)",
+    text: "[REITEN] 아직 입금 전이에요.\n#{name}님, 주문번호 #{orderNo}의 입금이 아직 확인되지 않았습니다.\n\n■ 결제금액: #{amount}\n■ 입금계좌: #{account}\n\n약 #{hours}시간 안에 입금하지 않으면 주문이 자동으로 취소됩니다. 이미 입금하셨다면 이 메시지는 무시해 주세요.",
+  },
   PAYMENT_CONFIRMED: {
     label: "입금 확인",
     text: "[REITEN] 입금이 확인되었습니다.\n#{name}님, 주문번호 #{orderNo}의 입금이 확인되어 상품 준비를 시작합니다.\n출고되면 운송장 번호를 다시 안내드리겠습니다.",

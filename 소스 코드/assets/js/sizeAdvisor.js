@@ -26,8 +26,9 @@ function estimateUsualSize(heightCm, weightKg) {
 }
 
 /* input: { heightCm, weightKg, fit: "fitted"|"regular"|"relaxed", protector: boolean }
-   product: { sizes: ["S","M",...], guide: PROTECTOR_GUIDE[...] (없어도 됨) }
-   → { usual, recommended, reasons: ["fit_up"|"fit_down"|"protector_up"|"nearest_available"] } 또는 { error } */
+   product: { sizes: ["S","M",...], guide: PROTECTOR_GUIDE[...] (없어도 됨), fitBias: "small"|"big"(없어도 됨) }
+   fitBias는 반품·교환 "사이즈 작음/큼"이 한쪽으로 쏠린 상품에 서버가 붙인다(server/lib/fitFeedback.js, 2026-11-11) — 한 치수 조정.
+   → { usual, recommended, reasons: ["fit_up"|"fit_down"|"runs_small"|"runs_large"|"protector_up"|"nearest_available"] } 또는 { error } */
 function recommendSize(input, product) {
   const base = estimateUsualSize(input && input.heightCm, input && input.weightKg);
   if (!base) return { error: "키(cm)와 몸무게(kg)를 확인해 주세요." };
@@ -47,6 +48,9 @@ function recommendSize(input, product) {
   else if (input.fit === "fitted") idx = clampSizeIndex(baseIdx - 1);
   if (idx > baseIdx) reasons.push("fit_up");
   else if (idx < baseIdx) reasons.push("fit_down");
+  const bias = product && product.fitBias;
+  if (bias === "small" && idx < SIZE_ORDER.length - 1) { idx += 1; reasons.push("runs_small"); }
+  else if (bias === "big" && idx > 0) { idx -= 1; reasons.push("runs_large"); }
   const fitted = SIZE_ORDER[idx];
 
   let recommended = fitted;

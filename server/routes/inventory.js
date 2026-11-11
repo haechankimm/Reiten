@@ -20,6 +20,13 @@ router.get("/api/admin/inventory", requireAdmin, async (req, res) => {
 });
 
 
+/* 재고 소진 예측·발주 제안(lib/stockForecast.js, 2026-11-11) — Works 재고 탭 위쪽 "발주 제안" */
+router.get("/api/admin/inventory/forecast", requireAdmin, async (req, res) => {
+  const r = await require("../lib/stockForecast").loadStockForecast();
+  if (r.error) return res.status(500).json({ error: "재고 예측을 계산하지 못했습니다." });
+  res.json(r);
+});
+
 /* 품절 알림 신청(routes/restock.js에서 접수)한 고객에게 재입고를 알린다 — 재고 수량이
    실제로 바뀌는 지점이 여기(관리자 재고 탭 저장)뿐이라 알림 발송도 여기서 처리한다.
    restockedItems: [{productId, color, size, qty}] (이미 0→양수 전환된 것만 걸러진 상태로 들어옴). */

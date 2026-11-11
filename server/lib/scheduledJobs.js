@@ -206,6 +206,11 @@ scheduleExclusive("abandoned-cart", "30 * * * *", () => {
   remindAbandonedCarts().catch((err) => console.error("[abandoned-cart] 실행 실패:", err.message));
 });
 
+/* 미입금 리마인드 — 매시 20분, 자동 취소 약 6시간 전 무통장입금 주문에 한 번만 안내(lib/depositReminder.js, 055) */
+scheduleExclusive("deposit-reminder", "20 * * * *", () => {
+  require("./depositReminder").remindUnpaidOrders().catch((err) => console.error("[deposit-reminder] 실행 실패:", err.message));
+});
+
 scheduleExclusive("auto-cancel", "0 * * * *", () => {
   cancelStalePendingOrders().catch((err) => console.error("[auto-cancel] 실행 실패:", err.message));
   closeExpiredVirtualAccounts().catch((err) => console.error("[auto-cancel] 가상계좌 만료 처리 실행 실패:", err.message));

@@ -7,6 +7,7 @@
    - undo(record, ctx): 되돌릴 수 있는 작업만(고객에게 메일이 나간 작업은 되돌리기 없음 — 해당 화면에서 사람이 처리)
    - autoAllowed: "조건부 자동 승인"을 켤 수 있는 작업인지(고객에게 글이 나가거나 돈이 나가는 작업은 자동 불가)
    - defaultEnabled: AI 권한 설정의 기본값(리뷰 승인은 사람이 하는 게 기본 — 꺼짐)
+   ⑨ product_translate(상품 영어·일본어 번역)는 2026-11-11 추가.
    금지(이 표에 절대 넣지 말 것): 환불·주문 취소, 가격 변경, 상품·회원 삭제, 직원 권한, 동업자 정산·송금. */
 const { supabaseAdmin } = require("./supabase");
 const { dispatch } = require("./internalDispatch");
@@ -242,6 +243,43 @@ const ACTIONS = {
     },
     async undo(rec, ctx) {
       const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/reviews/${encodeURIComponent(rec.params.reviewId)}`, body: { approved: false } });
+      return ok(r) ? { ok: true } : { error: errOf(r) };
+    },
+  },
+
+  /* ⑨ 상품 번역 등록(영어·일본어, 2026-11-11) — AI가 한국어 상품명·설명을 번역한 "초안"을 사람이 읽고 승인하면 상품의 번역 칸에 들어간다.
+     고객 화면 영어·일본어 문구가 바뀌는 작업이라 자동 승인 불가. 되돌리기는 승인 전 번역으로 복원. */
+  product_translate: {
+    label: "상품 번역 등록", area: "products", autoAllowed: false, defaultEnabled: true, undoable: true,
+    async prepare(p) {
+      const id = String(p.productId || "");
+      const lang = String(p.lang || "");
+      if (!["en", "ja"].includes(lang)) return { error: "lang은 en 또는 ja입니다" };
+      const { sanitizeTranslations } = require("./products");
+      const entry = sanitizeTranslations({ [lang]: { name: p.name, short: p.short, desc: p.desc, details: p.details } })[lang];
+      if (!entry || !(entry.name || entry.desc)) return { error: "번역할 이름(name) 또는 설명(desc)이 필요합니다" };
+      const { data: pr } = await supabaseAdmin.from("products").select("id, name_ko, translations").eq("id", id).maybeSingle();
+      if (!pr) return { error: "상품을 찾을 수 없습니다" };
+      const prev = pr.translations && typeof pr.translations === "object" ? pr.translations : {};
+      const cur = prev[lang] || {};
+      const LABEL = { en: "영어", ja: "일본어" }[lang];
+      const FIELD = { name: "이름", short: "한 줄 소개", desc: "설명", details: "상세 항목" };
+      const lines = Object.keys(FIELD)
+        .filter((k) => entry[k] !== undefined)
+        .map((k) => ({ label: `${LABEL} ${FIELD[k]}`, before: [].concat(cur[k] || "-").join(" / ").slice(0, 300), after: [].concat(entry[k]).join(" / ").slice(0, 600) }));
+      return {
+        params: { productId: id, lang, entry, prev },
+        target: `${pr.name_ko || id} (${lang.toUpperCase()})`,
+        dedupeKey: `product_translate:${id}:${lang}`,
+        preview: { lines, note: "승인하면 그 언어 상품 화면에 바로 보입니다 — 문장을 꼭 읽어 보세요" },
+      };
+    },
+    async execute(p, ctx) {
+      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(p.productId)}`, body: { translations: { ...p.prev, [p.lang]: p.entry } } });
+      return ok(r) ? { ok: true } : { error: errOf(r) };
+    },
+    async undo(rec, ctx) {
+      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(rec.params.productId)}`, body: { translations: rec.params.prev || {} } });
       return ok(r) ? { ok: true } : { error: errOf(r) };
     },
   },

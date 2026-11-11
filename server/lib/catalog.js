@@ -32,7 +32,10 @@ async function getActiveProducts() {
     console.error("[products] DB 조회 실패, 정적 목록으로 폴백:", error.message);
     return STATIC_PRODUCTS;
   }
-  const { products: result, degraded } = await withRealSoldOut(data.map(toProductDto));
+  const { products: withStock, degraded } = await withRealSoldOut(data.map(toProductDto));
+  // 반품·교환 "사이즈 작음/큼"이 한쪽으로 쏠린 상품은 사이즈 추천이 한 치수 조정한다(lib/fitFeedback.js, 2026-11-11)
+  const biasMap = require("./fitFeedback").cachedBiasMap();
+  const result = withStock.map((p) => (biasMap[p.id] && biasMap[p.id].bias ? { ...p, fitBias: biasMap[p.id].bias } : p));
   /* 재고 조회가 실패해 품절 정보가 부정확한 상태(degraded)로는 캐시에 쓰지 않는다 — 그대로
      캐시하면 일시적인 DB 오류 한 번이 실제로는 재고 조회 자체가 복구된 뒤에도 남은 15초
      동안 "품절 정보 없음" 상태를 그대로 밀어붙이게 된다. 캐시를 안 쓰면 바로 다음 요청이

@@ -68,4 +68,9 @@ addDe({
   "다른 컬러·상품의 사이즈별 수량을 지금 고른 컬러에 그대로 채웁니다(저장은 위 '변경사항 저장')": "Übernimmt die Mengen je Größe einer anderen Farbe/eines anderen Produkts in die gewählte Farbe (speichern über 'Änderungen speichern')",
   "지금 보고 있는 컬러입니다": "Das ist die aktuell gewählte Farbe",
   "{n}개 사이즈 수량을 채웠습니다 — 확인 후 '변경사항 저장'을 누르세요": "Mengen für {n} Größen eingetragen — prüfen und 'Änderungen speichern' drücken",
+  "발주 제안": "Nachbestell-Vorschläge",
+  "최근 4주 판매 속도 기준 · 입고까지 2주 + 한 달 버틸 수량": "Basis: Verkaufstempo der letzten 4 Wochen · 2 Wochen Lieferzeit + 1 Monat Vorrat",
+  "{n}일 뒤 품절 예상": "Ausverkauft in ca. {n} Tagen",
+  "재고 {q} · 주 {w}장 판매": "Bestand {q} · {w} Stk./Woche",
+  "발주 {n}장": "{n} Stk. bestellen",
 });

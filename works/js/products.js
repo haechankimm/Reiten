@@ -217,6 +217,21 @@
      체크박스 다중 선택 + 상단 일괄 처리 바를 추가했다. */
   const selectedProductIds = new Set();
 
+  /* 상품 카드 아래 작은 칩(2026-11-11): 사이즈 반품 쏠림(server/lib/fitFeedback.js — 사이즈 추천이 자동 보정 중)과 빠진 번역(EN·JA) */
+  let productFitFeedback = {};
+  function productInsightChips(p) {
+    const chips = [];
+    const f = productFitFeedback[p.id];
+    if (f && (f.small || f.big || f.unknown)) {
+      const txt = [f.small ? t("작다 {n}", { n: f.small }) : "", f.big ? t("크다 {n}", { n: f.big }) : "", f.unknown ? t("사이즈 {n}", { n: f.unknown }) : ""].filter(Boolean).join(" · ");
+      chips.push(`<span class="logchip" title="${esc(f.bias ? t("반품·교환 사유가 한쪽으로 쏠려 사이즈 추천이 한 치수 보정 중입니다") : t("최근 6개월 사이즈 사유 반품·교환"))}"><span class="logchip-k">${esc(t("사이즈 반품"))}</span>${esc(txt)}${f.bias ? " ⚑" : ""}</span>`);
+    }
+    const tr = p.translations || {};
+    const missing = ["en", "ja"].filter((l) => !(tr[l] && tr[l].name && tr[l].desc)).map((l) => l.toUpperCase());
+    if (missing.length) chips.push(`<span class="logchip" title="${esc(t("영어·일본어 화면에 한국어가 그대로 나옵니다 — AI 승인함으로 번역 제안을 받을 수 있습니다"))}"><span class="logchip-k">${esc(t("번역 없음"))}</span>${esc(missing.join("·"))}</span>`);
+    return chips.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${chips.join("")}</div>` : "";
+  }
+
   function productRowHTML(p) {
     const img = p.images.find(Boolean);
     return `
@@ -231,6 +246,7 @@
         <div class="grid-card-body">
           <b class="grid-card-name">${esc(t(p.nameKo))}</b>
           <div class="small tnum">${money(p.price)}</div>
+          ${productInsightChips(p)}
         </div>
         <div class="grid-card-actions">
           <button type="button" class="btn btn--sm admin-product-edit">${esc(t("수정"))}</button>
@@ -397,8 +413,12 @@
 
   async function paintAdminProducts(loadMore = false) {
     productsState.page = loadMore ? productsState.page + 1 : 1;
-    const result = await adminFetch(`/api/admin/products?page=${productsState.page}&pageSize=${productsState.pageSize}`);
+    const [result, fit] = await Promise.all([
+      adminFetch(`/api/admin/products?page=${productsState.page}&pageSize=${productsState.pageSize}`),
+      loadMore ? null : adminFetch("/api/admin/products/fit-feedback").catch(() => null),
+    ]);
     if (!result) return;
+    if (fit && fit.byProduct) productFitFeedback = fit.byProduct;
     productsState.total = result.total;
     productsState.items = loadMore ? productsState.items.concat(result.items) : result.items;
     renderAdminProducts();

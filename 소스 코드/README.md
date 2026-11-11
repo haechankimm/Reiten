@@ -1,7 +1,7 @@
 # REITEN — AI 인수인계 문서 (현재 상태 · 구조)
 
 > 리플렉티브 프린팅 라이딩 후디 쇼핑몰 `reiten.kr` + 관리자 사이트 Works `works.reiten.kr`. 운영자는 개발자가 아니다(설명은 쉽게, 한국어로).
-> **이 문서는 "지금 사실"만 담는다.** 마지막 갱신: 2026-11-11 (main = PR #33 + 문서 재설계 커밋).
+> **이 문서는 "지금 사실"만 담는다.** 마지막 갱신: 2026-11-11 (main = PR #37, 작업 브랜치 `claude/cash-receipt-alimtalk`).
 
 ## 0. 문서 지도 — 무엇을 언제 읽나
 
@@ -11,6 +11,7 @@
 | `README.md` (이 문서) | `소스 코드/` | **매 세션 시작 시 §1~§2를 읽고**, 코드를 만질 때 §3~§5. |
 | `CHANGELOG.md` | `소스 코드/` | **평소엔 열지 않는다.** 아래 경우에만 `grep -n "키워드"`로 찾은 부분만 읽는다: ① 사용자가 과거 작업·결정 이유를 물을 때 ② 코드 주석만으로 "왜 이렇게 했는지" 모를 때 ③ 예전에 고친 버그가 다시 난 것 같을 때 ④ 옛 설정 절차(PG 켜기·도메인 연결 등)를 다시 해야 할 때. **CHANGELOG와 이 문서가 다르면 이 문서가 맞다.** |
 | `pickle-handoff.md` | 저장소 루트 | 피클(AI 비서) API·역할을 바꿀 때. 바꾸면 맨 아래 "개정 이력"에 한 줄. |
+| §6 방향성·AI 로드맵 | 이 문서 끝 | 새 기능을 추천·설계할 때 먼저(무엇을 왜 어떤 순서로, AI가 할 수 있는 일의 선). |
 | `reiten-monitoring-handoff.md` | 저장소 루트 | 피클이 쓴 모니터링 협업 문서(2026-11-10). 참고용. |
 | `사용설명서.md` | `소스 코드/` | 운영자(대표·동업자)용 쉬운 설명서. 기능이 바뀌면 코드 용어 없이 갱신. |
 | `git log` | — | 정확한 변경 내역. |
@@ -24,11 +25,11 @@
 ## 1. 현재 상태 (2026-11-11 확인)
 
 **코드·배포**
-- `main` = PR #37(`decd9d2`)까지 머지·배포됨(전반 감사 수정 + Works 편의 개선, CHANGELOG (15)(16)). 작업 중: 브랜치 `claude/cash-receipt-alimtalk`(현금영수증 신청·구매안전서비스 표시 자리·알림톡 솔라피 연결, CHANGELOG (17)).
+- `main` = PR #37(`decd9d2`)까지 머지·배포됨(전반 감사 수정 + Works 편의 개선, CHANGELOG (15)(16)). 작업 중(아직 push 전): 브랜치 `claude/cash-receipt-alimtalk` — 현금영수증·구매안전서비스 표시 자리·알림톡(CHANGELOG (17)) + 성장·자동화 6종(미입금 리마인드·AI 번역 제안·구글 쇼핑 피드·브리핑 추가·발주 제안·사이즈 반품 보정, CHANGELOG (18)).
 - 2026-11-11 전반 감사: 운영 사이트 고객 페이지 18개 휴대폰·데스크톱·영어 화면 점검, 장바구니 담기~주문서까지 실제 조작(제출·결제는 안 함), 서버 핵심 로직·Works 효율 검토. 결과는 CHANGELOG 2026-11-11 (15).
-- 서버 테스트 **346건 통과**(`cd server && npm test`, 약 4초).
+- 서버 테스트 **354건 통과**(`cd server && npm test`, 약 4초).
 - 화면 코드 정리 완료(2026-11-11, #35): 고객 페이지 인라인 스크립트 분리, Works index 탭별 분리, 큰 Works JS·독일어 사전 분리. 사용자가 Works 로그인 뒤 탭 화면 이상 없음 확인. 테스트 335건.
-- 마이그레이션 **001~054 전부 실행됨**(029 번호는 없음). **다음 번호 = 055.** Works 정보 탭 "지금 점검하기"가 "최신(054)까지 적용됨"이면 정상.
+- 마이그레이션 **001~054 실행됨**(029 번호는 없음). **055(미입금 리마인드)는 위 브랜치 머지 후 실행 필요.** **다음 번호 = 056.** Works 정보 탭 "지금 점검하기"가 "최신(055)까지 적용됨"이면 정상.
 - 운영 확인(2026-11-11 실측): `/health` 200(`{"ok":true,"db":"ok"}`), `/README.md`·`/사용설명서.md` 404(정상 — `lib/staticGuard.js`), `/ep/naver.tsv` 200.
 - **열린 PR = Dependabot 7개(#5~#11, 2026-11-09 생성)** — 처리 방침은 §2-3.
 - 이 컴퓨터의 터미널은 GitHub 인증이 없어 `git push`가 실패한다(`gh`도 없음). push는 사용자가 **GitHub Desktop**으로 한다. 클라우드 세션은 직접 PR·머지 가능.
@@ -58,13 +59,15 @@
 ### 2-1. 사용자가 직접 할 일 (우선순위 순)
 0. 🔴 **구매안전서비스(에스크로)**: 무통장입금(현금 선결제)을 받으므로 전자상거래법상 에스크로 또는 소비자피해보상보험 가입·표시가 필요할 가능성이 높다 — KCP(또는 은행)에 무통장입금용 에스크로 가입 문의. 가입하면 `소스 코드/assets/js/data.js` `biz.escrow`에 `provider`(예: "NHN KCP")·`url`(가입사실 확인 링크)을 채우면 사이트 하단에 자동 표시(비어 있으면 안 보임). 법 해석은 KCP·세무사에 확인.
 0. 🟠 **Render Starter 전환 시점**: 광고·홍보 시작 **전에**(무료 플랜은 15분 무활동 시 잠들어 첫 손님이 30초+ 대기, 그 시각 크론도 건너뜀). 그 전까지 UptimeRobot 5분 주기 확인(아래 2번).
-0. 🟡 **카카오 알림톡 켜기**: 솔라피 가입 → 발신번호 등록 → 카카오 채널 연동(pfId) → `server/lib/kakao.js` `TEMPLATES` 문구 6개를 그대로 템플릿 등록·심사 → Render에 `SOLAPI_*`·`KAKAO_PF_ID`·`KAKAO_SENDER_PHONE`·승인된 `KAKAO_TPL_<코드>`. 승인된 것만 발송됨.
-1. 🟠 피클에게 최신 `pickle-handoff.md` 전달(AI 승인함 반영본). 피클이 "확인 필요"를 보고하면 은행 입금 알림 라벨·카드 뒤 4자리 대응표 챙기기.
+0. 🔴 **위 브랜치 push·머지 후 마이그레이션 055 실행**(미입금 리마인드 — 실행 전엔 조용히 꺼져 있음).
+0. 🟡 **구글 쇼핑 무료 노출 등록**: Google Merchant Center 가입 → 사업자·배송·반품 정보 입력 → 제품 → 피드 추가 → "예약 가져오기"에 `https://reiten.kr/feed/google.xml`(한국어). 영어·일본어(`?lang=en`·`?lang=ja`)는 해외 배송을 시작할 때. 상품 번역이 비어 있으면 영어 피드에도 한국어가 나간다.
+0. 🟡 **카카오 알림톡 켜기**: 솔라피 가입 → 발신번호 등록 → 카카오 채널 연동(pfId) → `server/lib/kakao.js` `TEMPLATES` 문구 7개를 그대로 템플릿 등록·심사 → Render에 `SOLAPI_*`·`KAKAO_PF_ID`·`KAKAO_SENDER_PHONE`·승인된 `KAKAO_TPL_<코드>`. 승인된 것만 발송됨.
+1. 🟠 피클에게 최신 `pickle-handoff.md` 전달(2026-11-11 (18) 반영본 — 번역 제안·브리핑 새 항목). 피클이 "확인 필요"를 보고하면 은행 입금 알림 라벨·카드 뒤 4자리 대응표 챙기기.
 2. 🟠 UptimeRobot 모니터가 `https://reiten.kr/health` **5분 주기**인지 확인(아니면 추가).
 3. 🟠 Dependabot PR 정리(§2-3) + GitHub Settings → Advanced Security에서 **보안 알림(Dependabot alerts)** 켜기(버전 업데이트 PR은 이미 오고 있음).
 4. 🟡 Works 휴대폰 알림 켜기(AI 승인 요청 푸시) · 텔레그램 연결(봇에 /start → 24시간 안에 Works "채팅 ID 찾기" → Render `TELEGRAM_CHAT_ID`) · 카드 실결제 테스트(PC 1·휴대폰 1·부분취소 1) · 네이버쇼핑 EP 등록(`https://reiten.kr/ep/naver.tsv`) · 피클 Gmail 보안 설정(발송은 대표 본인 주소만·알림 라벨만 읽기).
 5. 🟡 Works 컬러 관리에서 독일어/영어 이름 빈 컬러 채우기(예: 크림 옐로우) — 비면 독일어 화면에 한글이 남음.
-6. 🟡 **Works 데이터 정리(감사에서 실제 화면으로 확인 — 손님이 바로 보는 문제)**: ① 하트 후디 **검정 사진에 컬러 '블랙' 지정** — 지금은 검정을 고르면 장바구니·주문 사진이 노란 후디로 나온다. ② 하트 후디(풀오버)의 "지퍼 참 커스텀 가능" 해제 — Zip Studio 기본 상품이 풀오버로 뜬다. ③ 티셔츠: 한 줄 소개 오타 "드라이벌"→"트라이벌", 이름 오타 "리플랙티브"→"리플렉티브", 이름의 "Reiten"은 빼도 됨, 설명 "연출 할 수"→"연출할 수", 실측표 빈칸. ④ 두 상품 모두 **영어·일본어 번역 칸 비어 있음**(영어 화면에 한국어 설명이 그대로 나옴). ⑤ 룩북 8칸·참 갤러리 사진 전부 "사진 준비중".
+6. 🟡 **Works 데이터 정리(감사에서 실제 화면으로 확인 — 손님이 바로 보는 문제)**: ① 하트 후디 **검정 사진에 컬러 '블랙' 지정** — 지금은 검정을 고르면 장바구니·주문 사진이 노란 후디로 나온다. ② 하트 후디(풀오버)의 "지퍼 참 커스텀 가능" 해제 — Zip Studio 기본 상품이 풀오버로 뜬다. ③ 티셔츠: 한 줄 소개 오타 "드라이벌"→"트라이벌", 이름 오타 "리플랙티브"→"리플렉티브", 이름의 "Reiten"은 빼도 됨, 설명 "연출 할 수"→"연출할 수", 실측표 빈칸. ④ 두 상품 모두 **영어·일본어 번역 칸 비어 있음**(영어 화면에 한국어 설명이 그대로 나옴) — 피클에게 "번역 제안해 줘" 하면 AI 승인함에 올라온다(읽고 승인). ⑤ 룩북 8칸·참 갤러리 사진 전부 "사진 준비중".
 7. 🟢 런칭 시: 스마트택배 키 → Render `SWEETTRACKER_API_KEY`, Render Starter, Supabase Pro(§2-2), 서버 2대 이상이면 Render `RATE_LIMIT_SHARED=on`.
 
 ### 2-2. Supabase Pro 전환 체크리스트 (런칭 당일)
@@ -82,7 +85,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 
 ### 2-4. 다음 개발 후보 (하려면 먼저 추천·승인)
 - **[향후 개발 계획] 배송 예정 시간 표시**(사용자 결정 2026-11-11: 계획에만 두고 지금은 안 함): 스마트택배 응답의 `estimate`(예정 시간) 칸을 지금은 읽지 않는다(`lib/tracking.js` `parseTrackingResponse`). 하려면: 파싱 추가 → 주문에 저장(055 마이그레이션 또는 기존 `tracking_status` 옆 칸) → 고객 주문조회·마이페이지·Works 주문 상세에 표시. 키 발급 후 실제 응답으로 형식 확인 필요.
-- 발주 초안(입금 확인 주문만, 승인 지문·중복 방지·금액 상한) — AI 승인함 작업 종류로 추가하는 방식 권장.
+- 로드맵 2단계 이후 항목은 §6. 그중 바로 이어서 할 만한 것: 반품 신청서에 "어느 상품·사이즈"를 받기(지금은 주문 단위라 여러 벌 주문이면 사이즈 보정이 부정확), 발주 제안을 공급처별 발주서(메일 초안)로.
 - AI 승인함 데이터가 쌓이면: 작업별 승인률·거절 사유 통계, 자동 승인 후보 추천.
 - 활동 로그·대시보드도 "한 화면 배치"로 정리.
 - 화면 코드 정리 후속(§5-2): CSP `'unsafe-inline'` 제거(실결제 확인 후), 장바구니·상품 계산 테스트.
@@ -91,7 +94,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 - **[운영 검토] 무료배송 기준**은 쿠폰·적립금 차감 **전** 상품 합계(10만 원)로 계산한다(`lib/orderPricing.js`). 의도와 다르면 정책 결정 필요.
 
 ### 2-5. 실계정으로 아직 확인 안 된 것 (가짜 데이터로만 검증)
-직원 로그인→PIN→권한 제한 / PIN 6회 잠금→마스터 해제 / 고객 셀프 탈퇴 / 리뷰 요청 메일 / 컬러별 사진·영상 업로드 / 반품 환불 1건 / 사진 리뷰 승인→적립금 / 사이즈 추천 정확도 / 결제창 CSP 위반 여부.
+직원 로그인→PIN→권한 제한 / PIN 6회 잠금→마스터 해제 / 고객 셀프 탈퇴 / 리뷰 요청 메일 / 컬러별 사진·영상 업로드 / 반품 환불 1건 / 사진 리뷰 승인→적립금 / 사이즈 추천 정확도 / 결제창 CSP 위반 여부 / 미입금 리마인드 메일 실제 수신 / 구글 머천트 센터 피드 검증 통과 / 피클 번역 제안→승인→영어 화면 반영 / 발주 제안 수치(실판매 데이터로).
 
 ---
 
@@ -115,20 +118,20 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 | `CLAUDE.md` | 규칙 |
 | `소스 코드/` | 고객 사이트. HTML 20개 + `assets/`(`js/pages/` 페이지별 로직, `js/i18n-de/` Works 독일어). 이 문서·CHANGELOG·사용설명서도 여기(웹으로는 안 나감) |
 | `works/` | 관리자 사이트. `index.html`(뼈대) + `tabs/`(탭 마크업 21) + `partials/`(사이드바·로그인·사진 편집기·독일어 목록) + `js/`(기능별 34) + `works.css` + `sw.js`(푸시) |
-| `server/` | Node(Express) 서버. `server.js`(연결만, 333줄) · `lib/`(공용 로직 67) · `routes/`(API 41) · `migrations/`(001~054) · `test/`(53파일) · `test-helpers/fakeSupabase.js` · `scripts/uiLayoutCheck.js`(CI `ui` 작업) |
+| `server/` | Node(Express) 서버. `server.js`(연결만, 333줄) · `lib/`(공용 로직 70) · `routes/`(API 41) · `migrations/`(001~055) · `test/`(55파일) · `test-helpers/fakeSupabase.js` · `scripts/uiLayoutCheck.js`(CI `ui` 작업) |
 | `.github/` | `workflows/test.yml`(test·ui), `post-deploy-health-check.yml`, `dependabot.yml` |
 | `레퍼런스/` | 원본 참고 이미지(건드리지 않음) |
 | `디자인 시안/` | 로컬 검토용(git 제외) |
 | `pickle-handoff.md`·`reiten-monitoring-handoff.md` | 피클 관련 |
 
 ### 3-3. server/lib — 기능별 묶음 (새 로직 전에 여기부터 찾을 것)
-- **주문·결제**: `orderPricing` `pricing` `orderRules` `orderFinalize`(카드 확정) `orderCancel` `orderLock` `orderNotify` `orderExport` `customerOrders` `portone` `pgErrors` `refunds` `purchaseConfirm` `coupons` `thanksCoupons` `thanksCouponIssue` `loyaltyPoints` `abandonedCart`
-- **상품·재고·배송**: `products` `productIds` `catalog` `colors` `inventory` `lookbook` `carriers` `tracking` `trackingBudget` `supplierShipments`
+- **주문·결제**: `orderPricing` `pricing` `orderRules` `orderFinalize`(카드 확정) `orderCancel` `orderLock` `orderNotify` `orderExport` `customerOrders` `portone` `pgErrors` `refunds` `purchaseConfirm` `coupons` `thanksCoupons` `thanksCouponIssue` `loyaltyPoints` `abandonedCart` `depositReminder`(미입금 리마인드) `cashReceipt`
+- **상품·재고·배송**: `products` `productIds` `catalog` `colors` `inventory` `lookbook` `carriers` `tracking` `trackingBudget` `supplierShipments` `stockForecast`(소진 예측·발주 제안) `fitFeedback`(반품 사유 → 사이즈 추천 보정)
 - **돈 관리**: `expenses` `settlement`
 - **관리자·보안**: `auth`(requireAuth·마스터) `adminGuard`(PIN·권한) `adminLog`(감사·재고·시스템 오류 로그) `rateLimiters`(**writeLimiter는 이것만 사용**) `rateLimitStore` `bans` `botAuth` `staticGuard` `routeShadowing` `dbLock` `accountDeletion`
 - **AI 승인함**: `agentActions`(작업 종류 정의: prepare/execute) `internalDispatch`(승인자 신분으로 기존 API 내부 호출)
 - **알림·메일**: `mailer` `push` `telegram` `criticalAlert` `adminWebhook` `kakao` `reviewRequest` `reviewRewards` `briefing`
-- **운영**: `scheduledJobs`(크론) `opsCheck`(마이그레이션 점검 `MIGRATION_CHECKS`) `diagnostics` `backup` `analytics` `seo` `assetVersion` `kst`(KST 날짜) `pagination` `bulk` `dbUpdate` `asyncErrors` `phone` `cloudinary` `supabase`
+- **운영**: `scheduledJobs`(크론) `opsCheck`(마이그레이션 점검 `MIGRATION_CHECKS`) `diagnostics` `backup` `analytics` `seo`(사전 렌더링·네이버 EP·구글 쇼핑 피드) `assetVersion` `kst`(KST 날짜) `pagination` `bulk` `dbUpdate` `asyncErrors` `phone` `cloudinary` `supabase`
 
 ### 3-4. server/routes — API 파일
 고객: `checkout`(주문·결제) `payments` `paymentWebhook` `customerOrders` `account` `reviews` `qna` `returns` `restock` `products` `colors` `lookbook` `seo` `clientErrors` `health`
@@ -136,14 +139,14 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 피클(봇): `botDiagnostics`(**읽기 전용 — 쓰기 추가 금지**) `botAssist` `supplierShipments`(봇 쓰기) `agentActions`(제안)
 
 ### 3-5. 크론 (KST, `lib/scheduledJobs.js`)
-매시 00 미입금 자동취소 · 매시 15 배송조회 · 매시 30 결제 이탈 메일 · 매시 50 AI 제안 만료 · 03:40 구매확정 · 04:50 요청제한 정리 · 06:10 정기 지출 · 04:55 활동 로그 정리(AI 조회 기록 30일) · 08:57 아침 요약 · 09:00 오늘·내일 일정 푸시 · 11:00 리뷰 요청 메일 · 월 04:20 주간 백업 메일 · 월 09:00 장기 품절 알림 · 매월 1일 09:00 정산 리포트.
+매시 00 미입금 자동취소 · 매시 15 배송조회 · 매시 20 미입금 리마인드(취소 약 6시간 전 1회) · 매시 30 결제 이탈 메일 · 매시 50 AI 제안 만료 · 03:40 구매확정 · 04:50 요청제한 정리 · 06:10 정기 지출 · 04:55 활동 로그 정리(AI 조회 기록 30일) · 08:57 아침 요약 · 09:00 오늘·내일 일정 푸시 · 11:00 리뷰 요청 메일 · 월 04:20 주간 백업 메일 · 월 09:00 장기 품절 알림 · 매월 1일 09:00 정산 리포트.
 ⚠️ Render 무료 플랜이 잠들면 그 시각 크론은 건너뛴다.
 
 ### 3-6. 환경변수 (Render / `server/.env`, 템플릿 `server/.env.example`)
 필수: `SUPABASE_URL` `SUPABASE_ANON_KEY` `SUPABASE_SERVICE_ROLE_KEY` `RESEND_API_KEY` `RESEND_FROM` `ADMIN_NOTIFY_EMAIL` `CLOUDINARY_*`
 결제: `PORTONE_STORE_ID` `PORTONE_CHANNEL_KEY` `PORTONE_API_SECRET` `PORTONE_WEBHOOK_SECRET` `PORTONE_VIRTUAL_ACCOUNT_*`
 선택: `SENTRY_DSN` `REITEN_BOT_KEY`(피클, 32자+) `SWEETTRACKER_API_KEY` `TELEGRAM_BOT_TOKEN` `TELEGRAM_CHAT_ID` `VAPID_PUBLIC_KEY` `VAPID_PRIVATE_KEY` `SOLAPI_API_KEY` `SOLAPI_API_SECRET` `KAKAO_PF_ID` `KAKAO_SENDER_PHONE` `KAKAO_TPL_<코드>`(알림톡, `.env.example` 참고) `GA4_PROPERTY_ID` `GA4_SERVICE_ACCOUNT_JSON` `ADMIN_PIN_SECRET`(없으면 서비스 키에서 파생)
-끄기 스위치: `BACKUP_EMAIL=off` `MORNING_BRIEFING=off` `ABANDONED_CART_EMAIL` `REVIEW_REQUEST_EMAIL` · 증설 시: `RATE_LIMIT_SHARED=on`
+끄기 스위치: `BACKUP_EMAIL=off` `MORNING_BRIEFING=off` `DEPOSIT_REMINDER=off` `ABANDONED_CART_EMAIL` `REVIEW_REQUEST_EMAIL` · 증설 시: `RATE_LIMIT_SHARED=on`
 (정확한 목록: `grep -rhoE "process\.env\.[A-Z_]+" server/lib server/routes server/server.js | sort -u`)
 
 ### 3-7. 고객 사이트 `소스 코드/`
@@ -163,7 +166,7 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 
 | 작업 | 할 일 |
 |---|---|
-| DB 변경 | `server/migrations/055_*.sql`(여러 번 실행해도 안전) + `lib/opsCheck.js` `MIGRATION_CHECKS` 맨 아래 한 줄 + `reiten_schema_version()` 숫자 + `test/opsBackup.test.js` 가짜 버전 + 이 문서 §1 "다음 번호". |
+| DB 변경 | `server/migrations/056_*.sql`(여러 번 실행해도 안전) + `lib/opsCheck.js` `MIGRATION_CHECKS` 맨 아래 한 줄 + `reiten_schema_version()` 숫자 + `test/opsBackup.test.js` 가짜 버전 + 이 문서 §1 "다음 번호". |
 | 새 API | 같은 도메인의 `routes/*.js`에 추가(없으면 새 파일 + `server.js` 연결). 공용 로직은 `lib/`에서 먼저 찾기. 테스트는 `test-helpers/fakeSupabase.js`로. 리터럴 경로는 `/:id`보다 먼저 등록(어기면 서버가 안 뜸). |
 | Works 화면·문구 | 마크업 `works/tabs/<탭>.html` + 동작 `works/js/<기능>.js` + 독일어 `소스 코드/assets/js/i18n-de/<탭>.js`(여러 탭이면 `_common.js`). 권한 숨김은 `pin.js`. |
 | AI 승인함 작업 추가 | `lib/agentActions.js`에 prepare(검증·전후 미리보기)·execute(기존 관리자 API 호출)만. DB 직접 쓰기 금지. `pickle-handoff.md` 갱신. |
@@ -193,3 +196,36 @@ Billing에서 Pro(코드·키 변경 없음) → Spend cap 켜기 → Database �
 2. **고객 페이지 계산 로직 테스트** — `pages/cart.js`(610줄)·`pages/product.js`(476줄)의 가격·옵션 계산을 순수 함수로 뽑아 `server/test`에서 검사.
 3. 큰 파일(나눌 후보): `pages/cart.js` 610 · `pages/product.js` 476 · `works/js/expenses.js` 465 · `works/js/inventory.js` 432 · `i18n-de/_common.js`(665개 문구) · `lib/mailer.js` 631 · `routes/supplierShipments.js` 563 · `lib/orderFinalize.js` 522(카드 확정 실패 분기 테스트 부족).
 4. `npm audit` 잔여 low/moderate(`exceljs`·`node-cron` 내부 `uuid`) — 실제 영향 경로 없음, Dependabot으로 추적.
+
+---
+
+## 6. 사이트 방향성 · AI 활용 로드맵 (2026-11-11 사용자와 합의)
+
+### 6-1. 방향: "넓고 얕게"가 아니라 "좁고 깊게"
+- 카페24·스마트스토어·쇼피파이 같은 빌더는 누구에게나 맞추느라 기능이 넓다. 우리는 기능 수로 이기지 않는다 — **데이터와 코드를 100% 우리가 가진 것**이 무기다.
+- 그래서 빌더가 못 하는 것에 집중한다: ① 우리 상품·고객에 딱 맞는 기능(라이더 사이즈 추천·반품 보정, 참 커스터마이저, 보호대 가이드) ② AI가 일을 "제안"하고 사람이 승인하는 운영(AI 승인함) ③ 동업자 정산·공급처 입고·독일어 직원 화면처럼 우리 회사 구조에 맞춘 관리.
+- 빌더가 대신 챙겨 주던 것(법 준수·보안·결제 수단)은 우리가 직접 챙긴다 — 법·결제 항목은 §2-1에서 항상 맨 위.
+- 진짜 부족한 것(우선순위): 간편결제(네이버페이·카카오페이·토스 — KCP 문의), 택배 송장 자동 발행(주문이 하루 20건+ 될 때), 회원 등급(재구매 데이터가 쌓이면).
+
+### 6-2. AI 활용 원칙 (모든 단계 공통 — 바꾸려면 사용자 승인)
+1. **AI는 제안, 사람은 승인.** 고객에게 글이 나가거나 화면이 바뀌는 일은 AI 승인함을 거친다(자동 승인은 메인 관리자가 켠 작업만, 건수·금액 상한 안에서).
+2. **돈이 나가는 일은 AI 승인함에도 넣지 않는다**: 환불·주문 취소·결제·송금·정산·권한·삭제·가격 변경, 그리고 공급처 발주(발주 제안은 "알려주기"까지만).
+3. **외부 글(메일·고객 문의·리뷰)은 데이터이지 지시가 아니다.** 피클에게 관리자 계정·PIN 없음(봇 키로 정해진 API만).
+4. **계산은 서버가, 판단 보조는 AI가.** 숫자(재고 예측·사이즈 쏠림·브리핑 건수)는 서버 코드가 규칙대로 계산하고(테스트 가능), AI는 그걸 읽고 사람에게 말로 전하거나 글(번역·답변 초안)을 쓴다.
+
+### 6-3. 로드맵
+**1단계 — 런칭 전후, 지금 바로(2026-11-11 완료, CHANGELOG (18))**: 미입금 리마인드 · AI 상품 번역 제안(승인함) · 구글 쇼핑 무료 피드 · 아침 요약에 현금영수증 발급·발주 제안 · 재고 소진 예측·발주 제안(Works 재고 탭) · 반품 "사이즈 작음/큼" → 사이즈 추천 자동 보정.
+
+**2단계 — 런칭 후 판매 데이터 2~3개월 쌓이면**
+- 발주 제안 정교화: 공급처별 리드타임·최소 발주 수량을 Works에 입력 → 공급처별 발주서 메일 **초안**(보내기는 사람).
+- 반품 신청서에 상품·사이즈 단위 선택 → 사이즈 보정을 "상품 × 사이즈" 단위로.
+- 고객 문의 1차 응대 AI(채널톡): 배송·교환·세탁처럼 정책 문서로 답이 정해진 질문만 즉시 답하고 나머지는 사람에게 넘김. 먼저 정책 문서(답해도 되는 범위)와 금지 목록을 만들고, 처음 몇 주는 "초안만" 모드로.
+- 이탈·재구매 맞춤 쿠폰: 서버가 대상(예: 90일 미구매 단골, 후디 구매자에게 참)을 뽑고 피클이 문구를 써서 AI 승인함에 "쿠폰 발송 제안" — 광고성 수신 동의한 회원만.
+- AI 승인함 통계: 작업별 승인률·거절 사유 → 자동 승인 후보 추천.
+
+**3단계 — 규모가 커지면(월 주문 수백 건 이상)**
+- 해외 판매: 구글 쇼핑 영어·일본어 피드(이미 있음) + 해외 배송비 표 + 해외 카드(포트원) + 상품 번역(1단계 승인함으로 채움). 독일어 직원이 있어 유럽도 후보.
+- 멀티채널: 우리 상품 데이터를 그대로 네이버 스마트스토어·무신사 등에 올리는 연동(재고는 우리 DB가 기준).
+- 택배 송장 자동 발행(택배사 API), 회원 등급·적립 차등, 간편결제.
+- 운영 비용: Render Starter → 필요 시 서버 2대(`RATE_LIMIT_SHARED=on`), Supabase Pro.
+
