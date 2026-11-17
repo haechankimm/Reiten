@@ -12,7 +12,7 @@ jobs:
         working-directory: server
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -28,7 +28,7 @@ jobs:
         working-directory: server
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - run: npm i --no-save --no-package-lock playwright@1.49.1
