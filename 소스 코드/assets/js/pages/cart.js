@@ -163,7 +163,10 @@
     const input = el("f-cr-number");
     input.hidden = type === "none";
     input.placeholder = type === "business" ? t("사업자등록번호 10자리") : t("휴대폰 번호");
-    if (type === "personal" && !input.value) input.value = el("f-tel").value.trim();
+    const tel = el("f-tel").value.trim();
+    if (type === "personal" && !input.value) input.value = tel;
+    // 소득공제용에서 자동으로 채운 휴대폰 번호가 사업자번호 칸에 그대로 남지 않게
+    if (type === "business" && tel && input.value === tel) input.value = "";
     if (type === "none") setErr(input, false);
   }
   el("f-cr-type").addEventListener("change", syncCashReceiptField);

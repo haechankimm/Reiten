@@ -8,6 +8,7 @@ const { supabaseAdmin } = require("../lib/supabase");
 const { productJsonLd, productSsrHtml, shopSsrHtml, itemListJsonLd, naverEpTsv, googleFeedXml, productUrl: seoProductUrl } = require("../lib/seo");
 const SITE_DIR = path.join(__dirname, "..", "..", "소스 코드");
 const { getActiveProducts } = require("../lib/catalog");
+const { getPublicColors } = require("../lib/colors");
 const { versionHtml } = require("../lib/assetVersion");
 
 const router = express.Router();
@@ -131,7 +132,8 @@ router.get("/feed/google.xml", async (req, res) => {
   const hit = googleFeedCache.get(lang);
   let body = hit && Date.now() - hit.at < 10 * 60 * 1000 ? hit.body : null;
   if (!body) {
-    body = googleFeedXml(await getActiveProducts(), { lang, shippingFee: SITE.shipping.fee, freeOver: SITE.shipping.freeOver });
+    const [products, colors] = await Promise.all([getActiveProducts(), getPublicColors()]);
+    body = googleFeedXml(products, { lang, shippingFee: SITE.shipping.fee, freeOver: SITE.shipping.freeOver, colors });
     googleFeedCache.set(lang, { body, at: Date.now() });
   }
   res.set("Content-Type", "application/xml; charset=utf-8").set("Cache-Control", "public, max-age=600");

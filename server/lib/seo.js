@@ -161,37 +161,64 @@ function localized(p, lang) {
   };
 }
 
-function googleFeedXml(products, { lang = "ko", shippingFee = 3500, freeOver = 100000 } = {}) {
-  const items = products
-    .filter((p) => productImages(p).length && !isFullyOutOfStock(p))
-    .map((p) => {
-      const images = productImages(p);
-      const t = localized(p, lang);
-      const link = lang === "ko" ? productUrl(p) : `${productUrl(p)}&lang=${lang}`;
-      const title = epTitle(t.name).slice(0, 150);
-      const desc = String(t.desc || title).replace(/\s+/g, " ").trim().slice(0, 5000);
-      const lines = [
-        `<g:id>${xmlEsc(p.id)}</g:id>`,
-        `<title>${xmlEsc(title)}</title>`,
-        `<description>${xmlEsc(desc)}</description>`,
-        `<link>${xmlEsc(link)}</link>`,
-        `<g:image_link>${xmlEsc(images[0])}</g:image_link>`,
-        ...images.slice(1, 11).map((u) => `<g:additional_image_link>${xmlEsc(u)}</g:additional_image_link>`),
-        `<g:availability>in_stock</g:availability>`,
-        `<g:price>${Math.round(Number(p.price) || 0)} KRW</g:price>`,
-        `<g:brand>${BRAND}</g:brand>`,
-        `<g:condition>new</g:condition>`,
-        `<g:identifier_exists>no</g:identifier_exists>`,
-        `<g:google_product_category>${GOOGLE_APPAREL_CATEGORY}</g:google_product_category>`,
-        p.category ? `<g:product_type>${xmlEsc(p.category)}</g:product_type>` : "",
-        `<g:age_group>adult</g:age_group>`,
-        `<g:gender>unisex</g:gender>`,
-        (p.colors || []).length ? `<g:color>${xmlEsc(p.colors.slice(0, 3).join("/"))}</g:color>` : "",
-        (p.sizes || []).length ? `<g:size>${xmlEsc(p.sizes.join(","))}</g:size>` : "",
-        `<g:shipping><g:country>KR</g:country><g:price>${Number(p.price) >= freeOver ? 0 : shippingFee} KRW</g:price></g:shipping>`,
-      ].filter(Boolean);
-      return `<item>\n${lines.map((l) => "  " + l).join("\n")}\n</item>`;
-    });
+/* 컬러 표시 이름 — 언어별 이름이 없으면 한국어 이름, 그것도 없으면 키 */
+function colorName(key, colors, lang) {
+  const c = (colors || []).find((x) => x.key === key);
+  if (!c) return key;
+  return (lang === "en" && c.labelEn) || (lang === "ja" && c.labelJa) || c.label || key;
+}
+
+/* 고른 컬러로 태그된 상단 사진이 있으면 그 사진, 없으면 상품 첫 사진(product.js galleryFor와 같은 기준) */
+function variantImage(p, color) {
+  const tagged = (p.media || []).find((m) => m.kind === "gallery" && m.color === color && m.src);
+  return tagged ? absUrl(tagged.src) : productImages(p)[0];
+}
+
+/* 구글은 사이즈·컬러가 여러 개인 의류를 "변형마다 한 줄 + 같은 item_group_id"로 받는다
+   (한 줄에 "XS,S,M"이나 "black/sky"를 넣으면 머천트 센터가 잘못된 값으로 경고) — 컬러×사이즈마다 한 항목. */
+function googleFeedXml(products, { lang = "ko", shippingFee = 3500, freeOver = 100000, colors = [] } = {}) {
+  const items = [];
+  for (const p of products) {
+    if (!productImages(p).length || isFullyOutOfStock(p)) continue;
+    const images = productImages(p);
+    const t = localized(p, lang);
+    const link = lang === "ko" ? productUrl(p) : `${productUrl(p)}&lang=${lang}`;
+    const title = epTitle(t.name).slice(0, 150);
+    const desc = String(t.desc || title).replace(/\s+/g, " ").trim().slice(0, 5000);
+    const variantColors = (p.colors || []).length ? p.colors : [null];
+    const variantSizes = (p.sizes || []).length ? p.sizes : [null];
+    const multi = variantColors.length * variantSizes.length > 1;
+    for (const color of variantColors) {
+      for (const size of variantSizes) {
+        const out = size && ((p.soldOut || []).includes(size) || (color && ((p.outOfStockByColor && p.outOfStockByColor[color]) || []).includes(size)));
+        const id = [p.id, color, size].filter(Boolean).join("-").slice(0, 50);
+        const main = color ? variantImage(p, color) : images[0];
+        const extra = images.filter((u) => u !== main).slice(0, 10);
+        const lines = [
+          `<g:id>${xmlEsc(id)}</g:id>`,
+          multi ? `<g:item_group_id>${xmlEsc(p.id)}</g:item_group_id>` : "",
+          `<title>${xmlEsc(title)}</title>`,
+          `<description>${xmlEsc(desc)}</description>`,
+          `<link>${xmlEsc(link)}</link>`,
+          `<g:image_link>${xmlEsc(main)}</g:image_link>`,
+          ...extra.map((u) => `<g:additional_image_link>${xmlEsc(u)}</g:additional_image_link>`),
+          `<g:availability>${out ? "out_of_stock" : "in_stock"}</g:availability>`,
+          `<g:price>${Math.round(Number(p.price) || 0)} KRW</g:price>`,
+          `<g:brand>${BRAND}</g:brand>`,
+          `<g:condition>new</g:condition>`,
+          `<g:identifier_exists>no</g:identifier_exists>`,
+          `<g:google_product_category>${GOOGLE_APPAREL_CATEGORY}</g:google_product_category>`,
+          p.category ? `<g:product_type>${xmlEsc(p.category)}</g:product_type>` : "",
+          `<g:age_group>adult</g:age_group>`,
+          `<g:gender>unisex</g:gender>`,
+          color ? `<g:color>${xmlEsc(colorName(color, colors, lang))}</g:color>` : "",
+          size ? `<g:size>${xmlEsc(size)}</g:size>` : "",
+          `<g:shipping><g:country>KR</g:country><g:price>${Number(p.price) >= freeOver ? 0 : shippingFee} KRW</g:price></g:shipping>`,
+        ].filter(Boolean);
+        items.push(`<item>\n${lines.map((l) => "  " + l).join("\n")}\n</item>`);
+      }
+    }
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n<channel>\n<title>${BRAND}</title>\n<link>${SITE_URL}</link>\n<description>${BRAND} rider apparel</description>\n${items.join("\n")}\n</channel>\n</rss>\n`;
 }
 

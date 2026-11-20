@@ -28,3 +28,21 @@ test("품절 조합은 판매 중 상품만, 공급처 입고 대기·확인 대
   assert.strictEqual(by.supplierAwaitingReceipt, 1);
   assert.strictEqual(by.invoicesPending, 1);
 });
+
+test("볼 권한 없는 영역의 알림은 건수까지 응답에서 빠진다", async () => {
+  const { invalidateAdminCache } = require("../lib/adminGuard");
+  invalidateAdminCache();
+  supabaseAdmin.__reset({
+    profiles: [{ id: "s1", role: "admin" }],
+    admin_permissions: [{ user_id: "s1", permissions: { orders: "view" } }],
+    products: [], inventory: [], qna: [{ id: "q", status: "답변대기" }], return_requests: [], system_error_log: [{ id: "e", resolved: false }],
+    orders: [{ id: 1, status: "입금대기", customer: {} }], supplier_shipments: [], supplier_invoices: [{ id: "i1", status: "RECORDED" }],
+  });
+  const a = express();
+  a.use(router);
+  const res = await request(a).get("/api/admin/notifications").set("Authorization", `Bearer ${fakeAdminToken("s1", "staff@x.com")}`);
+  const keys = res.body.items.map((i) => i.key);
+  assert.ok(keys.includes("pendingOrders"));
+  for (const k of ["unansweredQna", "systemErrors", "invoicesPending", "outOfStock"]) assert.ok(!keys.includes(k), k);
+  assert.strictEqual(res.body.total, 1);
+});

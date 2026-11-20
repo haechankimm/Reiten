@@ -274,16 +274,32 @@ const ACTIONS = {
         preview: { lines, note: "승인하면 그 언어 상품 화면에 바로 보입니다 — 문장을 꼭 읽어 보세요" },
       };
     },
+    /* 승인·되돌리기 시점의 번역을 다시 읽어 "그 언어 칸만" 바꾼다 — 제안 때 받아 둔 전체 번역(prev)을 그대로 쓰면
+       영어·일본어 제안을 차례로 승인할 때 뒤의 승인이 앞에서 승인한 언어를 지워 버린다. */
     async execute(p, ctx) {
-      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(p.productId)}`, body: { translations: { ...p.prev, [p.lang]: p.entry } } });
+      const current = await currentTranslations(p.productId);
+      if (current === null) return { error: "상품을 찾을 수 없습니다" };
+      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(p.productId)}`, body: { translations: { ...current, [p.lang]: p.entry } } });
       return ok(r) ? { ok: true } : { error: errOf(r) };
     },
     async undo(rec, ctx) {
-      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(rec.params.productId)}`, body: { translations: rec.params.prev || {} } });
+      const { productId, lang, prev } = rec.params;
+      const current = await currentTranslations(productId);
+      if (current === null) return { error: "상품을 찾을 수 없습니다" };
+      const next = { ...current };
+      if (prev && prev[lang]) next[lang] = prev[lang];
+      else delete next[lang];
+      const r = await dispatch({ ...ctx, method: "PATCH", path: `/api/admin/products/${encodeURIComponent(productId)}`, body: { translations: next } });
       return ok(r) ? { ok: true } : { error: errOf(r) };
     },
   },
 };
+
+async function currentTranslations(productId) {
+  const { data } = await supabaseAdmin.from("products").select("translations").eq("id", productId).maybeSingle();
+  if (!data) return null;
+  return data.translations && typeof data.translations === "object" ? data.translations : {};
+}
 
 /* ---------- AI 권한 설정(agent_policy) ---------- */
 function defaultPolicy() {

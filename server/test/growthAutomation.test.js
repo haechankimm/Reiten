@@ -50,7 +50,7 @@ test("구글 쇼핑 피드: 사진·재고 있는 상품만, 언어별 문구·�
   const { googleFeedXml } = require("../lib/seo");
   const noImg = { ...P, id: "noimg", images: [] };
   const ko = googleFeedXml([P, noImg]);
-  assert.match(ko, /<g:id>hoodie<\/g:id>/);
+  assert.match(ko, /<g:id>hoodie-black-M<\/g:id>/);
   assert.doesNotMatch(ko, /noimg/);
   assert.match(ko, /<g:price>89000 KRW<\/g:price>/);
   assert.match(ko, /따뜻한 &lt;후디&gt; &amp; 반사/);
@@ -62,6 +62,24 @@ test("구글 쇼핑 피드: 사진·재고 있는 상품만, 언어별 문구·�
   assert.match(en, /id=hoodie&amp;lang=en/);
   const shipFree = googleFeedXml([{ ...P, price: 120000 }]);
   assert.match(shipFree, /<g:price>0 KRW<\/g:price><\/g:shipping>/);
+});
+
+test("구글 쇼핑 피드: 컬러×사이즈마다 한 항목(같은 item_group_id), 컬러 이름·변형별 재고·컬러 사진", () => {
+  const { googleFeedXml } = require("../lib/seo");
+  const p = {
+    ...P, colors: ["black", "sky"], sizes: ["M", "L"], outOfStockByColor: { sky: ["L"] },
+    media: [{ kind: "gallery", src: "https://res.cloudinary.com/x/sky.jpg", color: "sky" }],
+  };
+  const xml = googleFeedXml([p], { colors: [{ key: "black", label: "블랙" }, { key: "sky", label: "스카이 블루", labelEn: "Sky Blue" }] });
+  const items = xml.split("<item>").slice(1);
+  assert.strictEqual(items.length, 4);
+  assert.ok(items.every((i) => /<g:item_group_id>hoodie<\/g:item_group_id>/.test(i)));
+  assert.doesNotMatch(xml, /<g:size>[^<]*,/);
+  const skyL = items.find((i) => /<g:id>hoodie-sky-L<\/g:id>/.test(i));
+  assert.match(skyL, /out_of_stock/);
+  assert.match(skyL, /<g:color>스카이 블루<\/g:color>/);
+  assert.match(skyL, /<g:image_link>https:\/\/res\.cloudinary\.com\/x\/sky\.jpg/);
+  assert.match(googleFeedXml([p], { lang: "en", colors: [{ key: "sky", label: "스카이 블루", labelEn: "Sky Blue" }] }), /<g:color>Sky Blue<\/g:color>/);
 });
 
 test("구글 쇼핑 피드 주소가 XML로 응답", async () => {
@@ -133,4 +151,31 @@ test("사이즈 추천이 fitBias를 반영", () => {
   assert.ok(small.reasons.includes("runs_small"));
   assert.strictEqual(small.usual, "L");
   assert.strictEqual(recommendSize(base, { sizes, fitBias: "big" }).recommended, "M");
+});
+
+test("상품 번역 승인: 영어·일본어를 차례로 승인해도 앞서 승인한 언어가 지워지지 않음, 되돌리기는 그 언어만", async () => {
+  const { ACTIONS } = require("../lib/agentActions");
+  const { setDispatchOverride } = require("../lib/internalDispatch");
+  supabaseAdmin.__reset({ products: [{ id: "hoodie", name_ko: "하트 후디", translations: {} }] });
+  setDispatchOverride(async ({ method, path, body }) => {
+    const id = decodeURIComponent(path.split("/").pop());
+    await supabaseAdmin.from("products").update(body).eq("id", id);
+    return { status: 200, body: { ok: true } };
+  });
+  try {
+    const a = ACTIONS.product_translate;
+    const en = await a.prepare({ productId: "hoodie", lang: "en", name: "Heart Hoodie" });
+    const ja = await a.prepare({ productId: "hoodie", lang: "ja", name: "ハートフーディ" });
+    assert.ok((await a.execute(en.params, {})).ok);
+    assert.ok((await a.execute(ja.params, {})).ok);
+    let { data } = await supabaseAdmin.from("products").select("translations").eq("id", "hoodie").maybeSingle();
+    assert.strictEqual(data.translations.en.name, "Heart Hoodie");
+    assert.strictEqual(data.translations.ja.name, "ハートフーディ");
+    assert.ok((await a.undo({ params: en.params }, {})).ok);
+    ({ data } = await supabaseAdmin.from("products").select("translations").eq("id", "hoodie").maybeSingle());
+    assert.strictEqual(data.translations.en, undefined);
+    assert.strictEqual(data.translations.ja.name, "ハートフーディ");
+  } finally {
+    setDispatchOverride(null);
+  }
 });

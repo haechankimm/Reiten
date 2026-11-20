@@ -94,7 +94,7 @@ const I18N = {
   },
   "컬렉션 보기": { en: "Shop Collection", ja: "コレクションを見る" },
   "지퍼 참 만들기": { en: "Build a Zip Charm", ja: "ジップチャームを作る" },
-  "남녀공용 오버핏 · S–XL ·": { en: "Unisex oversized · S–XL · Free shipping over", ja: "男女兼用オーバーサイズ · S–XL ·" },
+  "남녀공용 오버핏 · XS–XL ·": { en: "Unisex oversized · XS–XL · Free shipping over", ja: "男女兼用オーバーサイズ · XS–XL ·" },
   "이상 무료배송": { en: "", ja: "以上で送料無料" },
   "커서를 올려 빛을 비춰보세요": { en: "Hover to shine a light on it", ja: "カーソルを合わせて光を当ててみてください" },
   "← 빛을 비춰보세요": { en: "← Shine a light on it", ja: "← 光を当ててみてください" },

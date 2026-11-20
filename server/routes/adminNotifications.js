@@ -56,7 +56,15 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "cashReceiptPending", label: "현금영수증 발급 대기", count: (!cashReceipts.error && cashReceipts.count) || 0, tab: "orders", severity: "warning" },
     { key: "invoicesPending", label: "확인 대기 지출", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "expenses", severity: "info" },
   ];
-  res.json({ items, total: items.reduce((sum, it) => sum + it.count, 0) });
+  /* 볼 권한이 없는 영역의 알림은 건수까지 서버에서 뺀다(화면에서만 숨기면 응답에 건수가 남는다 — CLAUDE.md 권한 규칙).
+     AI 승인 대기는 위에서 이미 이 관리자가 승인할 수 있는 종류만 셌다. */
+  const AREA_OF_TAB = { orders: "orders", inventory: "inventory", qna: "qna", returns: "returns", systemErrors: "payments", expenses: "expenses" };
+  const visible = [];
+  for (const it of items) {
+    const area = AREA_OF_TAB[it.tab];
+    if (!area || (await hasAreaPermission(req, area, "view"))) visible.push(it);
+  }
+  res.json({ items: visible, total: visible.reduce((sum, it) => sum + it.count, 0) });
 });
 
 /* 알림센터 벨에서 "시스템 오류" 행을 눌렀을 때 펼쳐 보여줄 상세 목록 — 최근 미해결 20건만.
