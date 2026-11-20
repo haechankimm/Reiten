@@ -109,6 +109,8 @@ router.patch("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
     .select("discount_type, discount_value")
     .eq("code", req.params.code.toUpperCase())
     .maybeSingle();
+  // 다른 관리자가 방금 지운 쿠폰을 고치면 "수정 실패(500)" 대신 "없는 쿠폰"으로 알려준다
+  if (!existing) return res.status(404).json({ error: "존재하지 않는 쿠폰입니다." });
   const { patch, error: patchError } = couponPatchFromBody(req.body || {}, {
     forCreate: false,
     existingDiscountType: existing?.discount_type,

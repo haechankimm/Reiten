@@ -46,3 +46,12 @@ test("볼 권한 없는 영역의 알림은 건수까지 응답에서 빠진다"
   for (const k of ["unansweredQna", "systemErrors", "invoicesPending", "outOfStock"]) assert.ok(!keys.includes(k), k);
   assert.strictEqual(res.body.total, 1);
 });
+
+test("없는 쿠폰을 수정하면 500이 아니라 404", async () => {
+  supabaseAdmin.__reset({ profiles: [{ id: "a1", role: "admin" }], coupons: [] });
+  const a = express();
+  a.use(express.json());
+  a.use(require("../routes/coupons"));
+  const res = await request(a).patch("/api/admin/coupons/NOPE").set("Authorization", `Bearer ${fakeAdminToken("a1", "a@x.com")}`).send({ active: false });
+  assert.strictEqual(res.status, 404);
+});
