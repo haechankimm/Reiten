@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0GKE5QTQ31"></script>
+<script src="assets/js/site-init.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>단체 주문 문의 — REITEN</title>
+<link rel="canonical" href="https://reiten.kr/group-order.html">
+<meta name="description" content="라이딩 크루·동호회 단체복 문의 — REITEN 리플렉티브 후디를 팀 로고와 함께 단체로 주문하세요.">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<main id="main">
+  <section class="sec sec--tight">
+    <div class="wrap">
+      <p class="eyebrow">Crew Order</p>
+      <h1 class="h-xl" style="margin-top:12px" data-i18n="단체 주문 문의">단체 주문 문의</h1>
+      <p class="lede" style="margin-top:14px;max-width:56ch" data-i18n="라이딩 크루·동호회 단체복을 만들어 드립니다. 5벌부터 문의할 수 있고, 팀 로고·문구 인쇄도 상담해 드려요. 남겨 주시면 영업일 기준 1~2일 안에 연락드립니다.">
+        라이딩 크루·동호회 단체복을 만들어 드립니다. 5벌부터 문의할 수 있고, 팀 로고·문구 인쇄도 상담해 드려요. 남겨 주시면 영업일 기준 1~2일 안에 연락드립니다.
+      </p>
+      <hr class="rule" style="margin:26px 0 34px">
+
+      <form id="group-form" novalidate style="max-width:56ch">
+        <div class="field">
+          <label for="gi-team" data-i18n-html data-i18n='팀(크루)명 <span class="req">*</span>'>팀(크루)명 <span class="req">*</span></label>
+          <input id="gi-team" maxlength="80" required>
+          <p class="err" data-i18n="팀(크루)명을 입력해 주세요.">팀(크루)명을 입력해 주세요.</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="gi-name" data-i18n-html data-i18n='담당자 이름 <span class="req">*</span>'>담당자 이름 <span class="req">*</span></label>
+            <input id="gi-name" autocomplete="name" maxlength="40" required>
+            <p class="err" data-i18n="이름을 입력해 주세요.">이름을 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="gi-tel" data-i18n-html data-i18n='연락처 <span class="req">*</span>'>연락처 <span class="req">*</span></label>
+            <input id="gi-tel" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+            <p class="err" data-i18n="연락처를 정확히 입력해 주세요.">연락처를 정확히 입력해 주세요.</p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="gi-email" data-i18n-html data-i18n='이메일 <span class="req">*</span>'>이메일 <span class="req">*</span></label>
+          <input id="gi-email" type="email" autocomplete="email" required>
+          <p class="err" data-i18n="이메일 형식을 확인해 주세요.">이메일 형식을 확인해 주세요.</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="gi-qty" data-i18n-html data-i18n='예상 수량(벌) <span class="req">*</span>'>예상 수량(벌) <span class="req">*</span></label>
+            <input id="gi-qty" type="number" inputmode="numeric" min="5" max="5000" step="1" required>
+            <p class="err" data-i18n="5벌 이상으로 입력해 주세요.">5벌 이상으로 입력해 주세요.</p>
+          </div>
+          <div class="field">
+            <label for="gi-date" data-i18n="희망 수령일 (선택)">희망 수령일 (선택)</label>
+            <input id="gi-date" type="date">
+          </div>
+        </div>
+        <div class="field">
+          <label for="gi-products" data-i18n="원하는 상품·컬러 (선택)">원하는 상품·컬러 (선택)</label>
+          <input id="gi-products" maxlength="300" placeholder="예: 리플렉트 하트 후디 블랙 20벌" data-i18n-attr="placeholder:예: 리플렉트 하트 후디 블랙 20벌">
+        </div>
+        <div class="field">
+          <label for="gi-custom" data-i18n="로고·문구 인쇄 요청 (선택)">로고·문구 인쇄 요청 (선택)</label>
+          <textarea id="gi-custom" rows="3" maxlength="1000" placeholder="예: 등판에 크루 로고, 왼쪽 가슴에 이름" data-i18n-attr="placeholder:예: 등판에 크루 로고, 왼쪽 가슴에 이름"></textarea>
+          <p class="small" style="margin-top:6px;color:var(--muted)" data-i18n="로고 파일은 접수 확인 메일에 답장으로 보내 주세요.">로고 파일은 접수 확인 메일에 답장으로 보내 주세요.</p>
+        </div>
+        <div class="field">
+          <label for="gi-message" data-i18n="그 밖에 문의 (선택)">그 밖에 문의 (선택)</label>
+          <textarea id="gi-message" rows="4" maxlength="2000"></textarea>
+        </div>
+        <!-- 봇 차단용 숨은 칸 — 사람에게는 보이지 않는다 -->
+        <div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">
+          <label for="gi-website">Website</label>
+          <input id="gi-website" tabindex="-1" autocomplete="off">
+        </div>
+        <label class="checkbox" style="margin-bottom:18px">
+          <input type="checkbox" id="gi-agree" required>
+          <span data-i18n="문의 답변을 위한 개인정보(이름·연락처·이메일) 수집 및 이용에 동의합니다. 상담이 끝나면 관련 법령이 정한 기간까지만 보관합니다.">문의 답변을 위한 개인정보(이름·연락처·이메일) 수집 및 이용에 동의합니다. 상담이 끝나면 관련 법령이 정한 기간까지만 보관합니다.</span>
+        </label>
+        <button class="btn" type="submit" id="gi-submit" data-i18n="문의 보내기">문의 보내기</button>
+      </form>
+
+      <div id="gi-done" class="notice" hidden style="margin-top:24px;max-width:56ch">
+        <b data-i18n="문의가 접수되었습니다.">문의가 접수되었습니다.</b>
+        <p class="small" style="margin-top:6px" data-i18n="접수 확인 메일을 보내 드렸어요. 담당자가 확인한 뒤 영업일 기준 1~2일 안에 연락드리겠습니다.">접수 확인 메일을 보내 드렸어요. 담당자가 확인한 뒤 영업일 기준 1~2일 안에 연락드리겠습니다.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth-client.js"></script>
+<script src="assets/js/pages/group-order.js"></script>
+</body>
+</html>

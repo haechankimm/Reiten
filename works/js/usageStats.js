@@ -9,6 +9,7 @@
     members: "회원 계정 관리", calendar: "캘린더", notices: "공지", outbox: "발송 실패 아웃박스",
     settings: "정보", auditlog: "활동 로그", dashboard: "대시보드", usagestats: "사용 통계",
     agent: "AI 승인함", expenses: "지출·정산", staff: "직원·권한",
+    banners: "고객 공지 띠배너", groups: "단체 주문 문의",
   };
   const USAGE_FEATURE_LABEL = {
     "feature:export:ord-export": "주문 내보내기",

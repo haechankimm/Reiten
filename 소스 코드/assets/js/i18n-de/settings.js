@@ -168,4 +168,8 @@ addDe({
   "영문 이름": "Englischer Name",
   "현금영수증 발급 완료 표시": "Barquittung als ausgestellt markiert",
   "현금영수증 발급 표시 취소": "Barquittung-Markierung aufgehoben",
+  "고객 띠배너 등록": "Shop-Banner erstellt",
+  "고객 띠배너 수정": "Shop-Banner geändert",
+  "고객 띠배너 삭제": "Shop-Banner gelöscht",
+  "단체 주문 문의 상태·메모 수정": "Gruppenanfrage aktualisiert",
 });

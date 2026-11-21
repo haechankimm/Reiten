@@ -1,8 +1,9 @@
 /* 고객 화면(비회원 주문조회·회원 내 주문)에 내려주는 주문 모양 — 두 API가 같은 함수를 쓴다(2026-10-02).
    예전엔 상품 합계·배송비·총액만 내려서 쿠폰·적립금 할인이 있는 주문은 "합계 + 배송비 ≠ 총 결제금액"으로
    보였고, 입금대기 주문의 입금 계좌·가상계좌 정보, 환불액, 구매확정 상태도 볼 수 없었다.
-   고객 이름·연락처·주소(customer)와 관리자 메모는 일부러 넣지 않는다(조회는 주문번호+연락처만으로 열리므로). */
+   고객 이름·연락처·상세주소와 관리자 메모는 일부러 넣지 않는다(조회는 주문번호+연락처만으로 열리므로). 배송지 변경용으로 우편번호·도로명만 예외. */
 const { canConfirm, autoConfirmAt } = require("./purchaseConfirm");
+const { canEditAddress } = require("./addresses");
 
 function toCustomerOrderDto(o) {
   const due = autoConfirmAt(o);
@@ -27,6 +28,10 @@ function toCustomerOrderDto(o) {
     confirmedAt: o.confirmed_at || null,
     canConfirm: "confirmed_at" in o ? canConfirm(o) : false,
     autoConfirmAt: "confirmed_at" in o && !o.confirmed_at && due ? due.toISOString() : null,
+    /* 출고 전 셀프 배송지 변경(2026-11-21) — 바꿀 수 있는지와, 지금 주소 중 우편번호·도로명만(상세주소·이름·연락처는 계속 안 내려준다) */
+    canEditAddress: canEditAddress(o),
+    shipTo: canEditAddress(o) && o.customer ? { zip: o.customer.zip || "", addr: o.customer.addr || "" } : null,
+    addressChangedAt: (o.customer && o.customer.addressChangedAt) || null,
     virtualAccount:
       o.payment_method === "virtual_account" && o.status === "입금대기" && o.virtual_account_number
         ? { bank: o.virtual_account_bank, accountNumber: o.virtual_account_number, holder: o.virtual_account_holder, dueAt: o.virtual_account_due_at }

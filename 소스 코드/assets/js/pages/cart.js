@@ -31,6 +31,10 @@
   }
 
   function itemDisplay(it) {
+    if (typeof it.productId === "string" && it.productId.startsWith("extra-")) {
+      const x = EXTRAS.find((e) => `extra-${e.key}` === it.productId);
+      return { name: t("추가 아이템 — {item}", { item: labelOf(x, it.productId.slice(6)) }), opts: [] };
+    }
     if (typeof it.productId === "string" && it.productId.startsWith("charm-") && it.charm) {
       const c = getCharm(it.charm.key);
       return {
@@ -59,6 +63,101 @@
       });
     }
     return { name: productName(product), opts };
+  }
+
+  /* "이것 담으면 무료배송"(2026-11-21) — 무료배송 기준까지 조금 모자라면, 모자란 금액을 채우는 추가 아이템(9,000원)과
+     재고 있는 상품을 바로 담기 버튼으로 보여 준다. 너무 많이 모자라면(기준의 60% 넘게) 권하지 않는다(부담만 됨).
+     추가 아이템은 옷과 함께일 때만 주문할 수 있어 옷이 담겨 있을 때만 뜬다. 금액 계산은 서버가 다시 한다. */
+  const UPSELL_MAX_GAP_RATE = 0.6;
+  function upsellProducts(left) {
+    const out = [];
+    for (const p of PRODUCTS) {
+      if (!(p.price >= left)) continue;
+      const options = [];
+      for (const c of (p.colors || []).filter((k) => COLORS[k])) {
+        const outC = (p.outOfStockByColor && p.outOfStockByColor[c]) || [];
+        for (const sz of p.sizes || []) {
+          if (!(p.soldOut || []).includes(sz) && !outC.includes(sz)) options.push({ color: c, size: sz });
+        }
+      }
+      if (options.length) out.push({ p, options });
+    }
+    return out.sort((a, b) => a.p.price - b.p.price).slice(0, 2);
+  }
+
+  function paintShipUpsell() {
+    const box = el("ship-upsell");
+    if (!box) return;
+    const items = Cart.read();
+    const left = SITE.shipping.freeOver - Cart.subtotal();
+    if (left <= 0 || left > SITE.shipping.freeOver * UPSELL_MAX_GAP_RATE || !cartHasPhysicalProduct(items)) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    const extraCount = Math.ceil(left / EXTRA_PRICE);
+    const extras = extraCount <= 3 ? EXTRAS : [];
+    // 카드가 너무 많으면 주문서가 밀린다(스크롤 최소) — 추가 아이템으로 채울 수 있으면 상품 추천은 1개만
+    const products = upsellProducts(left).slice(0, extras.length ? 1 : 2);
+    if (!extras.length && !products.length) { box.hidden = true; box.innerHTML = ""; return; }
+    const extraCard = (x) => `
+      <div class="upsell-card">
+        <div class="upsell-card__media">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : `<span class="small" style="font-size:9px">${t("준비중")}</span>`}</div>
+        <div class="upsell-card__body">
+          <b>${esc(t(x.label))}</b>
+          <span class="small tnum">${money(EXTRA_PRICE)}${extraCount > 1 ? ` × ${extraCount}` : ""}</span>
+        </div>
+        <button type="button" class="btn btn--sm" data-upsell-extra="${esc(x.key)}">${esc(extraCount > 1 ? t("{n}개 담기", { n: extraCount }) : t("담기"))}</button>
+      </div>`;
+    const productUpsellCard = ({ p, options }) => `
+      <div class="upsell-card" data-upsell-product="${esc(p.id)}">
+        <div class="upsell-card__media">${p.images.find(Boolean) ? `<img src="${esc(p.images.find(Boolean))}" alt="" loading="lazy">` : ""}</div>
+        <div class="upsell-card__body">
+          <b>${esc(productName(p))}</b>
+          <span class="small tnum">${money(p.price)}</span>
+          <select class="upsell-opt" aria-label="${esc(t("컬러 · 사이즈"))}">
+            ${options.map((o, i) => `<option value="${i}">${esc(labelOf(COLORS[o.color], o.color))} / ${esc(o.size)}</option>`).join("")}
+          </select>
+        </div>
+        <button type="button" class="btn btn--sm" data-upsell-add="${esc(p.id)}">${esc(t("담기"))}</button>
+      </div>`;
+    box.innerHTML = `
+      <p class="small"><b>${esc(t("{amount}만 더 담으면 배송비가 무료예요", { amount: money(left) }))}</b></p>
+      <div class="upsell-list">${extras.map(extraCard).join("")}${products.map(productUpsellCard).join("")}</div>`;
+    box.hidden = false;
+
+    box.querySelectorAll("[data-upsell-extra]").forEach((b) => b.addEventListener("click", () => {
+      const x = EXTRAS.find((e) => e.key === b.dataset.upsellExtra);
+      if (!x) return;
+      Cart.add({ sig: `extra|${x.key}`, productId: `extra-${x.key}`, name: t("추가 아이템 — {item}", { item: t(x.label) }), image: x.image || null, unit: EXTRA_PRICE, qty: extraCount, opts: [] });
+      toast(t("{item}을(를) 담았습니다", { item: t(x.label) }));
+      invalidateCouponAfterChange();
+      paint();
+    }));
+    box.querySelectorAll("[data-upsell-add]").forEach((b) => b.addEventListener("click", () => {
+      const entry = products.find((x) => x.p.id === b.dataset.upsellAdd);
+      if (!entry) return;
+      const o = entry.options[Number(b.closest(".upsell-card").querySelector(".upsell-opt").value) || 0];
+      const p = entry.p;
+      Cart.add({
+        sig: [p.id, o.color, o.size].join("|"), productId: p.id, name: productName(p),
+        image: p.images.find(Boolean) || null, color: o.color, size: o.size, unit: p.price, qty: 1,
+        opts: [{ label: t("컬러"), value: t(COLORS[o.color].label) }, { label: t("사이즈"), value: o.size }],
+      });
+      toast(t("{name} · {size} 담았습니다", { name: productName(p), size: o.size }));
+      invalidateCouponAfterChange();
+      paint();
+    }));
+  }
+
+  /* 담긴 상품이 바뀌면 쿠폰 할인액이 달라질 수 있어 다시 적용하게 한다(수량 버튼과 같은 처리) */
+  function invalidateCouponAfterChange() {
+    if (appliedCoupon) {
+      toast(t("장바구니가 바뀌어 쿠폰을 다시 적용해 주세요"));
+      el("f-coupon").value = "";
+    }
+    appliedCoupon = null;
+    el("coupon-msg").textContent = "";
   }
 
   function paint() {
@@ -137,6 +236,8 @@
     el("sum-total").textContent = money(displayTotal());
     // 휴대폰(한 줄 배치)에선 결제 요약이 제출 버튼 아래로 내려가 금액을 못 보고 제출하게 돼서, 버튼 바로 위에도 총액을 보여 준다(2026-11-11 감사)
     if (el("sum-total-inline")) el("sum-total-inline").textContent = money(displayTotal());
+
+    paintShipUpsell();
 
     const left = SITE.shipping.freeOver - Cart.subtotal();
     el("ship-hint").textContent = left > 0
@@ -240,9 +341,62 @@
         setErr(el("f-zip"), false);
         setErr(el("f-addr"), false);
         el("f-addr2").focus();
+        el("f-saved-addr").value = "";
       },
     }).open();
   });
+
+  /* 배송지 주소록 — 로그인 회원만(2026-11-21, 056). 기본 배송지를 빈 주문서에 채우고, 다른 배송지를 고를 수 있다.
+     "이 배송지를 주소록에 저장"을 체크하면 주문 접수와 함께 저장(같은 주소면 서버가 새로 만들지 않음). */
+  let savedAddresses = [];
+  function fillAddress(a) {
+    el("f-name").value = a.name;
+    el("f-tel").value = a.tel;
+    el("f-zip").value = a.zip;
+    el("f-addr").value = a.addr;
+    el("f-addr2").value = a.addr2 || "";
+    ["f-name", "f-tel", "f-zip", "f-addr"].forEach((id) => setErr(el(id), false));
+  }
+  (async () => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch("/api/my/addresses", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.unavailable) return;
+      el("save-addr-wrap").hidden = false;
+      savedAddresses = body.items || [];
+      if (!savedAddresses.length) return;
+      el("f-saved-addr").innerHTML = `<option value="">${esc(t("새 배송지 입력"))}</option>`
+        + savedAddresses.map((a) => `<option value="${esc(a.id)}">${esc((a.isDefault ? "★ " : "") + addressLine(a))}</option>`).join("");
+      el("saved-addr-field").hidden = false;
+      const def = savedAddresses.find((a) => a.isDefault) || savedAddresses[0];
+      if (!el("f-zip").value.trim() && !el("f-addr").value.trim()) {
+        fillAddress(def);
+        el("f-saved-addr").value = def.id;
+      }
+    } catch (e) {}
+  })();
+  el("f-saved-addr").addEventListener("change", () => {
+    const a = savedAddresses.find((x) => x.id === el("f-saved-addr").value);
+    if (a) fillAddress(a);
+  });
+  function saveAddressToBook() {
+    if (el("save-addr-wrap").hidden || !el("f-save-addr").checked) return;
+    const payload = {
+      name: el("f-name").value.trim(),
+      tel: el("f-tel").value.trim(),
+      zip: el("f-zip").value.trim(),
+      addr: el("f-addr").value.trim(),
+      addr2: el("f-addr2").value.trim(),
+    };
+    getAccessToken().then((token) => {
+      if (!token) return;
+      // keepalive: 카드 결제창으로 페이지가 넘어가도 저장 요청이 끊기지 않게
+      fetch("/api/my/addresses", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify(payload) }).catch(() => {});
+    }).catch(() => {});
+  }
 
   el("f-memo-select").addEventListener("change", () => {
     const custom = el("f-memo-select").value === "__custom__";
@@ -383,6 +537,7 @@
     const items = Cart.read();
     if (!items.length) { toast(t("장바구니가 비어 있습니다")); return; }
     if (!cartHasPhysicalProduct(items)) { toast(t("참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.")); return; }
+    saveAddressToBook();
 
     const method = payMethod();
     // 쿠폰·적립금으로 결제할 금액이 0원이면 결제창 없이 바로 접수한다(서버가 바로 "입금확인" 처리, 2026-10-28)

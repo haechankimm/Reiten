@@ -132,6 +132,13 @@
           <p class="lede" data-i18n="아직 주문 내역이 없습니다.">아직 주문 내역이 없습니다.</p>
         </div>
 
+        <details id="addr-book-wrap" style="margin-top:36px;max-width:70ch" hidden>
+          <summary class="h-md" style="cursor:pointer" data-i18n="배송지 주소록">배송지 주소록</summary>
+          <p class="small" style="margin:10px 0 12px;color:var(--muted)" data-i18n="주문서에서 '이 배송지를 주소록에 저장'을 체크하면 여기에 모입니다. 기본 배송지는 다음 주문서에 자동으로 채워져요.">주문서에서 '이 배송지를 주소록에 저장'을 체크하면 여기에 모입니다. 기본 배송지는 다음 주문서에 자동으로 채워져요.</p>
+          <div id="addr-book" class="addr-book"></div>
+          <p id="addr-book-empty" class="small" hidden data-i18n="저장된 배송지가 없습니다.">저장된 배송지가 없습니다.</p>
+        </details>
+
         <details style="margin-top:64px;max-width:56ch">
           <summary class="small" style="cursor:pointer;color:var(--muted)" data-i18n="회원 탈퇴">회원 탈퇴</summary>
           <div style="margin-top:14px">

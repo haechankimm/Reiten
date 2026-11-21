@@ -7,6 +7,7 @@
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", members: "admin-members",
     calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
     dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff", expenses: "admin-expenses", agent: "admin-agent",
+    banners: "admin-banners", groups: "admin-groups",
   };
   const SHORTCUT_DESC = {
     orders: "주문 검색·상태 변경·배송 등록",
@@ -18,6 +19,8 @@
     calendar: "발매일·행사·휴무 일정 확인",
     expenses: "지출 기록·동업자 정산·예산",
     agent: "AI가 제안한 작업 승인·거절",
+    banners: "휴무·배송 지연 공지를 고객 사이트에 띄우기",
+    groups: "크루·동호회 단체복 문의 상담 관리",
   };
   const DEFAULT_SHORTCUTS = ["orders", "inventory", "paymentlog", "members", "outbox", "dashboard", "calendar"];
 

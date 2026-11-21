@@ -55,6 +55,11 @@
               <div class="field">
                 <label class="checkbox"><input type="checkbox" id="pf-active" checked><span data-i18n="공개 (체크 해제 시 매장에서 숨김)">공개 (체크 해제 시 매장에서 숨김)</span></label>
               </div>
+              <!-- 신상품 공개 예약(2026-11-21, 056) — 정한 시각에 서버가 자동 공개(5분 안) -->
+              <div class="field">
+                <label for="pf-publish-at" data-i18n="공개 예약 (선택 — 이 시각에 자동 공개)">공개 예약 (선택 — 이 시각에 자동 공개)</label>
+                <input id="pf-publish-at" type="datetime-local">
+              </div>
               <div class="field" style="grid-column:1/-1">
                 <label for="pf-desc" data-i18n="상세 설명">상세 설명</label>
                 <textarea id="pf-desc"></textarea>

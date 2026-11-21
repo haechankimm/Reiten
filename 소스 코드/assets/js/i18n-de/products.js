@@ -110,4 +110,8 @@ addDe({
   "최근 6개월 사이즈 사유 반품·교환": "Retouren/Umtausch wegen Größe (letzte 6 Monate)",
   "번역 없음": "Keine Übersetzung",
   "영어·일본어 화면에 한국어가 그대로 나옵니다 — AI 승인함으로 번역 제안을 받을 수 있습니다": "Auf Englisch/Japanisch erscheint der koreanische Text — Übersetzungsvorschläge kommen über die KI-Freigaben",
+  "공개 예약 (선택 — 이 시각에 자동 공개)": "Geplante Veröffentlichung (optional — wird zu diesem Zeitpunkt automatisch sichtbar)",
+  "저장했지만 DB 마이그레이션 056 전이라 공개 예약은 빠졌습니다": "Gespeichert, aber ohne geplante Veröffentlichung (DB-Migration 056 fehlt)",
+  "저장했습니다 — {when}에 자동 공개됩니다": "Gespeichert — wird am {when} automatisch veröffentlicht",
+  "예약 {when}": "Geplant {when}",
 });

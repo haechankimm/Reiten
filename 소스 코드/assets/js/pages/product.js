@@ -9,6 +9,23 @@
   /* 판매 종료(비공개)되거나 없는 상품 링크로 들어오면, 예전엔 첫 번째 상품을 대신 보여줘서
      카톡·인스타로 공유된 옛 링크가 엉뚱한 상품으로 열렸다 — 안내 문구와 쇼핑 링크로 대체한다. */
   if (!p) {
+    /* 공개 예약된 신상품(2026-11-21) — 드롭 전에 공유된 링크면 "○월 ○일 ○시 공개"만 보여 주고, 시간이 되면 새로고침해 연다 */
+    const upcoming = await fetch("/api/products/" + encodeURIComponent(qs("id") || "") + "/upcoming").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (upcoming && upcoming.publishAt) {
+      const at = new Date(upcoming.publishAt);
+      const when = at.toLocaleString(getLang() === "ko" ? "ko-KR" : getLang() === "ja" ? "ja-JP" : "en-US", { month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
+      document.title = t("공개 예정") + " — REITEN";
+      document.getElementById("main").innerHTML = `
+        <section class="sec"><div class="wrap" style="text-align:center;padding:60px 0">
+          <p class="eyebrow">Coming soon</p>
+          <h1 class="h-xl" style="margin-top:12px">${esc(t("{when} 공개 예정", { when }))}</h1>
+          <p class="lede" style="margin:14px auto 0;max-width:44ch">${esc(t("공개 시간이 되면 이 페이지에서 바로 구매할 수 있어요."))}</p>
+          <a class="btn btn--line" style="margin-top:22px" href="shop.html">${esc(t("다른 상품 보기"))}</a>
+        </div></section>`;
+      const wait = at.getTime() - Date.now();
+      if (wait > 0 && wait < 6 * 3600 * 1000) setTimeout(() => location.reload(), wait + 8000);
+      return;
+    }
     document.title = t("상품을 찾을 수 없습니다") + " — REITEN";
     document.getElementById("main").innerHTML = `
       <section class="sec"><div class="wrap" style="text-align:center;padding:60px 0">

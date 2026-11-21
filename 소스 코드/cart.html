@@ -35,6 +35,8 @@
           <!-- ============ 좌: 상품 + 주문서 ============ -->
           <div>
             <div id="items"></div>
+            <!-- "이것 담으면 무료배송" 추천(2026-11-21, pages/cart.js paintShipUpsell) -->
+            <div id="ship-upsell" class="ship-upsell" hidden></div>
             <div class="notice" id="charm-only-notice" style="margin-top:16px" hidden>
               <b data-i18n="참만으로는 주문할 수 없어요">참만으로는 주문할 수 없어요</b><br>
               <span data-i18n="참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.">참은 후디·집업 등 상품과 함께 주문할 때만 구매할 수 있습니다.</span>
@@ -47,6 +49,10 @@
             </p>
 
             <form id="order-form" novalidate>
+              <div class="field" id="saved-addr-field" hidden>
+                <label for="f-saved-addr" data-i18n="저장된 배송지">저장된 배송지</label>
+                <select id="f-saved-addr"></select>
+              </div>
               <div class="row-2">
                 <div class="field">
                   <label for="f-name" data-i18n-html data-i18n='주문자 이름 <span class="req">*</span>'>주문자 이름 <span class="req">*</span></label>
@@ -114,6 +120,10 @@
                 <label for="f-addr2" data-i18n="상세주소">상세주소</label>
                 <input id="f-addr2" name="addr2" autocomplete="address-line2" placeholder="동 · 호수 등" data-i18n-attr="placeholder:동 · 호수 등">
               </div>
+              <label class="checkbox" id="save-addr-wrap" hidden style="margin:-6px 0 18px">
+                <input type="checkbox" id="f-save-addr" checked>
+                <span data-i18n="이 배송지를 주소록에 저장">이 배송지를 주소록에 저장</span>
+              </label>
 
               <div class="field">
                 <label for="f-memo-select" data-i18n="배송 메모">배송 메모</label>

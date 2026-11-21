@@ -15,6 +15,7 @@ const { uploadProductPhoto } = require("../lib/cloudinary");
 const { paginationParams } = require("../lib/pagination");
 const { isMissingColumnError } = require("../lib/pgErrors");
 const { uploadProductVideo } = require("../lib/cloudinary");
+const { scheduleChanged } = require("../lib/catalog");
 
 /* 041 마이그레이션(media·model_info) 전이면 그 두 컬럼만 빼고 다시 저장한다 — 갤러리 사진은
    images에도 같이 들어가므로 사진 자체는 저장되고, 상세 콘텐츠·모델 정보만 빠진다. */
@@ -29,6 +30,14 @@ async function saveWithMediaFallback(run, patch) {
     patch = rest;
     result = await run(patch);
   }
+  // 056(공개 예약) 전이면 예약 시각만 빼고 저장한다 — 화면에 "예약이 저장되지 않았다"고 알린다(publishSkipped)
+  let publishSkipped = false;
+  if (isMissingColumnError(result.error) && "publish_at" in patch) {
+    const { publish_at, ...rest } = patch;
+    publishSkipped = !!publish_at;
+    patch = rest;
+    result = await run(patch);
+  }
   if (isMissingColumnError(result.error) && MEDIA_COLUMNS.some((c) => c in patch)) {
     const rest = { ...patch };
     MEDIA_COLUMNS.forEach((c) => delete rest[c]);
@@ -36,10 +45,20 @@ async function saveWithMediaFallback(run, patch) {
     result.mediaSkipped = true;
   }
   result.translationsSkipped = translationsSkipped;
+  result.publishSkipped = publishSkipped;
   return result;
 }
 
 const router = express.Router();
+
+/* 공개 예약 상품의 공개 시각만(2026-11-21) — 드롭 전에 공유된 상품 링크로 들어온 손님에게 "○월 ○일 ○시 공개"를 보여 준다.
+   이름·가격·사진 같은 다른 정보는 주지 않는다(공개 전 정보 노출 최소화). 예약이 없으면 404. */
+router.get("/api/products/:id/upcoming", async (req, res) => {
+  const { data, error } = await supabaseAdmin.from("products").select("active, publish_at").eq("id", String(req.params.id).slice(0, 80)).maybeSingle();
+  if (error || !data || data.active || !data.publish_at || new Date(data.publish_at).getTime() <= Date.now()) return res.status(404).json({ error: "예약된 상품이 아닙니다." });
+  res.set("Cache-Control", "public, max-age=60");
+  res.json({ publishAt: data.publish_at });
+});
 
 /* 사이즈 반품 쏠림(lib/fitFeedback.js, 2026-11-11) — Works 상품 카드 칩 */
 router.get("/api/admin/products/fit-feedback", requireAdmin, async (req, res) => {
@@ -70,7 +89,7 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
   const { patch, error: patchError } = productPatchFromBody(b, { forCreate: true, validColors: await getValidColorMap() });
   if (patchError) return res.status(400).json({ error: patchError });
 
-  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped, publishSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").insert({ id, ...p }).select().single(),
     patch
   );
@@ -81,7 +100,8 @@ router.post("/api/admin/products", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "상품 생성에 실패했습니다." });
   }
   logAdminAction(req, "product.create", "product", data.id, { name: data.name_ko });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
+  scheduleChanged();
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped, publishSkipped: !!publishSkipped });
 });
 
 /* ---------- 상품 일괄 처리 ----------
@@ -98,7 +118,11 @@ router.patch("/api/admin/products/bulk-active", requireAdmin, async (req, res) =
   const active = !!(req.body && req.body.active);
   if (!ids.length) return res.status(400).json({ error: "ids가 필요합니다." });
 
-  const { error } = await supabaseAdmin.from("products").update({ active, updated_at: new Date().toISOString() }).in("id", ids);
+  // 일괄로 공개·비공개를 정하면 걸려 있던 공개 예약은 취소한다(나중에 예약 시각에 다시 뒤집히지 않게, 056 전이면 그 칸 없이)
+  const stamp = { active, updated_at: new Date().toISOString() };
+  let { error } = await supabaseAdmin.from("products").update({ ...stamp, publish_at: null }).in("id", ids);
+  if (isMissingColumnError(error)) ({ error } = await supabaseAdmin.from("products").update(stamp).in("id", ids));
+  scheduleChanged();
   if (error) {
     console.error("[admin/products] 일괄 공개/비공개 실패:", error.message);
     return res.status(500).json({ error: "일괄 처리에 실패했습니다." });
@@ -212,7 +236,7 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   if (!Object.keys(patch).length) return res.status(400).json({ error: "변경할 값이 없습니다." });
   patch.updated_at = new Date().toISOString();
 
-  const { data, error, mediaSkipped, translationsSkipped } = await saveWithMediaFallback(
+  const { data, error, mediaSkipped, translationsSkipped, publishSkipped } = await saveWithMediaFallback(
     (p) => supabaseAdmin.from("products").update(p).eq("id", req.params.id).select().maybeSingle(),
     patch
   );
@@ -223,7 +247,8 @@ router.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
   if (!data) return res.status(404).json({ error: "존재하지 않는 상품입니다." });
   logAdminAction(req, "product.update", "product", req.params.id, { ...patch, media: patch.media ? `${patch.media.length}개` : undefined });
-  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped });
+  scheduleChanged();
+  res.json({ ...toProductDto(data), mediaSkipped: !!mediaSkipped, translationsSkipped: !!translationsSkipped, publishSkipped: !!publishSkipped });
 });
 
 router.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {

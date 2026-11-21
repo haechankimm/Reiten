@@ -344,6 +344,48 @@ const NAV = [
   { href: "about.html", label: "About" },
 ];
 
+/* ---------- 고객 공지 띠배너(2026-11-21) ----------
+   Works "고객 공지 배너"에서 추가·수정·삭제한 문구(휴무·배송 지연 안내 등)를 모든 페이지 맨 위에 보여 준다(/api/banners, 30초 캐시).
+   손님이 ×로 닫으면 그 배너는 이 기기에서 다시 안 보인다 — 관리자가 문구를 고치면(version이 바뀜) 다시 보인다.
+   서버가 없거나 실패하면 아무것도 안 보인다(화면은 그대로). */
+const BANNER_CLOSED_KEY = "reiten_banner_closed";
+function closedBanners() {
+  try { return JSON.parse(localStorage.getItem(BANNER_CLOSED_KEY)) || []; } catch (e) { return []; }
+}
+async function renderSiteBanners() {
+  let items = [];
+  try {
+    const res = await fetch("/api/banners");
+    if (!res.ok) return;
+    items = ((await res.json()) || {}).items || [];
+  } catch (e) { return; }
+  const closed = closedBanners();
+  const lang = getLang();
+  const visible = items.filter((b) => !closed.includes(`${b.id}:${b.version}`));
+  if (!visible.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "site-banners";
+  wrap.setAttribute("role", "region");
+  wrap.setAttribute("aria-label", t("공지"));
+  wrap.innerHTML = visible.map((b) => {
+    const text = (lang === "en" && b.messageEn) || (lang === "ja" && b.messageJa) || b.message;
+    const external = /^https:\/\//i.test(b.linkUrl || "");
+    const body = b.linkUrl
+      ? `<a href="${esc(b.linkUrl)}"${external ? ' target="_blank" rel="noopener"' : ""}>${esc(text)}</a>`
+      : `<span>${esc(text)}</span>`;
+    return `<div class="site-banner${b.tone === "warning" ? " site-banner--warning" : ""}" data-banner="${esc(`${b.id}:${b.version}`)}">${body}<button type="button" class="site-banner__close" aria-label="${esc(t("공지 닫기"))}">×</button></div>`;
+  }).join("");
+  const header = document.querySelector(".hdr");
+  if (header) header.before(wrap);
+  else document.body.prepend(wrap);
+  wrap.querySelectorAll(".site-banner__close").forEach((btn) => btn.addEventListener("click", () => {
+    const row = btn.closest(".site-banner");
+    try { localStorage.setItem(BANNER_CLOSED_KEY, JSON.stringify([...closedBanners(), row.dataset.banner].slice(-20))); } catch (e) {}
+    row.remove();
+    if (!wrap.children.length) wrap.remove();
+  }));
+}
+
 function renderHeader(active = "") {
   const links = NAV.map(
     (n) =>
@@ -434,6 +476,7 @@ function renderHeader(active = "") {
 
   Cart.paint();
   Wishlist.paint();
+  renderSiteBanners();
 }
 
 function renderFooter() {
@@ -470,6 +513,7 @@ function renderFooter() {
           <li><a href="about.html#policy">${t("배송 · 교환 안내")}</a></li>
           <li><a href="reviews.html">${t("상품 리뷰")}</a></li>
           <li><a href="qna.html">${t("상품 문의")}</a></li>
+          <li><a href="group-order.html">${t("단체 주문 문의")}</a></li>
           <li><a href="order-lookup.html">${t("주문 조회")}</a></li>
           <li><a href="return-request.html">${t("반품 · 교환 신청")}</a></li>
         </ul>
@@ -769,9 +813,105 @@ function bindOrderConfirmButtons(root, getTel, onDone) {
   );
 }
 
+/* 출고 전 셀프 배송지 변경(2026-11-21, 마이그레이션 056) — 주문 조회·마이페이지 주문 카드가 같이 쓴다.
+   서버(routes/addresses.js)가 입금대기·입금확인이고 운송장이 없을 때만 canEditAddress·shipTo를 준다.
+   비회원 조회에서는 상세주소를 보여 주지 않는다(우편번호·도로명까지만). */
+function loadDaumPostcode() {
+  if (window.daum && window.daum.Postcode) return Promise.resolve();
+  if (!loadDaumPostcode.p) {
+    loadDaumPostcode.p = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+      s.onload = () => resolve();
+      s.onerror = () => { loadDaumPostcode.p = null; reject(new Error("postcode")); };
+      document.head.appendChild(s);
+    });
+  }
+  return loadDaumPostcode.p;
+}
+
+function orderAddressHTML(o) {
+  if (!o.canEditAddress || !o.shipTo) return "";
+  const changed = o.addressChangedAt ? ` <span style="color:var(--muted)">· ${esc(t("변경됨"))}</span>` : "";
+  return `<div class="addr-edit" data-order-no="${esc(o.no)}">
+    <p class="small" style="margin-top:10px"><span style="color:var(--muted)">${esc(t("배송지"))}</span>
+      <span class="addr-edit__cur">(${esc(o.shipTo.zip)}) ${esc(o.shipTo.addr)}</span>${changed}
+      <button type="button" class="link-btn" data-addr-open>${esc(t("배송지 변경"))}</button></p>
+    <div class="addr-edit__form" hidden>
+      <div style="display:flex;gap:8px">
+        <input class="ae-zip" inputmode="numeric" placeholder="00000" readonly aria-label="${esc(t("우편번호"))}" style="flex:1;min-width:0">
+        <button type="button" class="btn btn--sm" data-addr-search style="flex-shrink:0">${esc(t("주소 검색"))}</button>
+      </div>
+      <input class="ae-addr" readonly placeholder="${esc(t("위 '주소 검색' 버튼을 눌러주세요"))}" aria-label="${esc(t("주소"))}">
+      <input class="ae-addr2" maxlength="120" placeholder="${esc(t("동 · 호수 등"))}" aria-label="${esc(t("상세주소"))}">
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn--sm" data-addr-save>${esc(t("이 주소로 변경"))}</button>
+        <button type="button" class="btn btn--sm btn--line" data-addr-cancel>${esc(t("취소"))}</button>
+      </div>
+      <p class="small" style="color:var(--muted)">${esc(t("출고 준비(운송장 입력) 전까지만 바꿀 수 있어요."))}</p>
+    </div>
+  </div>`;
+}
+
+/* getTel: 비회원 조회 화면이면 입력한 연락처를 돌려주는 함수(회원은 로그인으로 본인 확인). */
+function bindOrderAddressEdit(root, getTel) {
+  root.querySelectorAll(".addr-edit").forEach((box) => {
+    if (box.dataset.bound) return;
+    box.dataset.bound = "1";
+    const q = (sel) => box.querySelector(sel);
+    const form = q(".addr-edit__form");
+    q("[data-addr-open]").addEventListener("click", () => { form.hidden = !form.hidden; });
+    q("[data-addr-cancel]").addEventListener("click", () => { form.hidden = true; });
+    q("[data-addr-search]").addEventListener("click", async () => {
+      try { await loadDaumPostcode(); } catch (e) { toast(t("주소 검색을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")); return; }
+      new daum.Postcode({
+        oncomplete: (d) => {
+          q(".ae-zip").value = d.zonecode;
+          q(".ae-addr").value = d.roadAddress || d.jibunAddress;
+          q(".ae-addr2").focus();
+        },
+      }).open();
+    });
+    q("[data-addr-save]").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const zip = q(".ae-zip").value.trim();
+      const addr = q(".ae-addr").value.trim();
+      if (!/^\d{5}$/.test(zip) || addr.length < 5) { toast(t("주소 검색으로 새 배송지를 골라 주세요.")); return; }
+      btn.disabled = true;
+      const headers = { "Content-Type": "application/json" };
+      if (typeof getAccessToken === "function") {
+        const token = await getAccessToken().catch(() => null);
+        if (token) headers.Authorization = "Bearer " + token;
+      }
+      try {
+        const res = await fetch("/api/orders/address", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ orderNo: box.dataset.orderNo, tel: getTel ? getTel() : undefined, zip, addr, addr2: q(".ae-addr2").value.trim() }),
+        });
+        const body = await res.json().catch(() => ({}));
+        btn.disabled = false;
+        if (!res.ok) { toast(apiErrorText(body, t("배송지 변경에 실패했습니다."))); return; }
+        q(".addr-edit__cur").textContent = `(${body.shipTo.zip}) ${body.shipTo.addr}`;
+        form.hidden = true;
+        toast(t("배송지를 바꿨습니다."));
+      } catch (err) {
+        btn.disabled = false;
+        toast(t("배송지 변경에 실패했습니다."));
+      }
+    });
+  });
+}
+
+/* 주소록 항목 한 줄 표시 — 장바구니 배송지 선택·마이페이지 주소록이 같이 쓴다 */
+function addressLine(a) {
+  return [a.label, a.name, `(${a.zip}) ${a.addr}${a.addr2 ? " " + a.addr2 : ""}`].filter(Boolean).join(" · ");
+}
+
 /* 장바구니에 참(charm-*) 말고 실물 상품이 하나라도 있는지 — 참 단독 주문은 받지 않는다(server/lib/pricing.js hasPhysicalProduct와 같은 기준). */
 function cartHasPhysicalProduct(items) {
-  return (items || []).some((it) => it && typeof it.productId === "string" && it.productId && !it.productId.startsWith("charm-"));
+  // 참(charm-)·추가 아이템(extra-) 단독 줄은 부속이라 옷 없이 주문할 수 없다(서버 lib/pricing.js isAddonLine과 같은 기준)
+  return (items || []).some((it) => it && typeof it.productId === "string" && it.productId && !it.productId.startsWith("charm-") && !it.productId.startsWith("extra-"));
 }
 
 function productCard(p, delay = 0, extraBodyHTML = "") {

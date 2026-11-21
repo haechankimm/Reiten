@@ -1,0 +1,65 @@
+        <!-- 고객 사이트 띠배너(2026-11-21, 056) — js/banners.js, server/routes/banners.js -->
+        <div id="admin-banners" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="고객 공지 띠배너">고객 공지 띠배너</div>
+              <div class="content-sub" data-i18n="휴무·배송 지연 같은 안내를 고객 사이트 맨 위에 띄웁니다. 저장하면 1분 안에 반영돼요(최대 3개 동시 노출).">휴무·배송 지연 같은 안내를 고객 사이트 맨 위에 띄웁니다. 저장하면 1분 안에 반영돼요(최대 3개 동시 노출).</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:14px">
+            <b id="banner-form-title" data-i18n="새 배너">새 배너</b>
+            <form id="banner-form" novalidate style="margin-top:12px;display:grid;gap:10px">
+              <div class="field" style="margin:0">
+                <label for="bn-message" data-i18n="문구 (한국어)">문구 (한국어)</label>
+                <input id="bn-message" maxlength="200" required placeholder="예: 12/24~12/26 연휴로 출고를 쉽니다" data-i18n-attr="placeholder:예: 12/24~12/26 연휴로 출고를 쉽니다">
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 14px;align-items:end">
+                <div class="field" style="margin:0">
+                  <label for="bn-tone" data-i18n="색">색</label>
+                  <select id="bn-tone">
+                    <option value="info" data-i18n="기본(검정)">기본(검정)</option>
+                    <option value="warning" data-i18n="주의(주황)">주의(주황)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label for="bn-starts" data-i18n="시작 (비우면 바로)">시작 (비우면 바로)</label>
+                  <input id="bn-starts" type="datetime-local">
+                </div>
+                <div class="field" style="margin:0">
+                  <label for="bn-ends" data-i18n="끝 (비우면 계속)">끝 (비우면 계속)</label>
+                  <input id="bn-ends" type="datetime-local">
+                </div>
+                <div class="field" style="margin:0">
+                  <label for="bn-order" data-i18n="순서 (작을수록 위)">순서 (작을수록 위)</label>
+                  <input id="bn-order" type="number" step="1" value="0">
+                </div>
+              </div>
+              <details data-compact>
+                <summary class="small" data-i18n="링크·영어·일본어 문구 (선택)">링크·영어·일본어 문구 (선택)</summary>
+                <div style="display:grid;gap:10px;margin-top:10px">
+                  <div class="field" style="margin:0">
+                    <label for="bn-link" data-i18n="누르면 이동할 주소 (/notice.html 또는 https://…)">누르면 이동할 주소 (/notice.html 또는 https://…)</label>
+                    <input id="bn-link" maxlength="300" inputmode="url">
+                  </div>
+                  <div class="field" style="margin:0">
+                    <label for="bn-message-en" data-i18n="영어 문구 (비우면 한국어로)">영어 문구 (비우면 한국어로)</label>
+                    <input id="bn-message-en" maxlength="200">
+                  </div>
+                  <div class="field" style="margin:0">
+                    <label for="bn-message-ja" data-i18n="일본어 문구 (비우면 영어→한국어로)">일본어 문구 (비우면 영어→한국어로)</label>
+                    <input id="bn-message-ja" maxlength="200">
+                  </div>
+                </div>
+              </details>
+              <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="bn-active" checked>
+                <span data-i18n="켜기 (끄면 기간이 남아도 숨김)">켜기 (끄면 기간이 남아도 숨김)</span>
+              </label>
+              <div style="display:flex;gap:8px">
+                <button type="submit" class="btn btn--sm" id="bn-submit" data-i18n="등록">등록</button>
+                <button type="button" class="btn btn--sm btn--ghost" id="bn-cancel" hidden data-i18n="편집 취소">편집 취소</button>
+              </div>
+            </form>
+          </div>
+          <div id="admin-banners-list" style="display:grid;gap:10px"></div>
+        </div>

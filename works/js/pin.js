@@ -219,6 +219,8 @@
     { tab: "calendar", panel: "admin-calendar", hide: ["#cal-new", "#cal-add-for-day", "#cal-f-save", "#cal-f-delete"], disable: ["#cal-f-title", "#cal-f-date", "#cal-f-memo"] },
     { tab: "calendar", panel: "admin-home", hide: ["#handoff-submit", ".handoff-delete"], disable: ["#handoff-input"] },
     { tab: "notices", panel: "admin-notices", hidePanel: ["#notice-form"], hide: [".notice-delete", ".notice-edit"] },
+    { tab: "banners", panel: "admin-banners", hidePanel: ["#banner-form"], hide: [".banner-toggle", ".banner-edit", ".banner-delete"] },
+    { tab: "groups", panel: "admin-groups", hide: [".group-save"], disable: [".group-status", ".group-assignee", ".group-memo"] },
     { tab: "outbox", panel: "admin-outbox", hide: [".outbox-resolve"] },
     /* CS 템플릿(#qna-template-form·.qt-delete)은 서버에서 "qna" 영역 권한을 따르므로(adminGuard의 qna-templates)
        정보 탭 규칙으로 숨기지 않는다 — 정보 탭이 보기 전용이면 문의 수정 권한이 있어도 템플릿 패널째 사라졌다

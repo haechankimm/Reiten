@@ -166,6 +166,20 @@
 
   /* 날짜만으로는 "오늘 들어온 주문 중 어느 게 먼저인지" 구분이 안 된다는 피드백 — 시:분까지
      함께 보여준다(초 단위는 목록에서 불필요한 정보라 뺌). */
+  /* <input type="datetime-local"> 값 ↔ ISO(2026-11-21) — 띠배너 기간·상품 공개 예약이 같이 쓴다. 이 기기 시간대 기준. */
+  function isoToLocalInput(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function localInputToIso(v) {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
   function fmtDate(iso) {
     return new Date(iso).toLocaleString(getLang() === "de" ? "de-DE" : "ko-KR", {
       year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",

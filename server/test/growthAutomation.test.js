@@ -125,6 +125,21 @@ test("재고 소진 예측: 판매 속도·취소 반영, 3주 안 품절 예상
   assert.strictEqual(forecastLine([]), null);
 });
 
+test("재고 소진 예측: 품절 알림 대기 인원을 발주 제안에 더한다", () => {
+  const { forecastStock, forecastLine } = require("../lib/stockForecast");
+  const products = [{ id: "h", name_ko: "후디", colors: ["black"], sizes: ["M", "L", "XL"] }];
+  const inventory = [{ product_id: "h", color: "black", size: "M", qty: 0 }, { product_id: "h", color: "black", size: "L", qty: 0 }, { product_id: "h", color: "black", size: "XL", qty: 3 }];
+  const logs = [{ product_id: "h", color: "black", size: "M", delta: -28, reason: "order" }]; // 하루 1장
+  const sub = (size) => ({ product_id: "h", color: "black", size });
+  const restock = [sub("M"), sub("M"), sub("L"), sub("L"), sub("L"), sub("XL")];
+  const items = forecastStock({ inventory, logs, products, restock });
+  // M: 판매 기반 44장 + 대기 2명 = 46장 / L: 판매 없음이지만 품절+대기 3명 → 3장 / XL: 재고 있고 판매 없음 → 제외
+  assert.deepStrictEqual(items.map((r) => [r.size, r.waiting, r.suggestQty]), [["L", 3, 3], ["M", 2, 46]]);
+  assert.match(forecastLine(items), /후디 black L 품절·3장\(알림 대기 3명\)/);
+  // 대기 정보가 없으면 예전과 같다
+  assert.deepStrictEqual(forecastStock({ inventory, logs, products }).map((r) => [r.size, r.waiting, r.suggestQty]), [["M", 0, 44]]);
+});
+
 test("반품 사유 사이즈 보정: 한쪽으로 확실히 쏠릴 때만", () => {
   const { fitFeedbackFromRows, fitBias } = require("../lib/fitFeedback");
   const items = new Map([["O1", [{ productId: "h", size: "M" }, { productId: "charm-1", size: "F" }]], ["O2", [{ productId: "h", size: "L" }]], ["O3", [{ productId: "h", size: "S" }]], ["O4", [{ productId: "t", size: "M" }]]]);

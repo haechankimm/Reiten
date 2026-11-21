@@ -1203,3 +1203,32 @@ html[data-admin-theme="grass"][data-theme="night"] {
   .icon-btn { width: 32px; height: 32px; }
   .hdr__tools { margin-right: -2px; }
 }
+
+/* "이것 담으면 무료배송" 추천(2026-11-21) — 장바구니 상품 목록 아래 */
+.ship-upsell { margin-top: 18px; padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius); }
+.upsell-list { display: grid; gap: 10px; margin-top: 10px; }
+.upsell-card { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.upsell-card__media { width: 48px; height: 60px; background: var(--plate); display: grid; place-items: center; overflow: hidden; border-radius: var(--radius); }
+.upsell-card__media img { width: 100%; height: 100%; object-fit: cover; }
+.upsell-card__body { display: grid; gap: 4px; min-width: 0; }
+.upsell-card__body b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upsell-opt { height: 32px; padding: 0 8px; max-width: 100%; font-size: 12px; }
+
+/* 고객 공지 띠배너(2026-11-21) — Works "고객 공지 배너"에서 관리, app.js renderHeader가 맨 위에 넣는다 */
+.site-banners { position: relative; z-index: 81; }
+.site-banner { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 9px 44px 9px 16px; font-size: 13px; line-height: 1.45; text-align: center; background: var(--ink); color: var(--paper); position: relative; }
+.site-banner + .site-banner { border-top: 1px solid color-mix(in srgb, var(--paper) 18%, transparent); }
+.site-banner--warning { background: #9a3412; color: #fff; }
+.site-banner a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.site-banner__close { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 0; background: transparent; color: inherit; font-size: 18px; line-height: 1; cursor: pointer; opacity: .8; }
+.site-banner__close:hover { opacity: 1; }
+
+/* 출고 전 셀프 배송지 변경(주문 조회·마이페이지, 2026-11-21) */
+.link-btn { background: none; border: 0; padding: 0 0 0 6px; font: inherit; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.addr-edit__form { display: grid; gap: 8px; margin-top: 10px; max-width: 460px; }
+.addr-edit__form input { width: 100%; }
+/* 마이페이지 주소록 */
+.addr-book { display: grid; gap: 8px; }
+.addr-book__row { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.addr-book__row p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.addr-book__acts { display: flex; gap: 6px; flex-shrink: 0; }

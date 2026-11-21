@@ -91,6 +91,8 @@
     el("pf-sizetable").value = "hoodie";
     el("pf-charmready").checked = false;
     el("pf-active").checked = true;
+    el("pf-publish-at").value = "";
+    syncPublishAt();
     el("pf-cancel").hidden = true;
     el("pf-view-live").hidden = true;
     renderPfColors();
@@ -122,6 +124,8 @@
     el("pf-sizetable").value = p.sizeTable || "hoodie";
     el("pf-charmready").checked = !!p.charmReady;
     el("pf-active").checked = p.active !== false;
+    el("pf-publish-at").value = p.active ? "" : isoToLocalInput(p.publishAt);
+    syncPublishAt();
     el("pf-cancel").hidden = false;
     el("pf-view-live").href = `/product.html?id=${encodeURIComponent(p.id)}`;
     el("pf-view-live").hidden = false;
@@ -140,10 +144,20 @@
     el("pf-id").disabled = false;
     el("pf-nameko").value = (p.nameKo || "") + " " + t("(복사)");
     el("pf-active").checked = false; // 실수로 바로 공개되지 않게
+    el("pf-publish-at").value = "";
+    syncPublishAt();
     el("pf-view-live").hidden = true;
     el("pf-id").focus();
     toast(t("복사한 내용으로 새 상품 폼을 채웠습니다 — 상품 ID를 정하고 저장하세요(비공개로 시작)"));
   }
+
+  /* 공개 예약 시각을 넣으면 "공개" 체크는 서버가 그 시각에 켠다 — 그때까지는 비공개로 잠가 보여 준다 */
+  function syncPublishAt() {
+    const scheduled = !!el("pf-publish-at").value;
+    if (scheduled) el("pf-active").checked = false;
+    el("pf-active").disabled = scheduled;
+  }
+  el("pf-publish-at").addEventListener("change", syncPublishAt);
 
   el("product-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -176,6 +190,7 @@
       sizeTable: el("pf-sizetable").value,
       charmReady: el("pf-charmready").checked,
       active: el("pf-active").checked,
+      publishAt: localInputToIso(el("pf-publish-at").value),
       media: pfMedia.filter((m) => m.kind !== "text" || (m.text || "").trim()),
     };
 
@@ -187,7 +202,11 @@
         : await adminFetch("/api/admin/products", { method: "POST", body: JSON.stringify({ id, ...body }) });
 
       if (!result) return;
-      toast(result.mediaSkipped
+      toast(result.publishSkipped
+        ? t("저장했지만 DB 마이그레이션 056 전이라 공개 예약은 빠졌습니다")
+        : result.publishAt
+          ? t("저장했습니다 — {when}에 자동 공개됩니다", { when: fmtDate(result.publishAt) })
+          : result.mediaSkipped
         ? t("저장했지만 DB 마이그레이션 041 전이라 상세 콘텐츠·모델 정보는 빠졌습니다(상품 사진 앞 6장만 저장)")
         : result.translationsSkipped
           ? t("저장했지만 DB 마이그레이션 044 전이라 영어·일본어 문구는 빠졌습니다")
@@ -241,7 +260,7 @@
             <input type="checkbox" class="product-select" data-id="${esc(p.id)}" ${selectedProductIds.has(p.id) ? "checked" : ""}>
           </label>
           ${img ? `<img src="${esc(img)}" alt="">` : ""}
-          ${p.active ? "" : `<span class="grid-card-badge">${esc(t("비공개"))}</span>`}
+          ${p.active ? "" : p.publishAt ? `<span class="grid-card-badge">${esc(t("예약 {when}", { when: fmtDate(p.publishAt) }))}</span>` : `<span class="grid-card-badge">${esc(t("비공개"))}</span>`}
         </div>
         <div class="grid-card-body">
           <b class="grid-card-name">${esc(t(p.nameKo))}</b>

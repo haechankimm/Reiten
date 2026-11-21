@@ -626,7 +626,64 @@ async function sendAdminBackup({ filename, buffer, summary }) {
   });
 }
 
+/* 단체 주문 문의(2026-11-21) — 관리자에게는 내용 전체, 고객에게는 접수 확인. 실패해도 문의 접수는 그대로. */
+async function sendAdminGroupInquiry(inq) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) return;
+  await sendTracked("admin_group_inquiry", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    replyTo: inq.email,
+    subject: `[REITEN] 단체 주문 문의 — ${inq.team_name} ${inq.quantity}벌`,
+    html: `
+      <h2>새 단체 주문 문의</h2>
+      <p><b>팀(크루)</b> ${escHtml(inq.team_name)}<br>
+        <b>담당자</b> ${escHtml(inq.contact_name)} (${escHtml(inq.tel)} · ${escHtml(inq.email)})<br>
+        <b>수량</b> ${escHtml(inq.quantity)}벌${inq.desired_date ? `<br><b>희망 날짜</b> ${escHtml(inq.desired_date)}` : ""}</p>
+      ${inq.products ? `<p><b>원하는 상품</b> ${escHtml(inq.products)}</p>` : ""}
+      ${inq.customization ? `<p><b>로고·인쇄 요청</b><br>${escHtml(inq.customization).replace(/\n/g, "<br>")}</p>` : ""}
+      ${inq.message ? `<p><b>문의 내용</b><br>${escHtml(inq.message).replace(/\n/g, "<br>")}</p>` : ""}
+      <p style="color:#666">Works "단체 문의" 탭에서 상태와 메모를 관리할 수 있습니다. 이 메일에 답장하면 문의한 분께 바로 갑니다.</p>
+    `,
+  });
+}
+
+async function sendCustomerGroupInquiryReceived(inq) {
+  if (!resend || !inq.email) return;
+  await sendTracked("customer_group_inquiry", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: inq.email,
+    replyTo: SITE.order.email,
+    subject: `[REITEN] 단체 주문 문의가 접수되었습니다 — ${inq.team_name}`,
+    html: `
+      <h2>${escHtml(inq.contact_name)}님, 문의 감사합니다</h2>
+      <p>${escHtml(inq.team_name)} 단체 주문(${escHtml(inq.quantity)}벌) 문의를 받았습니다. 담당자가 확인한 뒤 영업일 기준 1~2일 안에 연락드리겠습니다.</p>
+      <p style="color:#666">추가로 전할 내용(로고 파일·희망 사이즈 구성 등)이 있으면 이 메일에 답장해 주세요.</p>
+    `,
+  });
+}
+
+/* 고객이 출고 전에 배송지를 바꿨을 때(2026-11-21) — 출고 담당이 놓치지 않게 관리자에게도 메일 */
+async function sendAdminAddressChanged(order, prev) {
+  if (!resend || !process.env.ADMIN_NOTIFY_EMAIL) return;
+  const c = order.customer || {};
+  await sendTracked("admin_address_changed", {
+    from: process.env.RESEND_FROM || "onboarding@resend.dev",
+    to: process.env.ADMIN_NOTIFY_EMAIL,
+    subject: `[REITEN] 고객 배송지 변경 — ${order.order_no}`,
+    html: `
+      <h2>고객이 배송지를 바꿨습니다</h2>
+      <p><b>주문번호</b> ${escHtml(order.order_no)} (${escHtml(order.status)})</p>
+      <p><b>새 배송지</b> [${escHtml(c.zip)}] ${escHtml(c.addr)} ${escHtml(c.addr2 || "")}<br><b>메모</b> ${escHtml(c.memo || "-")}</p>
+      <p style="color:#666"><b>이전</b> [${escHtml(prev.zip)}] ${escHtml(prev.addr)} ${escHtml(prev.addr2 || "")}</p>
+      <p style="color:#666">이미 송장을 출력했다면 다시 출력해 주세요.</p>
+    `,
+  });
+}
+
 module.exports = {
+  sendAdminGroupInquiry,
+  sendCustomerGroupInquiryReceived,
+  sendAdminAddressChanged,
   sendAdminBackup,
   sendCustomerRefundIssued,
   sendCustomerExchangeShipped,

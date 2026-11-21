@@ -303,6 +303,8 @@
     dashboard: () => paintAdminDashboard(),
     paymentlog: () => paintAdminPaymentLog(),
     notices: () => paintAdminNotices(),
+    banners: () => paintAdminBanners(),
+    groups: () => paintAdminGroups(),
     outbox: () => paintAdminOutbox(),
     expenses: () => paintExpenses(),
     agent: () => paintAgent(),
@@ -312,7 +314,7 @@
     members: "admin-members", orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook", settings: "admin-settings",
     auditlog: "admin-auditlog", dashboard: "admin-dashboard", paymentlog: "admin-paymentlog", notices: "admin-notices", outbox: "admin-outbox",
-    expenses: "admin-expenses", agent: "admin-agent",
+    expenses: "admin-expenses", agent: "admin-agent", banners: "admin-banners", groups: "admin-groups",
   };
   const tabLoadedAt = {};
   function tabHasUnsavedChanges(tab) {
