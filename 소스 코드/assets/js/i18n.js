@@ -93,7 +93,6 @@ const I18N = {
     ja: "手綱からスロットルへ、乗り換えた人たちのための服。背中全体にあしらったスコッチ反射転写プリントは、昼間はマットシルバーのグラフィックに見え、夜はヘッドライトを跳ね返す安全装備として機能します。",
   },
   "컬렉션 보기": { en: "Shop Collection", ja: "コレクションを見る" },
-  "지퍼 참 만들기": { en: "Build a Zip Charm", ja: "ジップチャームを作る" },
   "남녀공용 오버핏 · XS–XL ·": { en: "Unisex oversized · XS–XL · Free shipping over", ja: "男女兼用オーバーサイズ · XS–XL ·" },
   "이상 무료배송": { en: "", ja: "以上で送料無料" },
   "커서를 올려 빛을 비춰보세요": { en: "Hover to shine a light on it", ja: "カーソルを合わせて光を当ててみてください" },
@@ -170,7 +169,6 @@ const I18N = {
     ja: "— 着用・洗濯の跡がある場合やタグを外した場合は交換・返品が難しくなります。",
   },
   "컬러": { en: "Color", ja: "カラー" },
-  "사이즈": { en: "Size", ja: "サイズ" },
   "{name} · {size} 담았습니다": { en: "Added {name} · {size} to cart", ja: "{name}・{size}をカートに追加しました" },
 
   /* ---------- Lookbook ---------- */
@@ -367,7 +365,6 @@ const I18N = {
   "주문서 복사": { en: "Copy Order Form", ja: "注文書をコピー" },
   "이메일로 열기": { en: "Open in Email", ja: "メールで開く" },
   "주문 내역": { en: "Order Details", ja: "注文内容" },
-  "상품": { en: "Item", ja: "商品" },
   "옵션": { en: "Options", ja: "オプション" },
   "수량": { en: "Qty", ja: "数量" },
   "금액": { en: "Amount", ja: "金額" },
@@ -546,9 +543,7 @@ const I18N = {
   "상품": { en: "Product", ja: "商品" },
   "별점": { en: "Rating", ja: "評価" },
   '주문번호 <span class="req">*</span>': { en: 'Order No. <span class="req">*</span>', ja: '注文番号 <span class="req">*</span>' },
-  "주문번호를 입력해 주세요.": { en: "Please enter your order number.", ja: "注文番号をご入力ください。" },
   '주문 시 연락처 <span class="req">*</span>': { en: 'Phone Number Used at Checkout <span class="req">*</span>', ja: 'ご注文時の連絡先 <span class="req">*</span>' },
-  "연락처를 입력해 주세요.": { en: "Please enter your phone number.", ja: "連絡先をご入力ください。" },
   "실제 구매하신 주문인지 확인하는 용도로만 사용하며 리뷰에는 표시되지 않습니다.": {
     en: "Used only to verify your purchase — this won't be shown with your review.",
     ja: "実際のご購入かどうかの確認にのみ使用され、レビューには表示されません。",
