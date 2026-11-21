@@ -19,7 +19,56 @@ const { toProductDto } = require("./products");
 const PRODUCTS_CACHE_TTL_MS = 15000;
 let productsCache = { data: null, at: 0 };
 
+/* ---------- 상품 공개 예약(2026-11-21, 056) ----------
+   publish_at이 지난 비공개 상품을 공개로 바꾸고 publish_at을 비운다. 손님이 상품 목록을 여는 순간(getActiveProducts)과
+   5분마다 크론(lib/scheduledJobs.js) 양쪽에서 부른다 — 무료 플랜 서버가 잠들어 크론을 건너뛰어도, 첫 손님이 들어오는 순간 공개된다.
+   다음 예약 시각을 기억해 두고 그 시각이 지나면 15초 캐시를 무시하고 바로 확인한다(드롭 시각에 정확히 보이게). */
+let nextPublishAt = 0; // 0 = 아직 모름, Infinity = 예약 없음
+let publishCheckedAt = 0;
+
+async function refreshNextPublishAt(db = supabaseAdmin) {
+  const { data, error } = await db.from("products").select("publish_at").eq("active", false).not("publish_at", "is", null).order("publish_at", { ascending: true }).limit(1);
+  nextPublishAt = error || !data || !data.length ? Infinity : new Date(data[0].publish_at).getTime();
+  return nextPublishAt;
+}
+
+async function publishDueProducts({ db = supabaseAdmin, now = Date.now() } = {}) {
+  publishCheckedAt = now;
+  const { data, error } = await db
+    .from("products")
+    .update({ active: true, publish_at: null, updated_at: new Date(now).toISOString() })
+    .eq("active", false)
+    .lte("publish_at", new Date(now).toISOString())
+    .select("id, name_ko");
+  if (error) return { published: [], error: error.message }; // 056 전(칸 없음) 포함 — 조용히
+  await refreshNextPublishAt(db).catch(() => {});
+  if (data && data.length) {
+    invalidateProductsCache();
+    console.log("[product-publish] 예약 공개:", data.map((p) => p.id).join(", "));
+    // 상품 권한이 있는 관리자에게만(권한 없는 알림은 아예 안 보이게 — CLAUDE.md)
+    (async () => {
+      const { sendPushToAdmins, pushRecipientsForAreas } = require("./push");
+      const ids = await pushRecipientsForAreas(["products"], "view");
+      if (ids.length) await sendPushToAdmins({ title: "예약한 상품이 공개됐습니다", body: data.map((p) => p.name_ko || p.id).join(", ").slice(0, 180), tab: "products" }, { adminIds: ids });
+    })().catch(() => {});
+  }
+  return { published: (data || []).map((p) => p.id) };
+}
+
+function invalidateProductsCache() {
+  productsCache = { data: null, at: 0 };
+}
+
+/* 관리자가 상품을 저장하면(예약 시각이 바뀌었을 수 있음) 다음 예약 시각을 다시 읽게 한다 */
+function scheduleChanged() {
+  nextPublishAt = 0;
+  invalidateProductsCache();
+}
+
 async function getActiveProducts() {
+  const now = Date.now();
+  if (nextPublishAt === 0) await refreshNextPublishAt().catch(() => { nextPublishAt = Infinity; });
+  if (nextPublishAt <= now && now - publishCheckedAt > 5000) await publishDueProducts({ now }).catch(() => {});
   if (productsCache.data && Date.now() - productsCache.at < PRODUCTS_CACHE_TTL_MS) {
     return productsCache.data;
   }
@@ -84,4 +133,4 @@ async function withRealSoldOut(products) {
   return { products: withStock, degraded: false };
 }
 
-module.exports = { getActiveProducts, withRealSoldOut };
+module.exports = { getActiveProducts, withRealSoldOut, publishDueProducts, scheduleChanged, invalidateProductsCache };

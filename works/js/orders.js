@@ -119,7 +119,9 @@
       </div>
       <div class="detail-grid">
         <div class="detail-field"><label>${esc(t("주문자"))}</label><div>${esc(o.customer.name)} · ${esc(o.customer.tel)}</div></div>
-        <div class="detail-field"><label>${esc(t("배송지"))}</label><div>[${esc(o.customer.zip)}] ${esc(o.customer.addr)} ${esc(o.customer.addr2 || "")}</div></div>
+        <div class="detail-field"><label>${esc(t("배송지"))}</label><div>[${esc(o.customer.zip)}] ${esc(o.customer.addr)} ${esc(o.customer.addr2 || "")}${o.customer.addressChangedAt ? `
+          <div class="small" style="margin-top:4px"><span class="status-chip st-pending">${esc(t("고객이 배송지 변경"))}</span> <span class="tnum">${esc(fmtDate(o.customer.addressChangedAt))}</span></div>
+          ${(o.customer.addressHistory || []).slice().reverse().map((h) => `<div class="small" style="color:var(--text-muted);text-decoration:line-through">[${esc(h.zip)}] ${esc(h.addr)} ${esc(h.addr2 || "")}</div>`).join("")}` : ""}</div></div>
         <div class="detail-field"><label>${esc(t("입금자명"))}</label><div>${esc(o.customer.payer)}</div></div>
         <div class="detail-field"><label>${esc(t("메모"))}</label><div>${esc(o.customer.memo || "-")}</div></div>
         <div class="detail-field"><label>${esc(t("결제"))}</label><div>${orderPaymentDetailHTML(o)}</div></div>

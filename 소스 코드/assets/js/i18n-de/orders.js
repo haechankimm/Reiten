@@ -91,4 +91,5 @@ addDe({
   "홈택스 발급 완료로 표시": "Als in Hometax ausgestellt markieren",
   "현금영수증 발급 완료로 표시했습니다": "Barquittung als ausgestellt markiert",
   "발급 표시를 취소했습니다": "Markierung aufgehoben",
+  "고객이 배송지 변경": "Adresse vom Kunden geändert",
 });

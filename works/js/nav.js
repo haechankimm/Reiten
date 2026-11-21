@@ -29,8 +29,8 @@
   }
   switchTabs("#sidebar .nav-item", {
     home: "admin-home",
-    orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna",
-    paymentlog: "admin-paymentlog",
+    orders: "admin-orders", returns: "admin-returns", inventory: "admin-inventory", qna: "admin-qna", groups: "admin-groups",
+    paymentlog: "admin-paymentlog", banners: "admin-banners",
     products: "admin-products", coupons: "admin-coupons", reviews: "admin-reviews", lookbook: "admin-lookbook",
     members: "admin-members", calendar: "admin-calendar", notices: "admin-notices", outbox: "admin-outbox", settings: "admin-settings", auditlog: "admin-auditlog",
     dashboard: "admin-dashboard", usagestats: "admin-usagestats", staff: "admin-staff", expenses: "admin-expenses", agent: "admin-agent",

@@ -63,6 +63,7 @@ const MIGRATION_CHECKS = [
   { no: "053", probe: schemaVersionAtLeast(53), missing: "DB 마이그레이션 053이 아직 실행되지 않았습니다(상품 원가 구성 저장 불가 — 1벌 원가 한 칸만 사용)" },
   { no: "054", probe: schemaVersionAtLeast(54), missing: "DB 마이그레이션 054가 아직 실행되지 않았습니다(AI 승인함이 꺼져 있음)" },
   { no: "055", probe: schemaVersionAtLeast(55), missing: "DB 마이그레이션 055가 아직 실행되지 않았습니다(미입금 주문 리마인드가 꺼져 있음)" },
+  { no: "056", probe: schemaVersionAtLeast(56), missing: "DB 마이그레이션 056이 아직 실행되지 않았습니다(고객 띠배너·상품 공개 예약·배송지 주소록·단체 주문 문의가 꺼져 있음)" },
 ];
 
 async function migrationChecks(db = supabaseAdmin) {

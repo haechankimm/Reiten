@@ -70,8 +70,9 @@
         </tr>`).join("") + orderAmountRowsHTML(o);
 
       // 입금대기면 입금 계좌, 배송된 주문이면 구매확정 버튼(lookup 응답은 lib/customerOrders.js)
-      el("lk-extra").innerHTML = orderPaymentGuideHTML(o) + orderConfirmHTML(o);
+      el("lk-extra").innerHTML = orderPaymentGuideHTML(o) + orderAddressHTML(o) + orderConfirmHTML(o);
       bindOrderConfirmButtons(el("lk-extra"), () => tel.value.trim(), () => el("lookup-form").requestSubmit());
+      bindOrderAddressEdit(el("lk-extra"), () => tel.value.trim());
 
       el("lk-result").hidden = false;
 

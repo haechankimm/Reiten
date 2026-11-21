@@ -73,6 +73,7 @@
         ${adjustments ? `<p class="small tnum" style="margin-top:4px;color:var(--muted);text-align:right">${esc(adjustments)}</p>` : ""}
         ${trackingLine(o)}
         ${orderPaymentGuideHTML(o)}
+        ${orderAddressHTML(o)}
         ${orderConfirmHTML(o)}
       </div>`;
   }
@@ -86,9 +87,50 @@
       const orders = await res.json();
       el("my-orders").innerHTML = orders.map(orderCard).join("");
       bindOrderConfirmButtons(el("my-orders"), null, () => { paintMyOrders(); paintPointsBalance(); });
+      bindOrderAddressEdit(el("my-orders"), null);
       el("my-orders-empty").hidden = orders.length > 0;
     } catch (e) {}
   }
+
+  /* 배송지 주소록(2026-11-21, 056) — 목록·기본 배송지 지정·삭제. 추가는 주문서의 "주소록에 저장" 체크로. */
+  async function paintAddressBook() {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/my/addresses", { headers: { Authorization: "Bearer " + token } });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.unavailable) return;
+      const items = body.items || [];
+      el("addr-book-wrap").hidden = false;
+      el("addr-book-empty").hidden = items.length > 0;
+      el("addr-book").innerHTML = items.map((a) => `
+        <div class="addr-book__row">
+          <p class="small">${a.isDefault ? `<b>${esc(t("기본"))}</b> · ` : ""}${esc(addressLine(a))}<br><span style="color:var(--muted)">${esc(a.tel)}</span></p>
+          <div class="addr-book__acts">
+            ${a.isDefault ? "" : `<button type="button" class="btn btn--sm btn--line" data-addr-default="${esc(a.id)}">${esc(t("기본으로"))}</button>`}
+            <button type="button" class="btn btn--sm btn--line" data-addr-del="${esc(a.id)}">${esc(t("삭제"))}</button>
+          </div>
+        </div>`).join("");
+    } catch (e) {}
+  }
+
+  el("addr-book").addEventListener("click", async (e) => {
+    const def = e.target.closest("[data-addr-default]");
+    const del = e.target.closest("[data-addr-del]");
+    if (!def && !del) return;
+    if (del && !confirm(t("이 배송지를 주소록에서 지울까요?"))) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    const id = (def || del).dataset[def ? "addrDefault" : "addrDel"];
+    const res = await fetch("/api/my/addresses/" + encodeURIComponent(id), {
+      method: def ? "PATCH" : "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: def ? JSON.stringify({ isDefault: true }) : undefined,
+    }).catch(() => null);
+    if (!res || !res.ok) { toast(t("저장에 실패했습니다.")); return; }
+    paintAddressBook();
+  });
 
   async function paintPointsBalance() {
     const token = await getAccessToken();
@@ -205,6 +247,7 @@
       el("me-greeting").textContent = t("{name}님, 안녕하세요.", { name: profile.name || profile.email });
       paintMyOrders();
       paintPointsBalance();
+      paintAddressBook();
       if (profile.role === "admin") tryShowAdminPanel(profile);
     }
 

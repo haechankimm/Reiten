@@ -32,6 +32,10 @@ const AREAS = {
   refunds: { label: "환불·주문취소(돈이 나가는 처리)", tabs: [], paths: ["refunds"] },
   /* 지출 장부·동업자 정산(2026-11-11) — 사업 지출·동업자 간 정산·예산·원가. 새 직원 기본값에는 넣지 않는다(마스터가 동업자에게 켬). */
   expenses: { label: "지출 장부·동업자 정산", tabs: ["expenses"], paths: ["supplier-invoices", "expenses"] },
+  /* 고객 사이트 맨 위 띠배너(2026-11-21, 056) — 모든 손님에게 바로 보이는 문구라 새 직원 기본값에는 넣지 않는다. */
+  banners: { label: "고객 공지 띠배너", tabs: ["banners"], paths: ["banners"] },
+  /* 라이딩 크루 단체 주문 문의(2026-11-21, 056) — CS라 새 직원 기본값에 넣는다. */
+  groups: { label: "단체 주문 문의", tabs: ["groups"], paths: ["group-inquiries"] },
 };
 
 /* 권한 검사 없이(PIN·로그인만) 모든 관리자가 쓰는 경로: 알림 개수, 사용 기록, 푸시 구독, 담당자 목록 조회. */
@@ -41,7 +45,7 @@ const OPEN_PATHS = ["notifications", "usage-log", "push", "admins", "agent-actio
 const PIN_EXEMPT_PATHS = ["me", "pin"];
 
 /* 신규 초대 직원의 기본 권한 — 마스터가 "직원·권한" 탭에서 바꾼다. */
-const DEFAULT_STAFF_PERMISSIONS = { orders: "edit", returns: "edit", inventory: "edit", qna: "edit", collab: "edit" };
+const DEFAULT_STAFF_PERMISSIONS = { orders: "edit", returns: "edit", inventory: "edit", qna: "edit", collab: "edit", groups: "edit" };
 
 const LEVELS = ["none", "view", "edit"];
 const LEVEL_RANK = { none: 0, view: 1, edit: 2 };

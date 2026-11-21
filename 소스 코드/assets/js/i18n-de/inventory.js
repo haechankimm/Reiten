@@ -73,4 +73,5 @@ addDe({
   "{n}일 뒤 품절 예상": "Ausverkauft in ca. {n} Tagen",
   "재고 {q} · 주 {w}장 판매": "Bestand {q} · {w} Stk./Woche",
   "발주 {n}장": "{n} Stk. bestellen",
+  "알림 대기 {n}명": "{n} warten auf Benachrichtigung",
 });

@@ -25,6 +25,9 @@ const restockRoutes = require("./routes/restock");
 const pushRoutes = require("./routes/push");
 const paymentsRoutes = require("./routes/payments");
 const noticesRoutes = require("./routes/notices");
+const bannersRoutes = require("./routes/banners");
+const groupInquiriesRoutes = require("./routes/groupInquiries");
+const addressesRoutes = require("./routes/addresses");
 const outboxRoutes = require("./routes/outbox");
 const handoffNotesRoutes = require("./routes/handoffNotes");
 const calendarRoutes = require("./routes/calendar");
@@ -306,6 +309,10 @@ app.use(outboxRoutes);
 app.use(handoffNotesRoutes);
 app.use(calendarRoutes);
 app.use(usageLogRoutes);
+/* 2026-11-21(056): 고객 띠배너, 단체 주문 문의, 회원 배송지 주소록·출고 전 배송지 변경 */
+app.use(bannersRoutes);
+app.use(groupInquiriesRoutes);
+app.use(addressesRoutes);
 
 require("./lib/scheduledJobs");
 

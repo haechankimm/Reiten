@@ -32,7 +32,13 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
 
   let unit;
   let serverName = null;
-  if (typeof raw.productId === "string" && raw.productId.startsWith("charm-")) {
+  if (typeof raw.productId === "string" && raw.productId.startsWith("extra-")) {
+    /* 추가 아이템만 한 줄로(2026-11-21 "이것 담으면 무료배송" 추천) — 참처럼 부속이라 상품과 함께일 때만 주문 가능(hasPhysicalProduct) */
+    const extra = extras.find((x) => `extra-${x.key}` === raw.productId);
+    if (!extra || extraKeys.length) return null;
+    unit = extraPrice;
+    serverName = `추가 아이템 — ${extra.label}`;
+  } else if (typeof raw.productId === "string" && raw.productId.startsWith("charm-")) {
     if (!charmKey) return null;
     unit = charmPrice + extrasTotal;
   } else {
@@ -59,9 +65,14 @@ function priceItem(raw, products, { extras, charmPrice, extraPrice }) {
 /* 참(charm)은 지퍼 슬라이더에 다는 무료 부속이라 실물 상품(후디·집업 등) 없이 참만 담긴 주문은 받지 않는다 —
    참 가격이 0원이라 참만 담으면 상품 합계 0원 + 배송비 0원(shippingFor가 0원 주문엔 배송비를 안 붙임)인
    공짜 주문이 됐는데, 화면에서 "참만 담기" 버튼만 숨겨 두고 서버는 그대로 받고 있었다(2026-10-02 점검). */
+/* 참·추가 아이템 단독 줄(옷이 아닌 부속) */
+function isAddonLine(productId) {
+  return typeof productId === "string" && (productId.startsWith("charm-") || productId.startsWith("extra-"));
+}
+
 function hasPhysicalProduct(rawItems) {
   return (Array.isArray(rawItems) ? rawItems : []).some(
-    (raw) => raw && typeof raw.productId === "string" && raw.productId && !raw.productId.startsWith("charm-")
+    (raw) => raw && typeof raw.productId === "string" && raw.productId && !isAddonLine(raw.productId)
   );
 }
 
@@ -88,4 +99,4 @@ function couponDiscount(coupon, { subtotal, items, rawItems }) {
   return Math.max(0, Math.min(raw, base));
 }
 
-module.exports = { orderNo, priceItem, shippingFor, couponDiscount, hasPhysicalProduct };
+module.exports = { orderNo, priceItem, shippingFor, couponDiscount, hasPhysicalProduct, isAddonLine };

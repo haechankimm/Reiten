@@ -1,0 +1,22 @@
+        <!-- 라이딩 크루·동호회 단체 주문 문의(2026-11-21, 056) — js/groups.js, server/routes/groupInquiries.js -->
+        <div id="admin-groups" hidden>
+          <div class="content-head">
+            <div>
+              <div class="content-title" data-i18n="단체 주문 문의">단체 주문 문의</div>
+              <div class="content-sub" id="groups-summary"></div>
+            </div>
+            <div class="field" style="margin:0;min-width:160px">
+              <label for="groups-status" data-i18n="상태">상태</label>
+              <select id="groups-status">
+                <option value="open" data-i18n="진행 중 (접수·상담중·견적발송)">진행 중 (접수·상담중·견적발송)</option>
+                <option value="" data-i18n="전체">전체</option>
+                <option value="접수" data-i18n="접수">접수</option>
+                <option value="상담중" data-i18n="상담중">상담중</option>
+                <option value="견적발송" data-i18n="견적발송">견적발송</option>
+                <option value="확정" data-i18n="확정">확정</option>
+                <option value="종료" data-i18n="종료">종료</option>
+              </select>
+            </div>
+          </div>
+          <div id="admin-groups-list" style="display:grid;gap:10px"></div>
+        </div>

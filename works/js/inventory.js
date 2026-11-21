@@ -92,7 +92,7 @@
     const row = (r) => `<div class="fc-row">
         <span class="fc-name"><b>${esc(t(r.name))}</b> ${esc(t(COLORS[r.color]?.label || r.color))} ${esc(r.size)}</span>
         <span class="status-chip ${r.qty <= 0 ? "st-overdue" : r.daysLeft <= 7 ? "st-pending" : "st-neutral"}">${esc(r.qty <= 0 ? t("품절") : t("{n}일 뒤 품절 예상", { n: r.daysLeft }))}</span>
-        <span class="m-label">${esc(t("재고 {q} · 주 {w}장 판매", { q: r.qty, w: r.perWeek }))}</span>
+        <span class="m-label">${esc(t("재고 {q} · 주 {w}장 판매", { q: r.qty, w: r.perWeek }))}${r.waiting ? ` · ${esc(t("알림 대기 {n}명", { n: r.waiting }))}` : ""}</span>
         <b class="fc-qty">${esc(t("발주 {n}장", { n: r.suggestQty }))}</b>
       </div>`;
     const head = items.slice(0, 6).map(row).join("");

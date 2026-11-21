@@ -680,4 +680,12 @@ addDe({
   "대신택배": "Daesin Express",
   "현금영수증": "Barquittung (Cash Receipt)",
   "현금영수증 발급 대기": "Barquittungen auszustellen",
+  // 2026-11-21: 고객 띠배너·단체 주문 문의(056)
+  "고객 공지 띠배너": "Shop-Hinweisbanner",
+  "단체 주문 문의": "Gruppenbestellungen",
+  "새 단체 주문 문의": "Neue Gruppenanfragen",
+  "휴무·배송 지연 공지를 고객 사이트에 띄우기": "Hinweise zu Betriebsferien/Lieferverzögerung im Shop anzeigen",
+  "크루·동호회 단체복 문의 상담 관리": "Anfragen für Team-/Clubkleidung betreuen",
+  "DB 마이그레이션 056을 먼저 실행해 주세요.": "Bitte zuerst DB-Migration 056 ausführen.",
+  "DB 마이그레이션 056이 아직 실행되지 않았습니다(고객 띠배너·상품 공개 예약·배송지 주소록·단체 주문 문의가 꺼져 있음)": "DB-Migration 056 wurde noch nicht ausgeführt (Shop-Banner, geplante Produktveröffentlichung, Adressbuch und Gruppenanfragen sind aus)",
 });

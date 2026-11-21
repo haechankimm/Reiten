@@ -206,6 +206,12 @@ scheduleExclusive("abandoned-cart", "30 * * * *", () => {
   remindAbandonedCarts().catch((err) => console.error("[abandoned-cart] 실행 실패:", err.message));
 });
 
+/* 상품 공개 예약 — 5분마다 예약 시각이 지난 상품을 공개(lib/catalog.js, 056). 손님이 상품 목록을 열 때도 바로 확인하므로
+   이 크론은 "아무도 안 들어올 때"(피드·사이트맵·알림)를 위한 보조. */
+scheduleExclusive("product-publish", "*/5 * * * *", () => {
+  require("./catalog").publishDueProducts().catch((err) => console.error("[product-publish] 실행 실패:", err.message));
+});
+
 /* 미입금 리마인드 — 매시 20분, 자동 취소 약 6시간 전 무통장입금 주문에 한 번만 안내(lib/depositReminder.js, 055) */
 scheduleExclusive("deposit-reminder", "20 * * * *", () => {
   require("./depositReminder").remindUnpaidOrders().catch((err) => console.error("[deposit-reminder] 실행 실패:", err.message));

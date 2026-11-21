@@ -23,7 +23,7 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
   const { ACTIONS } = require("../lib/agentActions");
   const agentTypes = [];
   for (const [k, a] of Object.entries(ACTIONS)) if (await hasAreaPermission(req, a.area, "edit")) agentTypes.push(k);
-  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending, cashReceipts] = await Promise.all([
+  const [orders, inventory, qna, returns, systemErrors, supplierDelivered, invoicesPending, agentPending, cashReceipts, groupInquiries] = await Promise.all([
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("status", "입금대기"),
     activeIds.length
       ? supabaseAdmin.from("inventory").select("product_id", { count: "exact", head: true }).lte("qty", 0).in("product_id", activeIds)
@@ -39,6 +39,8 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
       : Promise.resolve({ count: 0 }),
     // 현금영수증 신청했는데 입금 확인 후 아직 "발급 완료" 표시 안 한 주문(2026-11-11, customer jsonb — ->>는 JSON null도 SQL null로 본다)
     supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).not("customer->>cashReceipt", "is", null).is("customer->cashReceipt->>issuedAt", null).in("status", ["입금확인", "배송중", "완료"]),
+    // 아직 아무도 손대지 않은 단체 주문 문의(056) — 표가 없으면 0
+    supabaseAdmin.from("group_inquiries").select("id", { count: "exact", head: true }).eq("status", "접수"),
   ]);
 
   /* 알림 우선순위(severity) — 전부 빨간 배지로 뭉뚱그려 보여주면 정작 급한 것(결제·환불
@@ -55,10 +57,11 @@ router.get("/api/admin/notifications", requireAdmin, async (req, res) => {
     { key: "agentPending", label: "AI 승인 대기", count: (!agentPending.error && agentPending.count) || 0, tab: "agent", severity: "warning" },
     { key: "cashReceiptPending", label: "현금영수증 발급 대기", count: (!cashReceipts.error && cashReceipts.count) || 0, tab: "orders", severity: "warning" },
     { key: "invoicesPending", label: "확인 대기 지출", count: (!invoicesPending.error && invoicesPending.count) || 0, tab: "expenses", severity: "info" },
+    { key: "newGroupInquiries", label: "새 단체 주문 문의", count: (!groupInquiries.error && groupInquiries.count) || 0, tab: "groups", severity: "warning" },
   ];
   /* 볼 권한이 없는 영역의 알림은 건수까지 서버에서 뺀다(화면에서만 숨기면 응답에 건수가 남는다 — CLAUDE.md 권한 규칙).
      AI 승인 대기는 위에서 이미 이 관리자가 승인할 수 있는 종류만 셌다. */
-  const AREA_OF_TAB = { orders: "orders", inventory: "inventory", qna: "qna", returns: "returns", systemErrors: "payments", expenses: "expenses" };
+  const AREA_OF_TAB = { orders: "orders", inventory: "inventory", qna: "qna", returns: "returns", systemErrors: "payments", expenses: "expenses", groups: "groups" };
   const visible = [];
   for (const it of items) {
     const area = AREA_OF_TAB[it.tab];

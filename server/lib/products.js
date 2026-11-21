@@ -58,6 +58,7 @@ function toProductDto(row) {
     details: row.details || [],
     charmReady: !!row.charm_ready,
     active: row.active,
+    publishAt: row.publish_at || null, // 공개 예약 시각(056) — 이 시각에 서버가 자동 공개
     // 영어·일본어 상품명·설명(044, 선택) — { en: { name, short, desc, details[] }, ja: {...} }
     translations: row.translations && typeof row.translations === "object" ? row.translations : {},
   };
@@ -157,6 +158,25 @@ function productPatchFromBody(b, { forCreate, validColors = COLORS }) {
   if (b.translations !== undefined) patch.translations = sanitizeTranslations(b.translations);
   if (b.charmReady !== undefined) patch.charm_ready = !!b.charmReady;
   if (b.active !== undefined) patch.active = !!b.active;
+  /* 공개 예약(2026-11-21, 056): 앞으로의 시각이면 그때까지 비공개로 두고 그 시각에 자동 공개(lib/catalog.js publishDueProducts).
+     비우면 예약 취소. 이미 지난 시각이면 바로 공개. */
+  if (b.publishAt !== undefined) {
+    if (b.publishAt === null || b.publishAt === "") patch.publish_at = null;
+    else {
+      const d = new Date(b.publishAt);
+      if (Number.isNaN(d.getTime())) return { error: "공개 예약 시각 형식이 올바르지 않습니다." };
+      if (d.getTime() > Date.now()) {
+        patch.publish_at = d.toISOString();
+        patch.active = false;
+      } else {
+        patch.publish_at = null;
+        patch.active = true;
+      }
+    }
+  } else if (b.active !== undefined) {
+    // 예약 없이 공개·비공개만 직접 정하면(AI 승인함·다른 화면) 걸려 있던 예약은 취소 — 나중에 예약 시각에 뒤집히지 않게
+    patch.publish_at = null;
+  }
   if (b.sortOrder !== undefined) patch.sort_order = Number.isFinite(Number(b.sortOrder)) ? Math.floor(Number(b.sortOrder)) : 0;
   return { patch };
 }

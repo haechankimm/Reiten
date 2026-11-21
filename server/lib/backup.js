@@ -13,6 +13,8 @@ const BACKUP_TABLES = [
   "restock_subscriptions", "qna_templates", "notices", "calendar_events",
   // 2026-10-28 정기 감사: 권한·감사·결제·오류 기록도 복구에 필요해 추가
   "admin_permissions", "admin_audit_log", "payment_log", "system_error_log", "admin_handoff_notes", "coupon_milestones",
+  // 2026-11-21(056): 고객 띠배너·배송지 주소록·단체 주문 문의
+  "site_banners", "customer_addresses", "group_inquiries",
 ];
 const PAGE = 1000;
 
